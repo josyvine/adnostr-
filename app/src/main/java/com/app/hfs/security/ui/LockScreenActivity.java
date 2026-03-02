@@ -65,13 +65,12 @@ import java.util.concurrent.Executors;
 
 /**
  * The Security Overlay Activity.
- * FIXED: Removed dead reference to liftCurtain() to fix build error.
- * Features Preserved:
- * 1. Rapid-Fire SOS: Hardware Beep + Text-To-Speech Voice Alarm.
- * 2. Backlight: Removed FLAG_KEEP_SCREEN_ON.
- * 3. Drive URL: Ensuring SMS waits for background upload completion.
- * 4. Chameleon UI: Android 9 safe wallpaper extraction.
- * 5. Task Manager Bypass: Added onPause and onUserLeaveHint for instant flag reset.
+ * FEATURES:
+ * 1. "Chameleon" UI: Native wallpaper background (Android 9 safe).
+ * 2. Stable Cloud Sync: Uses ApplicationContext for Drive uploads.
+ * 3. Robust Security: Handles Task Manager bypass via onStop().
+ * 4. Fearful Siren: Hardware Beep + Text-To-Speech Voice Alarm.
+ * 5. Backlight Fix: Removed KEEP_SCREEN_ON to allow system sleep.
  */
 public class LockScreenActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
@@ -97,7 +96,7 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
     private Handler sosHandler = new Handler(Looper.getMainLooper());
     private Runnable sosRunnable;
     
-    // --- VOICE ALARM ---
+    // --- VOICE ALARM (TTS) ---
     private TextToSpeech textToSpeech;
     private Handler voiceHandler = new Handler(Looper.getMainLooper());
     private Runnable voiceRunnable;
@@ -109,7 +108,7 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
         // Notify Service that lock screen is active
         HFSAccessibilityService.isLockActive = true;
 
-        // UPDATED FLAGS: Removed FLAG_KEEP_SCREEN_ON so backlight can turn off naturally
+        // UPDATED FLAGS: Removed FLAG_KEEP_SCREEN_ON to fix backlight glitch
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
                 | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
                 | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
@@ -128,34 +127,29 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
         isTheftMode = "THEFT_MODE".equals(getIntent().getStringExtra("EXTRA_MODE"));
 
         if (isTheftMode) {
+            // Activate aggressive Siren UI + Voice
             activateFearfulSiren();
         } else {
+            // Normal App Lock: Apply native look
             applySystemWallpaperBackground();
         }
 
         binding.lockContainer.setVisibility(View.VISIBLE);
 
-        // 1. Start background capture
+        // 1. Initialize background camera capture
         startInvisibleCamera();
 
-        // 2. Setup Security
+        // 2. Configure System Biometrics
         setupSystemSecurity();
 
-        // 3. Start authentication
+        // 3. Start authentication immediately
         triggerSystemAuth();
 
         binding.btnUnlockPin.setOnClickListener(v -> checkMpinAndUnlock());
         binding.btnFingerprint.setOnClickListener(v -> triggerSystemAuth());
-        
-        // FIXED: Removed liftCurtain() call because we switched to Manifest Task Binding
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // FIXED: Removed liftCurtain() call because we switched to Manifest Task Binding
-    }
-
+    // --- TEXT TO SPEECH INIT ---
     @Override
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
@@ -163,6 +157,10 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.e(TAG, "TTS Language not supported");
             } else {
+                // Set voice properties to sound authoritative
+                textToSpeech.setPitch(0.8f); // Slightly lower pitch for "Security" feel
+                textToSpeech.setSpeechRate(1.1f); // Slightly faster
+                
                 // If Theft Mode is active, start speaking immediately upon init
                 if (isTheftMode) {
                     startVoiceLoop();
@@ -178,21 +176,21 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
      */
     private void activateFearfulSiren() {
         try {
-            binding.lockContainer.setBackgroundColor(Color.parseColor("#AA0000"));
-
+            // Visuals
+            binding.lockContainer.setBackgroundColor(Color.parseColor("#AA0000")); // Red
             WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
             layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL;
             getWindow().setAttributes(layoutParams);
 
+            // Audio Volume Max
             AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (audioManager != null) {
                 int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
                 audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVolume, 0);
             }
 
+            // --- PART 1: HARDWARE BEEP (The fast siren) ---
             toneGenerator = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
-            
-            // Part 1: The Beep (Rapid Fire)
             sosRunnable = new Runnable() {
                 @Override
                 public void run() {
@@ -206,11 +204,11 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
             };
             sosHandler.post(sosRunnable);
 
-            // Part 2: The Voice (Started in onInit or here if ready)
+            // --- PART 2: VOICE ALERT (Started in onInit or here) ---
             startVoiceLoop();
 
         } catch (Exception e) {
-            Log.e(TAG, "Rapid SOS failure: " + e.getMessage());
+            Log.e(TAG, "SOS Alarm failure: " + e.getMessage());
         }
     }
 
@@ -221,9 +219,10 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
             @Override
             public void run() {
                 if (textToSpeech != null && !isFinishing()) {
+                    // Speak text over the beeping
                     textToSpeech.speak("Security Breach Detected. Intruder Alert.", TextToSpeech.QUEUE_FLUSH, null, null);
-                    // Speak every 3.5 seconds to allow beeps in between
-                    voiceHandler.postDelayed(this, 3500);
+                    // Repeat every 3 seconds
+                    voiceHandler.postDelayed(this, 3000);
                 }
             }
         };
@@ -244,10 +243,11 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
         }
         if (textToSpeech != null) {
             textToSpeech.stop();
-            textToSpeech.shutdown();
-            textToSpeech = null;
+            // Don't shutdown here in case we need it again quickly, shutdown in onDestroy
         }
     }
+
+    // --- NORMAL LOGIC (UNTOUCHED) ---
 
     private void applySystemWallpaperBackground() {
         try {
@@ -290,8 +290,7 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
                 if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
                     showSystemCredentialPicker();
                 } else if (errorCode == BiometricPrompt.ERROR_LOCKOUT || errorCode == BiometricPrompt.ERROR_LOCKOUT_PERMANENT) {
-                    // INFINITE LOOP CRASH FIX: 
-                    // Hardware sensor is locked out. We record the breach but DO NOT try to restart the sensor.
+                    // Hardware lockout active. Do not restart auth loop.
                     triggerIntruderAlert(false);
                 } else if (errorCode != BiometricPrompt.ERROR_USER_CANCELED) {
                     triggerIntruderAlert(true);
@@ -327,17 +326,10 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
         }
     }
 
-    /**
-     * Legacy trigger method for backwards compatibility within this class.
-     */
     private void triggerIntruderAlert() {
         triggerIntruderAlert(true);
     }
 
-    /**
-     * Overloaded trigger method. 
-     * @param restartAuth If true, restarts the BiometricPrompt. If false, leaves it disabled.
-     */
     private void triggerIntruderAlert(boolean restartAuth) {
         if (isActionTaken) return;
         isActionTaken = true;
@@ -361,9 +353,6 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
 
         boolean isDriveReady = db.isDriveEnabled() && db.getGoogleAccount() != null;
 
-        // DRIVE LINK FIX:
-        // We only send the SMS immediately if Drive is NOT ready.
-        // If Drive IS ready, we let the background thread handle the SMS to ensure the link is included.
         if (isDriveReady && isNetworkAvailable()) {
             uploadToCloudAndSms(appName, mapLink);
         } else {
@@ -377,7 +366,7 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
             if (restartAuth) {
                 triggerSystemAuth();
             } else {
-                Log.w(TAG, "Biometric lockout active. Halting automatic prompt restart to prevent crash.");
+                Log.w(TAG, "Biometric lockout active. Halting automatic prompt restart.");
             }
         });
     }
@@ -405,17 +394,13 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
                         .build();
 
                 DriveHelper driveHelper = new DriveHelper(getApplicationContext(), driveService);
-                
-                // CRITICAL FIX: The SMS is now strictly inside this block.
-                // It will WAIT here until the link is returned from Google Drive.
                 String driveLink = driveHelper.uploadFileAndGetLink(intruderFile);
                 
                 SmsHelper.sendAlertSms(getApplicationContext(), appName, mapLink, "Security Breach", driveLink);
 
             } catch (Exception e) {
-                Log.e(TAG, "Cloud upload error: " + e.getMessage());
+                Log.e(TAG, "Cloud Sync Error: " + e.getMessage());
                 queueBackgroundUpload();
-                // Send SMS with null link only if the upload definitively failed
                 SmsHelper.sendAlertSms(getApplicationContext(), appName, mapLink, "Security Breach", null);
             }
         });
@@ -460,13 +445,13 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
                 cameraProvider.unbindAll();
                 cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
             } catch (Exception e) {
-                Log.e(TAG, "CameraX Error");
+                Log.e(TAG, "CameraX Hardware Error");
             }
         }, ContextCompat.getMainExecutor(this));
     }
 
     private void onOwnerVerified() {
-        stopFearfulSiren(); // Kill noise instantly
+        stopFearfulSiren();
         HFSAccessibilityService.isLockActive = false;
         if (targetPackage != null) {
             HFSAccessibilityService.unlockSession(targetPackage);
@@ -501,6 +486,18 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
     }
 
     @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        HFSAccessibilityService.isLockActive = false;
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        HFSAccessibilityService.isLockActive = false;
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
         HFSAccessibilityService.isLockActive = false;
@@ -508,7 +505,10 @@ public class LockScreenActivity extends AppCompatActivity implements TextToSpeec
 
     @Override
     protected void onDestroy() {
-        stopFearfulSiren(); // Clean up hardware tones
+        stopFearfulSiren();
+        if (textToSpeech != null) {
+            textToSpeech.shutdown();
+        }
         cameraExecutor.shutdown();
         HFSAccessibilityService.isLockActive = false;
         super.onDestroy();
