@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/colorSurface">
+
+    <!-- List or Grid of Files -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewFiles"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="80dp" />
+
+    <!-- Progress Indicator (Used primarily for Drive API calls) -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:visibility="gone" />
+
+    <!-- Empty State Label -->
+    <TextView
+        android:id="@+id/tvEmptyFolder"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:text="No files found in this folder."
+        android:textSize="16sp"
+        android:textColor="@android:color/darker_gray"
+        android:visibility="gone" />
+
+</RelativeLayout>
