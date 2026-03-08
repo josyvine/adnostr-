@@ -56,8 +56,8 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // Setup Toolbar
-        setSupportActionBar(binding.appBarMain.toolbar);
+        // Setup Toolbar - CORRECTED to access toolbar directly
+        setSupportActionBar(binding.toolbar);
 
         // Initialize Google Sign-In Client (Used for Logout)
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build();
@@ -93,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
         // Handle custom navigation item clicks (like Logout)
         navigationView.setNavigationItemSelectedListener(item -> {
             int id = item.getItemId();
-            
+
             if (id == R.id.nav_logout) {
                 confirmAndLogout();
                 return true;
@@ -107,8 +107,8 @@ public class MainActivity extends AppCompatActivity {
             return handled;
         });
 
-        // Setup Floating Action Button (FAB)
-        binding.appBarMain.fab.setOnClickListener(view -> showFabMenu());
+        // Setup Floating Action Button (FAB) - CORRECTED to access fab directly
+        binding.fab.setOnClickListener(view -> showFabMenu());
 
         // Setup custom Back Button logic (Exit Confirmation on Dashboard)
         setupBackButtonLogic();
@@ -218,7 +218,7 @@ public class MainActivity extends AppCompatActivity {
             // Android 10 and below Storage Permissions
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                
+
                 ActivityCompat.requestPermissions(this, new String[]{
                         Manifest.permission.READ_EXTERNAL_STORAGE,
                         Manifest.permission.WRITE_EXTERNAL_STORAGE
