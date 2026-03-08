@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/colorSurface">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="App Preferences"
+            android:textColor="?attr/colorPrimary"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Auto Backup Toggle -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switch_auto_backup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Auto Backup"
+            android:padding="12dp"
+            android:textSize="16sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@android:color/darker_gray" />
+
+        <!-- WiFi Only Upload Toggle -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switch_wifi_only"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Upload Only on WiFi"
+            android:padding="12dp"
+            android:textSize="16sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@android:color/darker_gray" />
+
+        <!-- Notifications Toggle -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switch_notifications"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Upload Notifications"
+            android:padding="12dp"
+            android:textSize="16sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@android:color/darker_gray" />
+
+        <!-- Dark Mode Toggle -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switch_dark_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Dark Mode"
+            android:padding="12dp"
+            android:textSize="16sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@android:color/darker_gray" />
+
+        <!-- Background Sync Toggle -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switch_background_sync"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Background Sync"
+            android:padding="12dp"
+            android:textSize="16sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@android:color/darker_gray" />
+
+    </LinearLayout>
+</ScrollView>
