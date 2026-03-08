@@ -1,20 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 
-      Maps to: /data/user/0/com.hfs.security/files/
-      This is where we store secure logs and intruder photos internally.
-    -->
-    <files-path name="internal_reports" path="." />
+<paths>
+    <!-- Exposes the app's internal cache folder for offline viewing of Drive files -->
+    <external-path 
+        name="offline_cache" 
+        path="Android/data/com.cloudnest.app/files/OfflineCache" />
 
-    <!-- 
-      Maps to: /storage/emulated/0/Android/data/com.hfs.security/files/
-      This is the external private storage (preferred for larger photos).
-    -->
-    <external-files-path name="external_reports" path="." />
-    
-    <!-- 
-      Maps to: /storage/emulated/0/Android/data/com.hfs.security/intruders/
-      Specific folder for intruder face captures.
-    -->
-    <external-files-path name="intruder_photos" path="intruders/" />
+    <!-- Exposes the main app storage directory if needed for file sharing -->
+    <external-path 
+        name="app_storage" 
+        path="Android/data/com.cloudnest.app/files/" />
 </paths>
