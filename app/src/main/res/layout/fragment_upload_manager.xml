@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <!-- List of active uploads -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewUploads"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_above="@id/btnClearCompleted"
+        android:clipToPadding="false"
+        android:paddingBottom="16dp" />
+
+    <!-- Button to clean up successful/failed uploads from the UI -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnClearCompleted"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:text="Clear Completed &amp; Failed"
+        app:icon="@android:drawable/ic_menu_delete"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+    <!-- Empty State Label -->
+    <TextView
+        android:id="@+id/tvEmptyQueue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:text="No active uploads."
+        android:textSize="16sp"
+        android:textColor="@android:color/darker_gray"
+        android:visibility="gone" />
+
+</RelativeLayout>
