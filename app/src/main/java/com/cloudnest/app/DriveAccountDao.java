@@ -58,22 +58,22 @@ public interface DriveAccountDao {
     
     /**
      * Sets a specific account as the active destination for uploads.
+     * Updated SQL column name to 'is_active' to match DriveAccountEntity.
      */
-    @Query("UPDATE drive_accounts SET isActive = :isActive WHERE email = :email")
+    @Query("UPDATE drive_accounts SET is_active = :isActive WHERE email = :email")
     void setActive(String email, boolean isActive);
 
     /**
-     * Sets ALL accounts to inactive. This is used before setting a new active account
-     * to ensure only one is active at a time.
+     * Sets ALL accounts to inactive.
+     * Updated SQL column name to 'is_active' to match DriveAccountEntity.
      */
-    @Query("UPDATE drive_accounts SET isActive = 0")
+    @Query("UPDATE drive_accounts SET is_active = 0")
     void resetAllActive();
 
     /**
      * Gets the currently active account for uploads.
-     * Returns the first non-full active account, or null if none are available.
-     * This is the CORE of the Drive Cycling logic.
+     * Updated SQL column names to 'is_active' and 'is_full' to match DriveAccountEntity.
      */
-    @Query("SELECT * FROM drive_accounts WHERE isActive = 1 AND isFull = 0 LIMIT 1")
+    @Query("SELECT * FROM drive_accounts WHERE is_active = 1 AND is_full = 0 LIMIT 1")
     DriveAccountEntity getActiveAccount();
 }
