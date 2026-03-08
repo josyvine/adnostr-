@@ -11,9 +11,11 @@
         android:id="@+id/iv_grid_icon"
         android:layout_width="64dp"
         android:layout_height="64dp"
-        android:src="@android:drawable/ic_menu_agenda"
-        android:contentDescription="File Icon" />
+        android:src="@drawable/ic_folder"
+        android:contentDescription="File Icon"
+        android:tint="?attr/colorControlNormal" />
 
+    <!-- Updated: Uses textColorPrimary to support Dark Mode automatically -->
     <TextView
         android:id="@+id/tv_grid_file_name"
         android:layout_width="match_parent"
@@ -22,7 +24,7 @@
         android:gravity="center"
         android:text="File Name"
         android:textSize="14sp"
-        android:textColor="@android:color/black"
+        android:textColor="?android:attr/textColorPrimary"
         android:maxLines="2"
         android:ellipsize="end" />
 
