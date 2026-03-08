@@ -33,33 +33,30 @@ public interface PresetFolderDao {
 
     /**
      * Deletes a preset folder using its unique ID.
-     * Useful when the original folder path is no longer valid.
      */
     @Query("DELETE FROM preset_folders WHERE id = :id")
     void deleteById(long id);
 
     /**
      * Retrieves all configured preset folders from the database.
-     * Returns LiveData, allowing the PresetFoldersFragment UI to update automatically
-     * when a folder is added or removed.
+     * Updated SQL query to order by 'folder_name' to match PresetFolderEntity.
      */
-    @Query("SELECT * FROM preset_folders ORDER BY folderName ASC")
+    @Query("SELECT * FROM preset_folders ORDER BY folder_name ASC")
     LiveData<List<PresetFolderEntity>> getAllPresets();
 
     /**
      * Updates the last synchronization timestamp for a specific preset folder.
-     * This is called by the AutoBackupWorker upon successful completion of a sync operation.
-     * @param id The unique ID of the preset folder.
-     * @param timestamp The current system time in milliseconds.
+     * Updated SQL query to use 'last_sync_time' to match PresetFolderEntity.
      */
-    @Query("UPDATE preset_folders SET lastSyncTime = :timestamp WHERE id = :id")
+    @Query("UPDATE preset_folders SET last_sync_time = :timestamp WHERE id = :id")
     void updateSyncTime(long id, long timestamp);
 
     /**
      * Checks if a specific local folder path is already configured for auto-backup.
+     * Updated SQL query to use 'local_path' to match PresetFolderEntity.
      * @param path The absolute local path of the folder.
      * @return The PresetFolderEntity if it exists, otherwise null.
      */
-    @Query("SELECT * FROM preset_folders WHERE localPath = :path LIMIT 1")
+    @Query("SELECT * FROM preset_folders WHERE local_path = :path LIMIT 1")
     PresetFolderEntity findByPath(String path);
 }
