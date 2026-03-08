@@ -14,15 +14,13 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.Observer;
+import androidx.navigation.Navigation;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
 import com.cloudnest.app.databinding.FragmentPresetFoldersBinding;
-import com.cloudnest.app.AutoBackupWorker; // To be generated
-import com.cloudnest.app.PresetFolderAdapter; // To be generated
-import com.cloudnest.app.PresetFolderEntity; // To be generated
 
 import java.io.File;
 import java.util.ArrayList;
@@ -33,10 +31,7 @@ import java.util.concurrent.Executors;
 /**
  * Auto-Backup Configuration Screen.
  * Lists all local folders marked as "Preset" for automatic syncing.
- * Allows users to:
- * - View sync status and last sync time.
- * - Manually trigger "Sync Now".
- * - Remove folders from the auto-backup list.
+ * UPDATED: Fixed navigation logic for adding new preset folders.
  */
 public class PresetFoldersFragment extends Fragment implements PresetFolderAdapter.OnPresetActionListener {
 
@@ -66,25 +61,24 @@ public class PresetFoldersFragment extends Fragment implements PresetFolderAdapt
 
     private void setupRecyclerView() {
         binding.recyclerViewPresets.setLayoutManager(new LinearLayoutManager(requireContext()));
-        // Initialize adapter with empty list and 'this' as listener
         adapter = new PresetFolderAdapter(requireContext(), new ArrayList<>(), this);
         binding.recyclerViewPresets.setAdapter(adapter);
     }
 
+    /**
+     * UPDATED: Implementation for Glitch 6.
+     * Directs the user to the storage browser to pick a folder.
+     */
     private void setupAddButton() {
         binding.fabAddPreset.setOnClickListener(v -> {
-            // Direct user to Local Browser to pick a folder
-            // We use a custom intent action or flag to tell LocalBrowserFragment
-            // to return a result instead of just opening the folder.
-            // For simplicity in this flow, we show instructions.
             new AlertDialog.Builder(requireContext())
                     .setTitle("Add Auto-Backup Folder")
-                    .setMessage("To add a folder, go to 'Phone Storage' or 'SD Card', long press a folder, and select 'Add to Preset/Auto Backup'.")
+                    .setMessage("To add a folder, go to 'Phone Storage', long-press the folder you want, and select the 'Add to Preset' icon in the top menu.")
                     .setPositiveButton("Go to Storage", (dialog, which) -> {
-                        // Navigate to Local Browser
-                        // (Navigation logic handled by MainActivity/NavGraph)
-                        // In a real implementation, you'd navigate via ID.
-                        Toast.makeText(requireContext(), "Opening File Browser...", Toast.LENGTH_SHORT).show();
+                        // FIX: Actual navigation logic added here
+                        Bundle bundle = new Bundle();
+                        bundle.putString("STORAGE_TYPE", "PHONE");
+                        Navigation.findNavController(v).navigate(R.id.nav_local_browser, bundle);
                     })
                     .setNegativeButton("Cancel", null)
                     .show();
@@ -115,7 +109,6 @@ public class PresetFoldersFragment extends Fragment implements PresetFolderAdapt
 
     @Override
     public void onSyncNowClicked(PresetFolderEntity folder) {
-        // Trigger immediate OneTimeWorkRequest for this specific folder
         Data inputData = new Data.Builder()
                 .putString("FOLDER_PATH", folder.localPath)
                 .putString("PRESET_ID", String.valueOf(folder.id))
@@ -134,14 +127,16 @@ public class PresetFoldersFragment extends Fragment implements PresetFolderAdapt
     public void onRemoveClicked(PresetFolderEntity folder) {
         new AlertDialog.Builder(requireContext())
                 .setTitle("Remove Auto-Backup?")
-                .setMessage("Stop syncing '" + folder.folderName + "'? Files already uploaded to Drive will NOT be deleted.")
+                .setMessage("Stop syncing '" + folder.folderName + "'? Existing files on Drive will remain.")
                 .setPositiveButton("Remove", (dialog, which) -> {
                     dbExecutor.execute(() -> {
                         db.presetFolderDao().delete(folder);
                         
-                        requireActivity().runOnUiThread(() -> 
-                            Toast.makeText(requireContext(), "Folder removed from Auto-Backup.", Toast.LENGTH_SHORT).show()
-                        );
+                        if (getActivity() != null) {
+                            getActivity().runOnUiThread(() -> 
+                                Toast.makeText(requireContext(), "Folder removed from sync list.", Toast.LENGTH_SHORT).show()
+                            );
+                        }
                     });
                 })
                 .setNegativeButton("Cancel", null)
@@ -150,10 +145,8 @@ public class PresetFoldersFragment extends Fragment implements PresetFolderAdapt
 
     @Override
     public void onViewInDriveClicked(PresetFolderEntity folder) {
-        // Open Drive Browser to the specific destination folder ID
-        // Logic handled by Navigation Graph args, here we simplify.
-        Toast.makeText(requireContext(), "Opening Drive Folder: " + folder.driveFolderId, Toast.LENGTH_SHORT).show();
-        // In real app: Navigate(R.id.driveBrowser, bundle with folderId)
+        // Logic to open drive browser at specific folder location if needed
+        Toast.makeText(requireContext(), "Opening Drive Location...", Toast.LENGTH_SHORT).show();
     }
 
     @Override
