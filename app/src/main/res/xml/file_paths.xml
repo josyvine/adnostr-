@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- Root path allows access to all storage areas including internal and SD Card -->
+    <root-path
+        name="root"
+        path="." />
+
     <!-- Exposes the app's internal cache folder for offline viewing of Drive files -->
     <external-path 
         name="offline_cache" 
@@ -9,4 +14,9 @@
     <external-path 
         name="app_storage" 
         path="Android/data/com.cloudnest.app/files/" />
+
+    <!-- Legacy compatibility for standard external storage -->
+    <external-path
+        name="external_files"
+        path="." />
 </paths>
