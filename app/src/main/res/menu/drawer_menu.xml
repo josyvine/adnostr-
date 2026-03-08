@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:showIn="navigation_view">
+
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_dashboard"
+            android:title="Home" />
+        <item
+            android:id="@+id/nav_phone_storage"
+            android:title="Phone Storage" />
+        <item
+            android:id="@+id/nav_sd_storage"
+            android:title="SD Card Storage" />
+        <item
+            android:id="@+id/nav_drive_browser"
+            android:title="Google Drive" />
+        <item
+            android:id="@+id/nav_upload_manager"
+            android:title="Upload Manager" />
+        <item
+            android:id="@+id/nav_storage_graph"
+            android:title="Storage Usage" />
+        <item
+            android:id="@+id/nav_preset_folders"
+            android:title="Preset Folders" />
+        <item
+            android:id="@+id/nav_drive_accounts"
+            android:title="Drive Accounts" />
+    </group>
+
+    <item android:title="Support &amp; Settings">
+        <menu>
+            <item
+                android:id="@+id/nav_help"
+                android:title="How To Use" />
+            <item
+                android:id="@+id/nav_contact"
+                android:title="Contact Us" />
+            <item
+                android:id="@+id/nav_settings"
+                android:title="Settings" />
+            <item
+                android:id="@+id/nav_logout"
+                android:title="Logout" />
+        </menu>
+    </item>
+
+</menu>
