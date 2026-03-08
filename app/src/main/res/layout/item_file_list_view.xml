@@ -11,8 +11,9 @@
         android:id="@+id/iv_file_icon"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:src="@android:drawable/ic_menu_agenda"
-        android:contentDescription="File Icon" />
+        android:src="@drawable/ic_folder"
+        android:contentDescription="File Icon"
+        android:tint="?attr/colorControlNormal" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -21,23 +22,25 @@
         android:layout_marginStart="16dp"
         android:orientation="vertical">
 
+        <!-- Updated: Uses textColorPrimary to ensure visibility in Dark Mode -->
         <TextView
             android:id="@+id/tv_file_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="File Name"
             android:textSize="16sp"
-            android:textColor="@android:color/black"
+            android:textColor="?android:attr/textColorPrimary"
             android:maxLines="1"
             android:ellipsize="end" />
 
+        <!-- Updated: Uses textColorSecondary for better contrast in all themes -->
         <TextView
             android:id="@+id/tv_file_details"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Details"
             android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
+            android:textColor="?android:attr/textColorSecondary" />
 
     </LinearLayout>
 
