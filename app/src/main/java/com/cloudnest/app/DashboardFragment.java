@@ -38,6 +38,7 @@ import java.util.concurrent.Executors;
  * Total Storage, Used Storage, and Free Storage.
  * Colors change based on usage (Green/Yellow/Red).
  * Supports Pull-to-Refresh.
+ * UPDATED: Fixed Life-cycle crashes in background threads.
  */
 public class DashboardFragment extends Fragment {
 
@@ -70,9 +71,11 @@ public class DashboardFragment extends Fragment {
      * Sets up the Pull-to-Refresh logic.
      */
     private void setupSwipeRefresh() {
-        binding.swipeRefreshLayout.setOnRefreshListener(() -> {
-            refreshDashboardData();
-        });
+        if (binding != null) {
+            binding.swipeRefreshLayout.setOnRefreshListener(() -> {
+                refreshDashboardData();
+            });
+        }
     }
 
     /**
@@ -80,38 +83,43 @@ public class DashboardFragment extends Fragment {
      * Tapping a card opens its respective File Browser.
      */
     private void setupCardClicks() {
-        binding.cardPhoneStorage.setOnClickListener(v -> {
-            Bundle bundle = new Bundle();
-            bundle.putString("STORAGE_TYPE", "PHONE");
-            Navigation.findNavController(v).navigate(R.id.action_dashboard_to_localBrowser, bundle);
-        });
+        if (binding != null) {
+            binding.cardPhoneStorage.setOnClickListener(v -> {
+                Bundle bundle = new Bundle();
+                bundle.putString("STORAGE_TYPE", "PHONE");
+                Navigation.findNavController(v).navigate(R.id.action_dashboard_to_localBrowser, bundle);
+            });
 
-        binding.cardSdStorage.setOnClickListener(v -> {
-            Bundle bundle = new Bundle();
-            bundle.putString("STORAGE_TYPE", "SD_CARD");
-            Navigation.findNavController(v).navigate(R.id.action_dashboard_to_localBrowser, bundle);
-        });
+            binding.cardSdStorage.setOnClickListener(v -> {
+                Bundle bundle = new Bundle();
+                bundle.putString("STORAGE_TYPE", "SD_CARD");
+                Navigation.findNavController(v).navigate(R.id.action_dashboard_to_localBrowser, bundle);
+            });
 
-        binding.cardDriveStorage.setOnClickListener(v -> {
-            Navigation.findNavController(v).navigate(R.id.action_dashboard_to_driveBrowser);
-        });
+            binding.cardDriveStorage.setOnClickListener(v -> {
+                Navigation.findNavController(v).navigate(R.id.action_dashboard_to_driveBrowser);
+            });
+        }
     }
 
     /**
      * Orchestrates the fetching of storage data for all three cards.
      */
     private void refreshDashboardData() {
-        binding.swipeRefreshLayout.setRefreshing(true);
-
-        updatePhoneStorageCard();
-        updateSdCardStorageCard();
-        fetchGoogleDriveQuota();
+        if (binding != null) {
+            binding.swipeRefreshLayout.setRefreshing(true);
+            updatePhoneStorageCard();
+            updateSdCardStorageCard();
+            fetchGoogleDriveQuota();
+        }
     }
 
     /**
      * Calculates internal phone storage and updates UI.
      */
     private void updatePhoneStorageCard() {
+        if (binding == null) return;
+        
         File path = Environment.getDataDirectory();
         StatFs stat = new StatFs(path.getPath());
 
@@ -136,6 +144,8 @@ public class DashboardFragment extends Fragment {
      * Attempts to calculate SD Card storage (if inserted) and updates UI.
      */
     private void updateSdCardStorageCard() {
+        if (binding == null || !isAdded()) return;
+        
         File[] externalStorageFiles = ContextCompat.getExternalFilesDirs(requireContext(), null);
         File sdCardFile = null;
 
@@ -178,6 +188,8 @@ public class DashboardFragment extends Fragment {
     private void fetchGoogleDriveQuota() {
         networkExecutor.execute(() -> {
             try {
+                if (!isAdded()) return;
+                
                 GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(requireContext());
                 if (account == null) throw new Exception("Google Account Disconnected");
 
@@ -192,7 +204,6 @@ public class DashboardFragment extends Fragment {
                         .setApplicationName(getString(R.string.app_name))
                         .build();
 
-                // Endpoint: https://www.googleapis.com/drive/v3/about?fields=storageQuota
                 About about = driveService.about().get().setFields("storageQuota").execute();
                 About.StorageQuota quota = about.getStorageQuota();
 
@@ -205,19 +216,28 @@ public class DashboardFragment extends Fragment {
                 String formattedTotal = String.format("%.1f GB", (double) totalStorage / GIGABYTE);
                 String formattedFree = String.format("%.1f GB free / %s", (double) freeStorage / GIGABYTE, formattedTotal);
 
-                requireActivity().runOnUiThread(() -> {
-                    binding.tvDriveStorageText.setText(formattedFree);
-                    applyColorRule(binding.viewDriveStorageIndicator, usagePercentage);
-                    binding.swipeRefreshLayout.setRefreshing(false);
-                });
+                // FIXED: Wrapped in binding null-check to prevent Life-cycle Crash
+                if (isAdded()) {
+                    requireActivity().runOnUiThread(() -> {
+                        if (binding != null) {
+                            binding.tvDriveStorageText.setText(formattedFree);
+                            applyColorRule(binding.viewDriveStorageIndicator, usagePercentage);
+                            binding.swipeRefreshLayout.setRefreshing(false);
+                        }
+                    });
+                }
 
             } catch (Exception e) {
                 Log.e("DashboardFragment", "Cloud Quota Sync Error: " + e.getMessage());
-                requireActivity().runOnUiThread(() -> {
-                    binding.tvDriveStorageText.setText("Failed to sync Drive storage");
-                    binding.viewDriveStorageIndicator.setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.cloudnest_gray));
-                    binding.swipeRefreshLayout.setRefreshing(false);
-                });
+                if (isAdded()) {
+                    requireActivity().runOnUiThread(() -> {
+                        if (binding != null) {
+                            binding.tvDriveStorageText.setText("Failed to sync Drive storage");
+                            binding.viewDriveStorageIndicator.setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.cloudnest_gray));
+                            binding.swipeRefreshLayout.setRefreshing(false);
+                        }
+                    });
+                }
             }
         });
     }
@@ -229,6 +249,8 @@ public class DashboardFragment extends Fragment {
      * Red = low/almost full (> 90%)
      */
     private void applyColorRule(View indicatorView, double usagePercentage) {
+        if (!isAdded() || indicatorView == null) return;
+        
         Context context = requireContext();
         if (usagePercentage >= 90.0) {
             indicatorView.setBackgroundColor(ContextCompat.getColor(context, R.color.cloudnest_status_red));
