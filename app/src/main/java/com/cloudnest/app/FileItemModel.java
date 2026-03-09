@@ -28,6 +28,17 @@ public class FileItemModel {
         this.childCount = childCount;
     }
 
+    // NEW Constructor to fix the build error in DriveBrowserFragment
+    public FileItemModel(String driveId, String name, boolean isDirectory, long lastModified, long size, String mimeType, String webLink) {
+        this.driveId = driveId;
+        this.name = name;
+        this.isDirectory = isDirectory;
+        this.lastModified = lastModified;
+        this.size = size;
+        this.mimeType = mimeType;
+        this.webLink = webLink;
+    }
+
     // Constructor for Google Drive Files
     public FileItemModel(String driveId, String name, boolean isDirectory, long lastModified, long size, String mimeType, String webLink, String thumbnailUrl, int childCount) {
         this.driveId = driveId;
