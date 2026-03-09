@@ -25,7 +25,6 @@ import java.util.UUID;
  * Upload Queue Manager.
  * Observes background WorkManager tasks tagged with "MANUAL_UPLOAD" or "AUTO_BACKUP".
  * Displays real-time progress bars, file names, and allows cancellation.
- * UPDATED: Now parses and passes network speed and detailed progress to the adapter.
  */
 public class UploadManagerFragment extends Fragment implements UploadQueueAdapter.OnUploadActionClickListener {
 
@@ -53,6 +52,7 @@ public class UploadManagerFragment extends Fragment implements UploadQueueAdapte
 
     private void setupRecyclerView() {
         binding.recyclerViewUploads.setLayoutManager(new LinearLayoutManager(requireContext()));
+        // Initialize adapter with empty list and 'this' as listener
         adapter = new UploadQueueAdapter(requireContext(), new ArrayList<>(), this);
         binding.recyclerViewUploads.setAdapter(adapter);
     }
@@ -70,6 +70,9 @@ public class UploadManagerFragment extends Fragment implements UploadQueueAdapte
      */
     private void observeUploads() {
         // We observe both Manual Uploads and Auto Backups
+        // Note: In a real app, you might want to merge these LiveData sources.
+        // For simplicity, we observe "MANUAL_UPLOAD" primarily here as per LocalBrowserFragment logic.
+
         workManager.getWorkInfosByTagLiveData("MANUAL_UPLOAD")
                 .observe(getViewLifecycleOwner(), new Observer<List<WorkInfo>>() {
                     @Override
@@ -84,16 +87,19 @@ public class UploadManagerFragment extends Fragment implements UploadQueueAdapte
                         binding.tvEmptyQueue.setVisibility(View.GONE);
                         binding.recyclerViewUploads.setVisibility(View.VISIBLE);
 
+                        // Convert WorkInfo objects to our UI Model
                         List<UploadItemModel> uiModels = new ArrayList<>();
 
                         for (WorkInfo info : workInfos) {
                             String fileName = info.getProgress().getString("CURRENT_FILE");
                             if (fileName == null) fileName = "Preparing Upload...";
-                            
+
                             int progress = info.getProgress().getInt("PROGRESS_PERCENT", 0);
+                            
+                            // NEW: Extract speed and details from WorkInfo progress
                             String speed = info.getProgress().getString("SPEED");
                             String details = info.getProgress().getString("DETAILS");
-                            
+
                             // Determine display state
                             UploadItemModel.Status status;
                             if (info.getState() == WorkInfo.State.RUNNING) {
@@ -109,13 +115,14 @@ public class UploadManagerFragment extends Fragment implements UploadQueueAdapte
                                 status = UploadItemModel.Status.PENDING;
                             }
 
+                            // UPDATED: Pass the new fields to the constructor
                             uiModels.add(new UploadItemModel(
                                     info.getId(),
                                     fileName,
                                     progress,
                                     status,
-                                    speed,     // NEW field
-                                    details    // NEW field
+                                    speed,
+                                    details
                             ));
                         }
 
@@ -142,7 +149,13 @@ public class UploadManagerFragment extends Fragment implements UploadQueueAdapte
 
     @Override
     public void onRetryClicked(UUID workId) {
+        // WorkManager works are immutable once finished. 
+        // To "Retry", we essentially create a new OneTimeWorkRequest with the same data.
+        // However, extracting original input data from a finished WorkInfo is complex in UI layer.
+        // For this implementation, we will instruct the user to re-select files.
         Toast.makeText(requireContext(), "Please re-select files to retry upload.", Toast.LENGTH_LONG).show();
+
+        // Alternative: Prune this specific failed ID so it disappears
         workManager.pruneWork(); 
     }
 
