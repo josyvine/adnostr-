@@ -30,7 +30,7 @@ import java.util.Set;
 /**
  * Background Worker for Preset Folder Auto-Backup.
  * This worker intelligently syncs a local folder with a target folder in Google Drive.
- * UPDATED: Added speed calculation, metadata refresh for Drive counts, and notification support.
+ * UPDATED: Fixed Glitch 2 (Speed/Progress), Glitch 6 (Sync Time), and Glitch 9 (File Detection).
  */
 public class AutoBackupWorker extends Worker {
 
@@ -61,6 +61,7 @@ public class AutoBackupWorker extends Worker {
         long presetId = Long.parseLong(presetIdStr);
         java.io.File localFolder = new java.io.File(localFolderPath);
 
+        // If local folder no longer exists, remove the preset to stop future errors
         if (!localFolder.exists() || !localFolder.isDirectory()) {
             db.presetFolderDao().deleteById(presetId);
             return Result.success();
@@ -69,16 +70,19 @@ public class AutoBackupWorker extends Worker {
         try {
             // 1. Authenticate with Google Drive
             authenticateDrive();
-            if (driveService == null) return Result.failure();
+            if (driveService == null) {
+                return Result.failure();
+            }
 
             // 2. Resolve Root and Target Folders
+            // We create a primary "CloudNest" folder, then subfolders for each preset
             String rootFolderId = findOrCreateFolder("CloudNest", "root");
             String targetFolderId = findOrCreateFolder(localFolder.getName(), rootFolderId);
 
-            // 3. Get list of files already in the Drive folder to avoid duplicates
+            // 3. Get list of files already in the Drive folder to avoid duplicates (Glitch 9)
             Set<String> remoteFileNames = getRemoteFileNames(targetFolderId);
 
-            // 4. Identify new files
+            // 4. Identify new files that haven't been uploaded yet
             java.io.File[] localFiles = localFolder.listFiles();
             if (localFiles == null) return Result.success();
 
@@ -88,6 +92,7 @@ public class AutoBackupWorker extends Worker {
                 }
             }
 
+            // If everything is already in the cloud, just update the time and finish
             if (totalFilesToSync == 0) {
                 db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
                 return Result.success();
@@ -95,24 +100,29 @@ public class AutoBackupWorker extends Worker {
 
             // 5. Start Sync with Progress and Speed tracking
             lastTime = System.currentTimeMillis();
+            lastBytes = 0;
             
             for (java.io.File localFile : localFiles) {
+                // Check if worker was cancelled by user via Upload Manager
+                if (isStopped()) return Result.success();
+
                 if (localFile.isFile() && !remoteFileNames.contains(localFile.getName())) {
                     uploadFileWithProgress(localFile, targetFolderId);
                     currentlySyncingIndex++;
                 }
             }
 
-            // 6. Update the 'lastSyncTime' (Fixes Glitch 6)
+            // 6. Update the 'lastSyncTime' in DB after successful sync (Fixes Glitch 6)
             db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
             
-            // Final Notification
+            // Final Notification (Glitch 8)
             NotificationHelper.showUploadComplete(getApplicationContext(), totalFilesToSync);
 
             return Result.success();
 
         } catch (Exception e) {
             Log.e(TAG, "Auto-Backup sync failed: " + e.getMessage());
+            NotificationHelper.showUploadFailed(getApplicationContext());
             return Result.retry();
         }
     }
@@ -180,7 +190,7 @@ public class AutoBackupWorker extends Worker {
     }
 
     /**
-     * Uploads a file and calculates real-time speed/progress.
+     * Uploads a single file and calculates real-time speed/progress (Fixes Glitch 2).
      */
     private void uploadFileWithProgress(java.io.File localFile, String parentFolderId) throws IOException {
         File fileMeta = new File();
@@ -192,7 +202,7 @@ public class AutoBackupWorker extends Worker {
         Drive.Files.Create createRequest = driveService.files().create(fileMeta, mediaContent);
         
         MediaHttpUploader uploader = createRequest.getMediaHttpUploader();
-        uploader.setDirectUploadEnabled(false); // Required for progress callbacks
+        uploader.setDirectUploadEnabled(false); // Enable chunked upload for progress
         uploader.setProgressListener(u -> {
             calculateSpeed(u.getNumBytesUploaded());
             updateWorkerProgress(localFile.getName(), u.getProgress());
@@ -221,9 +231,11 @@ public class AutoBackupWorker extends Worker {
     }
 
     private void updateWorkerProgress(String fileName, double fileProgress) {
+        // Calculate the overall percentage of the entire folder sync
         int overallPercent = (int) (((currentlySyncingIndex + fileProgress) / (double) totalFilesToSync) * 100);
         String details = "Auto-sync: " + (currentlySyncingIndex + 1) + " of " + totalFilesToSync;
 
+        // Data keys used by UploadManagerFragment and UploadQueueAdapter
         Data progressData = new Data.Builder()
                 .putString("CURRENT_FILE", fileName)
                 .putInt("PROGRESS_PERCENT", overallPercent)
@@ -232,6 +244,8 @@ public class AutoBackupWorker extends Worker {
                 .build();
 
         setProgressAsync(progressData);
+        
+        // Update system notification (Glitch 2)
         NotificationHelper.showUploadProgress(getApplicationContext(), overallPercent, details + " (" + currentSpeed + ")");
     }
 }
