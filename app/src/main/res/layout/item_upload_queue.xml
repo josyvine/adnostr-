@@ -5,8 +5,8 @@
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="8dp"
     android:layout_marginVertical="6dp"
-    app:cardCornerRadius="8dp"
-    app:cardElevation="2dp">
+    app:cardCornerRadius="12dp"
+    app:cardElevation="3dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -21,49 +21,81 @@
             android:text="uploading_file.jpg"
             android:textSize="16sp"
             android:textStyle="bold"
+            android:textColor="?attr/colorOnSurface"
             android:maxLines="1"
             android:ellipsize="middle" />
+
+        <!-- NEW: Progress detail text (e.g. File 1 of 10) -->
+        <TextView
+            android:id="@+id/tv_upload_details"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Preparing..."
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary" />
 
         <ProgressBar
             android:id="@+id/progressBar_upload"
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="8dp"
             android:layout_marginTop="8dp"
-            android:max="100" />
+            android:max="100"
+            android:progressDrawable="@drawable/custom_progress_bg" />
 
-        <LinearLayout
+        <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_marginTop="10dp">
+
+            <!-- NEW: Real-time network speed indicator -->
+            <TextView
+                android:id="@+id/tv_upload_speed"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:text="0 KB/s"
+                android:textStyle="italic"
+                android:textSize="12sp"
+                android:textColor="?attr/colorPrimary" />
 
             <TextView
                 android:id="@+id/tv_upload_status"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_toEndOf="@id/tv_upload_speed"
+                android:layout_marginStart="8dp"
+                android:layout_centerVertical="true"
                 android:text="Uploading..."
                 android:textSize="12sp" />
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_cancel_upload"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="CANCEL"
-                android:textSize="12sp" />
+                android:layout_alignParentEnd="true"
+                android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_retry_upload"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="RETRY"
-                android:textColor="@color/cloudnest_status_red"
-                android:textSize="12sp" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_cancel_upload"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CANCEL"
+                    android:textSize="12sp" />
 
-        </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_retry_upload"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="RETRY"
+                    android:visibility="gone"
+                    android:textColor="@color/cloudnest_status_red"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+        </RelativeLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>
