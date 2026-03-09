@@ -73,6 +73,7 @@ public class UploadWorker extends Worker {
         // 2. Initial Setup
         startTime = System.currentTimeMillis();
         lastTime = startTime;
+        lastBytes = 0;
 
         try {
             // Count files for progress bar
@@ -84,6 +85,7 @@ public class UploadWorker extends Worker {
 
             // 3. Process Uploads
             for (String path : filePaths) {
+                if (isStopped()) return Result.success(); // Respect cancellation
                 processAndUpload(new java.io.File(path), destinationId);
             }
 
@@ -98,6 +100,7 @@ public class UploadWorker extends Worker {
     }
 
     private void countFilesRecursive(java.io.File file) {
+        if (!file.exists()) return;
         if (file.isDirectory()) {
             java.io.File[] files = file.listFiles();
             if (files != null) {
@@ -109,6 +112,8 @@ public class UploadWorker extends Worker {
     }
 
     private void processAndUpload(java.io.File localFile, String parentFolderId) throws IOException {
+        if (isStopped()) return;
+
         if (localFile.isDirectory()) {
             // Check if folder exists or create it
             String folderId = DriveApiHelper.findFolderId(driveService, localFile.getName(), parentFolderId);
@@ -132,6 +137,8 @@ public class UploadWorker extends Worker {
     }
 
     private void uploadSingleFile(java.io.File localFile, String parentFolderId) throws IOException {
+        if (isStopped()) return;
+
         File fileMeta = new File();
         fileMeta.setName(localFile.getName());
         fileMeta.setParents(Collections.singletonList(parentFolderId));
