@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.work.Data;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
@@ -11,6 +12,9 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
+import com.google.api.client.googleapis.media.MediaHttpUploader;
+import com.google.api.client.googleapis.media.MediaHttpUploaderProgressListener;
+import com.google.api.client.http.FileContent;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
@@ -26,13 +30,20 @@ import java.util.Set;
 /**
  * Background Worker for Preset Folder Auto-Backup.
  * This worker intelligently syncs a local folder with a target folder in Google Drive.
- * It compares local and remote file lists to upload only new or modified files.
+ * UPDATED: Added speed calculation, metadata refresh for Drive counts, and notification support.
  */
 public class AutoBackupWorker extends Worker {
 
     private static final String TAG = "AutoBackupWorker";
     private Drive driveService;
     private CloudNestDatabase db;
+
+    // Progress Tracking
+    private int totalFilesToSync = 0;
+    private int currentlySyncingIndex = 0;
+    private long lastTime;
+    private long lastBytes;
+    private String currentSpeed = "0 KB/s";
 
     public AutoBackupWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
@@ -44,13 +55,13 @@ public class AutoBackupWorker extends Worker {
     public Result doWork() {
         String localFolderPath = getInputData().getString("FOLDER_PATH");
         String presetIdStr = getInputData().getString("PRESET_ID");
+        
         if (localFolderPath == null || presetIdStr == null) return Result.failure();
         
         long presetId = Long.parseLong(presetIdStr);
         java.io.File localFolder = new java.io.File(localFolderPath);
 
         if (!localFolder.exists() || !localFolder.isDirectory()) {
-            // Folder might have been deleted, clean up from DB
             db.presetFolderDao().deleteById(presetId);
             return Result.success();
         }
@@ -60,32 +71,48 @@ public class AutoBackupWorker extends Worker {
             authenticateDrive();
             if (driveService == null) return Result.failure();
 
-            // 2. Find or create the root "CloudNest" folder
+            // 2. Resolve Root and Target Folders
             String rootFolderId = findOrCreateFolder("CloudNest", "root");
-
-            // 3. Find or create the specific preset subfolder inside "CloudNest"
             String targetFolderId = findOrCreateFolder(localFolder.getName(), rootFolderId);
 
-            // 4. Get list of files already in the Drive folder
+            // 3. Get list of files already in the Drive folder to avoid duplicates
             Set<String> remoteFileNames = getRemoteFileNames(targetFolderId);
 
-            // 5. Get list of local files and upload new ones
+            // 4. Identify new files
             java.io.File[] localFiles = localFolder.listFiles();
-            if (localFiles != null) {
-                for (java.io.File localFile : localFiles) {
-                    if (localFile.isFile() && !remoteFileNames.contains(localFile.getName())) {
-                        uploadFile(localFile, targetFolderId);
-                    }
+            if (localFiles == null) return Result.success();
+
+            for (java.io.File f : localFiles) {
+                if (f.isFile() && !remoteFileNames.contains(f.getName())) {
+                    totalFilesToSync++;
                 }
             }
 
-            // 6. Update the 'lastSyncTime' in the database
+            if (totalFilesToSync == 0) {
+                db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
+                return Result.success();
+            }
+
+            // 5. Start Sync with Progress and Speed tracking
+            lastTime = System.currentTimeMillis();
+            
+            for (java.io.File localFile : localFiles) {
+                if (localFile.isFile() && !remoteFileNames.contains(localFile.getName())) {
+                    uploadFileWithProgress(localFile, targetFolderId);
+                    currentlySyncingIndex++;
+                }
+            }
+
+            // 6. Update the 'lastSyncTime' (Fixes Glitch 6)
             db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
+            
+            // Final Notification
+            NotificationHelper.showUploadComplete(getApplicationContext(), totalFilesToSync);
 
             return Result.success();
 
         } catch (Exception e) {
-            Log.e(TAG, "Auto-Backup sync failed for " + localFolderPath + ": " + e.getMessage());
+            Log.e(TAG, "Auto-Backup sync failed: " + e.getMessage());
             return Result.retry();
         }
     }
@@ -109,9 +136,6 @@ public class AutoBackupWorker extends Worker {
                 .build();
     }
 
-    /**
-     * Finds a folder by name inside a parent. Creates it if it doesn't exist.
-     */
     private String findOrCreateFolder(String folderName, String parentId) throws IOException {
         String query = "mimeType = 'application/vnd.google-apps.folder' and " +
                        "name = '" + folderName + "' and '" + parentId + "' in parents and trashed = false";
@@ -121,10 +145,9 @@ public class AutoBackupWorker extends Worker {
                 .setFields("files(id)")
                 .execute();
 
-        if (!result.getFiles().isEmpty()) {
-            return result.getFiles().get(0).getId(); // Folder exists
+        if (result.getFiles() != null && !result.getFiles().isEmpty()) {
+            return result.getFiles().get(0).getId();
         } else {
-            // Create folder
             File folderMeta = new File();
             folderMeta.setName(folderName);
             folderMeta.setMimeType("application/vnd.google-apps.folder");
@@ -135,9 +158,6 @@ public class AutoBackupWorker extends Worker {
         }
     }
 
-    /**
-     * Retrieves a set of all file names currently inside a Drive folder for comparison.
-     */
     private Set<String> getRemoteFileNames(String folderId) throws IOException {
         Set<String> names = new HashSet<>();
         String query = "'" + folderId + "' in parents and trashed = false";
@@ -148,8 +168,10 @@ public class AutoBackupWorker extends Worker {
                     .setFields("nextPageToken, files(name)")
                     .setPageToken(pageToken)
                     .execute();
-            for (File file : result.getFiles()) {
-                names.add(file.getName());
+            if (result.getFiles() != null) {
+                for (File file : result.getFiles()) {
+                    names.add(file.getName());
+                }
             }
             pageToken = result.getNextPageToken();
         } while (pageToken != null);
@@ -158,20 +180,58 @@ public class AutoBackupWorker extends Worker {
     }
 
     /**
-     * Uploads a single file to the specified Drive folder.
+     * Uploads a file and calculates real-time speed/progress.
      */
-    private void uploadFile(java.io.File localFile, String parentFolderId) throws IOException {
+    private void uploadFileWithProgress(java.io.File localFile, String parentFolderId) throws IOException {
         File fileMeta = new File();
         fileMeta.setName(localFile.getName());
         fileMeta.setParents(Collections.singletonList(parentFolderId));
 
-        com.google.api.client.http.FileContent mediaContent =
-                new com.google.api.client.http.FileContent(null, localFile);
+        FileContent mediaContent = new FileContent(null, localFile);
 
-        driveService.files().create(fileMeta, mediaContent)
-                .setFields("id")
-                .execute();
+        Drive.Files.Create createRequest = driveService.files().create(fileMeta, mediaContent);
         
-        Log.i(TAG, "Auto-synced new file: " + localFile.getName());
+        MediaHttpUploader uploader = createRequest.getMediaHttpUploader();
+        uploader.setDirectUploadEnabled(false); // Required for progress callbacks
+        uploader.setProgressListener(u -> {
+            calculateSpeed(u.getNumBytesUploaded());
+            updateWorkerProgress(localFile.getName(), u.getProgress());
+        });
+
+        createRequest.setFields("id").execute();
+    }
+
+    private void calculateSpeed(long bytesUploaded) {
+        long currentTime = System.currentTimeMillis();
+        long timeDiff = currentTime - lastTime;
+
+        if (timeDiff >= 1000) {
+            long bytesDiff = bytesUploaded - lastBytes;
+            double speed = (bytesDiff / 1024.0) / (timeDiff / 1000.0);
+
+            if (speed > 1024) {
+                currentSpeed = String.format("%.2f MB/s", speed / 1024.0);
+            } else {
+                currentSpeed = String.format("%.2f KB/s", speed);
+            }
+
+            lastTime = currentTime;
+            lastBytes = bytesUploaded;
+        }
+    }
+
+    private void updateWorkerProgress(String fileName, double fileProgress) {
+        int overallPercent = (int) (((currentlySyncingIndex + fileProgress) / (double) totalFilesToSync) * 100);
+        String details = "Auto-sync: " + (currentlySyncingIndex + 1) + " of " + totalFilesToSync;
+
+        Data progressData = new Data.Builder()
+                .putString("CURRENT_FILE", fileName)
+                .putInt("PROGRESS_PERCENT", overallPercent)
+                .putString("SPEED", currentSpeed)
+                .putString("DETAILS", details)
+                .build();
+
+        setProgressAsync(progressData);
+        NotificationHelper.showUploadProgress(getApplicationContext(), overallPercent, details + " (" + currentSpeed + ")");
     }
 }
