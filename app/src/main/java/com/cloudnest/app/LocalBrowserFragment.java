@@ -41,7 +41,7 @@ import java.util.concurrent.Executors;
 /**
  * Local File Browser (Phone & SD Card).
  * Handles directory navigation, file counting, and selection mode.
- * UPDATED: Fixed file opening crash and implemented "Add to Preset" logic.
+ * UPDATED: Fixed open-file crash, Glitch 5 (Folder Selection), and Glitch 7 (Presets).
  */
 public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter.OnFileItemClickListener {
 
@@ -64,6 +64,7 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
         setHasOptionsMenu(true);
         dbExecutor = Executors.newSingleThreadExecutor();
 
+        // Handle Back Button to navigate up folder hierarchy
         requireActivity().getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -88,6 +89,7 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        // Determine if we are browsing Internal Phone storage or SD Card
         String storageType = getArguments() != null ? getArguments().getString("STORAGE_TYPE", "PHONE") : "PHONE";
         rootDirectory = getRootPath(storageType);
         currentDirectory = rootDirectory;
@@ -127,7 +129,11 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
         }
     }
 
+    /**
+     * Lists files in the selected directory and updates UI.
+     */
     private void loadDirectory(File directory) {
+        if (directory == null || !directory.exists()) return;
         currentDirectory = directory;
         
         if (getActivity() instanceof AppCompatActivity) {
@@ -159,6 +165,7 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
             }
         }
 
+        // Sort: Folders first, then alphabetically
         Collections.sort(fileList, (o1, o2) -> {
             if (o1.isDirectory() && !o2.isDirectory()) return -1;
             if (!o1.isDirectory() && o2.isDirectory()) return 1;
@@ -208,7 +215,7 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
     }
 
     /**
-     * UPDATED: FIXED CRASH using correct FileProvider and MimeType detection.
+     * FIXED CRASH: Uses FileProvider to securely open files with external apps.
      */
     private void openFile(File file) {
         try {
@@ -225,7 +232,7 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
             
             startActivity(Intent.createChooser(intent, "Open with"));
         } catch (Exception e) {
-            Toast.makeText(requireContext(), "Error opening file: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(requireContext(), "No app found to open this file.", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -247,6 +254,9 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
         return super.onOptionsItemSelected(item);
     }
 
+    /**
+     * Contextual Menu for file selection (Upload, Delete, Share, Preset).
+     */
     private final ActionMode.Callback actionModeCallback = new ActionMode.Callback() {
         @Override
         public boolean onCreateActionMode(ActionMode mode, Menu menu) {
@@ -261,10 +271,10 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
         public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
             int id = item.getItemId();
             if (id == R.id.action_upload) {
-                confirmUpload();
+                confirmUpload(); // Fix Glitch 5
                 return true;
             } else if (id == R.id.action_preset) {
-                addToPresets(); // NEW: Handle Glitch 7
+                addToPresets(); // Fix Glitch 7
                 return true;
             } else if (id == R.id.action_delete) {
                 confirmDelete();
@@ -291,7 +301,7 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
     };
 
     /**
-     * NEW: Implementation for Glitch 7 - Add to Auto-Backup
+     * Fix for Glitch 7: Adds only folders to the Auto-Backup queue.
      */
     private void addToPresets() {
         int folderCount = 0;
@@ -312,47 +322,55 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
 
         if (folderCount > 0) {
             Toast.makeText(requireContext(), folderCount + " folders added to Auto-Backup", Toast.LENGTH_SHORT).show();
-            actionMode.finish();
+            if (actionMode != null) actionMode.finish();
         } else {
-            Toast.makeText(requireContext(), "Only folders can be added to Auto-Backup", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), "Please select folders for Auto-Backup.", Toast.LENGTH_SHORT).show();
         }
     }
 
+    /**
+     * Fix for Glitch 5: Shows Folder Selector before starting upload.
+     */
     private void confirmUpload() {
-        new AlertDialog.Builder(requireContext())
-                .setTitle("Upload to CloudNest?")
-                .setMessage("Upload " + selectedFiles.size() + " items to Google Drive?")
-                .setPositiveButton("Upload", (dialog, which) -> {
-                    String[] paths = new String[selectedFiles.size()];
-                    for (int i = 0; i < selectedFiles.size(); i++) {
-                        paths[i] = selectedFiles.get(i).getPath();
-                    }
+        DriveFolderSelectorDialog dialog = DriveFolderSelectorDialog.newInstance((folderId, folderName) -> {
+            // Once user selects a destination folder on Drive, start the Worker
+            startUploadWorker(folderId, folderName);
+        });
+        dialog.show(getChildFragmentManager(), "DriveFolderSelector");
+    }
 
-                    Data inputData = new Data.Builder().putStringArray("FILE_PATHS", paths).build();
-                    OneTimeWorkRequest uploadRequest = new OneTimeWorkRequest.Builder(UploadWorker.class)
-                            .setInputData(inputData)
-                            .addTag("MANUAL_UPLOAD")
-                            .build();
+    private void startUploadWorker(String driveFolderId, String driveFolderName) {
+        String[] paths = new String[selectedFiles.size()];
+        for (int i = 0; i < selectedFiles.size(); i++) {
+            paths[i] = selectedFiles.get(i).getPath();
+        }
 
-                    WorkManager.getInstance(requireContext()).enqueue(uploadRequest);
-                    Toast.makeText(requireContext(), "Upload started.", Toast.LENGTH_SHORT).show();
-                    actionMode.finish();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        Data inputData = new Data.Builder()
+                .putStringArray("FILE_PATHS", paths)
+                .putString("DESTINATION_ID", driveFolderId)
+                .build();
+
+        OneTimeWorkRequest uploadRequest = new OneTimeWorkRequest.Builder(UploadWorker.class)
+                .setInputData(inputData)
+                .addTag("MANUAL_UPLOAD")
+                .build();
+
+        WorkManager.getInstance(requireContext()).enqueue(uploadRequest);
+        Toast.makeText(requireContext(), "Uploading to: " + driveFolderName, Toast.LENGTH_SHORT).show();
+        if (actionMode != null) actionMode.finish();
     }
 
     private void confirmDelete() {
         new AlertDialog.Builder(requireContext())
-                .setTitle("Delete Files?")
-                .setMessage("Are you sure you want to permanently delete " + selectedFiles.size() + " items?")
+                .setTitle("Delete Permanently?")
+                .setMessage("Delete " + selectedFiles.size() + " items from device?")
                 .setPositiveButton("Delete", (dialog, which) -> {
                     for (FileItemModel item : selectedFiles) {
                         File file = new File(item.getPath());
                         deleteRecursive(file);
                     }
                     loadDirectory(currentDirectory);
-                    actionMode.finish();
+                    if (actionMode != null) actionMode.finish();
                     Toast.makeText(requireContext(), "Deleted.", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancel", null)
@@ -387,8 +405,9 @@ public class LocalBrowserFragment extends Fragment implements FileBrowserAdapter
         Intent shareIntent = new Intent(Intent.ACTION_SEND_MULTIPLE);
         shareIntent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
         shareIntent.setType("*/*");
+        shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         startActivity(Intent.createChooser(shareIntent, "Share via"));
-        actionMode.finish();
+        if (actionMode != null) actionMode.finish();
     }
 
     @Override
