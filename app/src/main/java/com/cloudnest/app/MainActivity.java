@@ -40,6 +40,7 @@ import com.google.android.material.snackbar.Snackbar;
  * Main Host Activity for CloudNest.
  * Manages the Navigation Drawer, Floating Action Button (FAB),
  * Runtime Permissions, Back Button logic, and Global UI.
+ * UPDATED: Fixed FAB logic for Glitch 5 and handled notification permissions.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -59,7 +60,7 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // Setup Toolbar - Directly accessing from binding
+        // Setup Toolbar
         setSupportActionBar(binding.toolbar);
 
         // Initialize Google Sign-In Client (Used for Logout)
@@ -92,9 +93,9 @@ public class MainActivity extends AppCompatActivity {
             NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
             NavigationUI.setupWithNavController(navigationView, navController);
 
-            // Hide/Show FAB based on fragment destination to prevent overlap with specific screen FABs
+            // Hide/Show FAB based on fragment destination to prevent overlap
             navController.addOnDestinationChangedListener((controller, destination, arguments) -> {
-                if (destination.getId() == R.id.nav_preset_folders) {
+                if (destination.getId() == R.id.nav_preset_folders || destination.getId() == R.id.nav_drive_accounts) {
                     binding.fab.hide();
                 } else {
                     binding.fab.show();
@@ -102,7 +103,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
-        // Handle custom navigation item clicks
+        // Handle navigation item clicks
         navigationView.setNavigationItemSelectedListener(item -> {
             int id = item.getItemId();
 
@@ -118,10 +119,10 @@ public class MainActivity extends AppCompatActivity {
             return handled;
         });
 
-        // Setup Floating Action Button (FAB)
+        // Setup FAB Action Center
         binding.fab.setOnClickListener(view -> showFabMenu());
 
-        // Setup custom Back Button logic (Exit Confirmation on Dashboard)
+        // Setup Back Button logic (Exit Confirmation)
         setupBackButtonLogic();
 
         // Check and Request Runtime Permissions
@@ -156,33 +157,35 @@ public class MainActivity extends AppCompatActivity {
     private void showExitConfirmationDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("Exit CloudNest?")
-                .setMessage("Are you sure you want to exit the application? Background uploads will continue.")
+                .setMessage("Background uploads will continue even if you close the app.")
                 .setPositiveButton("Exit", (dialog, which) -> finish())
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("Stay", null)
                 .show();
     }
 
     /**
-     * UPDATED: Shows functional dialogs for folder creation and upload selection.
+     * UPDATED for Glitch 5: Provides clear action paths.
      */
     private void showFabMenu() {
-        String[] options = {"Create New Folder", "Upload Files", "Upload Folder"};
+        String[] options = {"Create New Folder", "Manual Upload (Pick Files)", "Auto-Backup (Sync Folder)"};
         new AlertDialog.Builder(this)
-                .setTitle("Action Center")
+                .setTitle("Quick Actions")
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
                         showCreateFolderDialog();
                     } else if (which == 1) {
-                        Toast.makeText(this, "Select files from browser to upload", Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, "Select files in 'Phone Storage' to upload.", Toast.LENGTH_LONG).show();
+                        navController.navigate(R.id.nav_phone_storage);
                     } else if (which == 2) {
-                        Toast.makeText(this, "Long-press a folder to upload entire contents", Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, "Long-press a folder to start Auto-Backup.", Toast.LENGTH_LONG).show();
+                        navController.navigate(R.id.nav_phone_storage);
                     }
                 })
                 .show();
     }
 
     /**
-     * UPDATED: Fixed the missing input field for folder creation.
+     * UPDATED: Fixed UI for folder naming.
      */
     private void showCreateFolderDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -190,35 +193,36 @@ public class MainActivity extends AppCompatActivity {
 
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
-        input.setHint("Enter name here...");
+        input.setHint("e.g. Work Documents");
         
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT);
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(40, 20, 40, 20);
         input.setLayoutParams(lp);
-        builder.setView(input);
+        container.addView(input);
+        builder.setView(container);
 
         builder.setPositiveButton("Create", (dialog, which) -> {
             String folderName = input.getText().toString().trim();
             if (!folderName.isEmpty()) {
-                // Logic to trigger folder creation in active drive or local path
-                Toast.makeText(this, "Creating: " + folderName, Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Creating '" + folderName + "'...", Toast.LENGTH_SHORT).show();
+                // Logic to handle folder creation on Drive or Local could be triggered here
             }
         });
-        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
-
+        builder.setNegativeButton("Cancel", null);
         builder.show();
     }
 
     private void confirmAndLogout() {
         new AlertDialog.Builder(this)
                 .setTitle("Logout")
-                .setMessage("Are you sure you want to disconnect your Google Drive account?")
+                .setMessage("Disconnect your Google Drive account?")
                 .setPositiveButton("Logout", (dialog, which) -> {
                     googleSignInClient.signOut().addOnCompleteListener(this, task -> {
-                        Toast.makeText(MainActivity.this, "Successfully logged out.", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "Logged out.", Toast.LENGTH_SHORT).show();
                         Intent intent = new Intent(MainActivity.this, SplashActivity.class);
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                         startActivity(intent);
@@ -235,9 +239,7 @@ public class MainActivity extends AppCompatActivity {
                 showStoragePermissionExplanation();
             }
         } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, new String[]{
                         Manifest.permission.READ_EXTERNAL_STORAGE,
                         Manifest.permission.WRITE_EXTERNAL_STORAGE
@@ -245,6 +247,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        // Notification permission for Glitch 8
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, PERMISSION_REQUEST_CODE);
@@ -254,19 +257,17 @@ public class MainActivity extends AppCompatActivity {
 
     private void showStoragePermissionExplanation() {
         new AlertDialog.Builder(this)
-                .setTitle("Storage Access Required")
-                .setMessage("CloudNest requires 'All Files Access' to backup your entire phone and SD card to Google Drive.")
+                .setTitle("Permissions Needed")
+                .setMessage("CloudNest requires file access to backup your local storage to Google Drive.")
                 .setCancelable(false)
-                .setPositiveButton("Grant Access", (dialog, which) -> {
+                .setPositiveButton("Grant", (dialog, which) -> {
                     try {
                         Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                        intent.addCategory("android.intent.category.DEFAULT");
-                        intent.setData(Uri.parse(String.format("package:%s", getApplicationContext().getPackageName())));
-                        startActivityForResult(intent, STORAGE_PERMISSION_CODE);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
                     } catch (Exception e) {
-                        Intent intent = new Intent();
-                        intent.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                        startActivityForResult(intent, STORAGE_PERMISSION_CODE);
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                        startActivity(intent);
                     }
                 })
                 .setNegativeButton("Exit", (dialog, which) -> finish())
@@ -278,9 +279,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == STORAGE_PERMISSION_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Storage Permission Granted.", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Storage Permission Denied.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Storage access granted.", Toast.LENGTH_SHORT).show();
             }
         }
     }
