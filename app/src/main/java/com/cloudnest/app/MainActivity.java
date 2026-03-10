@@ -131,6 +131,10 @@ public class MainActivity extends AppCompatActivity {
         // FIXED FOR GLITCH 9: ACTIVATE THE AUTO-BACKUP SCHEDULER
         // This ensures background syncs are registered with the system on startup.
         SyncScheduler.refreshAllSchedules(this);
+
+        // FIXED FOR GLITCH 1: START THE REAL-TIME FOLDER WATCHER SERVICE
+        // This service monitors folders for new files and triggers sync immediately.
+        FolderWatcherService.startService(this);
     }
 
     @Override
@@ -198,7 +202,7 @@ public class MainActivity extends AppCompatActivity {
         final EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         input.setHint("Enter folder name here...");
-        
+
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
