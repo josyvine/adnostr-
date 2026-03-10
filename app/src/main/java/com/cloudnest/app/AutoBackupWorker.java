@@ -55,9 +55,9 @@ public class AutoBackupWorker extends Worker {
     public Result doWork() {
         String localFolderPath = getInputData().getString("FOLDER_PATH");
         String presetIdStr = getInputData().getString("PRESET_ID");
-        
+
         if (localFolderPath == null || presetIdStr == null) return Result.failure();
-        
+
         long presetId = Long.parseLong(presetIdStr);
         java.io.File localFolder = new java.io.File(localFolderPath);
 
@@ -101,7 +101,7 @@ public class AutoBackupWorker extends Worker {
             // 5. Start Sync with Progress and Speed tracking
             lastTime = System.currentTimeMillis();
             lastBytes = 0;
-            
+
             for (java.io.File localFile : localFiles) {
                 // Check if worker was cancelled by user via Upload Manager
                 if (isStopped()) return Result.success();
@@ -114,7 +114,7 @@ public class AutoBackupWorker extends Worker {
 
             // 6. Update the 'lastSyncTime' in DB after successful sync (Fixes Glitch 6)
             db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
-            
+
             // Final Notification (Glitch 8)
             NotificationHelper.showUploadComplete(getApplicationContext(), totalFilesToSync);
 
@@ -162,7 +162,7 @@ public class AutoBackupWorker extends Worker {
             folderMeta.setName(folderName);
             folderMeta.setMimeType("application/vnd.google-apps.folder");
             folderMeta.setParents(Collections.singletonList(parentId));
-            
+
             File createdFolder = driveService.files().create(folderMeta).setFields("id").execute();
             return createdFolder.getId();
         }
@@ -200,7 +200,7 @@ public class AutoBackupWorker extends Worker {
         FileContent mediaContent = new FileContent(null, localFile);
 
         Drive.Files.Create createRequest = driveService.files().create(fileMeta, mediaContent);
-        
+
         MediaHttpUploader uploader = createRequest.getMediaHttpUploader();
         uploader.setDirectUploadEnabled(false); // Enable chunked upload for progress
         uploader.setProgressListener(u -> {
@@ -244,7 +244,7 @@ public class AutoBackupWorker extends Worker {
                 .build();
 
         setProgressAsync(progressData);
-        
+
         // Update system notification (Glitch 2)
         NotificationHelper.showUploadProgress(getApplicationContext(), overallPercent, details + " (" + currentSpeed + ")");
     }
