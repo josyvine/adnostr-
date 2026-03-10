@@ -45,6 +45,13 @@
             android:theme="@style/Theme.CloudNest.NoActionBar"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Correctly registered FolderWatcherService for Background Monitoring -->
+        <service
+            android:name=".FolderWatcherService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
