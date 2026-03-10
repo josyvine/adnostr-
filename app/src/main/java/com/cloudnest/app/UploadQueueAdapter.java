@@ -19,7 +19,7 @@ import java.util.UUID;
  * Adapter for the Upload Manager Queue.
  * Displays file names, progress bars, and status icons for background transfers.
  * Handles "Cancel" and "Retry" button clicks.
- * UPDATED: Displays real-time network speed and file count details.
+ * UPDATED: Fixed Glitch 3 (Button Overlay) by populating separate UI elements.
  */
 public class UploadQueueAdapter extends RecyclerView.Adapter<UploadQueueAdapter.ViewHolder> {
 
@@ -73,26 +73,33 @@ public class UploadQueueAdapter extends RecyclerView.Adapter<UploadQueueAdapter.
         }
 
         void bind(UploadItemModel item, OnUploadActionClickListener listener) {
+            // Populate basic file info
             binding.tvUploadFileName.setText(item.getFileName());
             binding.progressBarUpload.setProgress(item.getProgress());
 
-            // Reset visual state
+            // Populate NEW detail and speed fields to fix Glitch 3 overlay
+            if (item.getDetails() != null) {
+                binding.tvUploadDetails.setText(item.getDetails());
+            } else {
+                binding.tvUploadDetails.setText("Processing...");
+            }
+
+            if (item.getSpeed() != null) {
+                binding.tvUploadSpeed.setText(item.getSpeed());
+                binding.tvUploadSpeed.setVisibility(View.VISIBLE);
+            } else {
+                binding.tvUploadSpeed.setVisibility(View.GONE);
+            }
+
+            // Reset visual state for buttons and bar
             binding.btnCancelUpload.setVisibility(View.GONE);
             binding.btnRetryUpload.setVisibility(View.GONE);
             binding.progressBarUpload.setVisibility(View.VISIBLE);
 
+            // Maintain your original Status logic
             switch (item.getStatus()) {
                 case IN_PROGRESS:
-                    // Show detailed progress and speed if available
-                    String statusText = "Uploading... " + item.getProgress() + "%";
-                    if (item.getDetails() != null && !item.getDetails().isEmpty()) {
-                        statusText = item.getDetails() + " • " + item.getProgress() + "%";
-                    }
-                    if (item.getSpeed() != null && !item.getSpeed().isEmpty()) {
-                        statusText += " • " + item.getSpeed();
-                    }
-                    
-                    binding.tvUploadStatus.setText(statusText);
+                    binding.tvUploadStatus.setText("Uploading... " + item.getProgress() + "%");
                     binding.tvUploadStatus.setTextColor(Color.DKGRAY);
                     binding.btnCancelUpload.setVisibility(View.VISIBLE);
                     binding.progressBarUpload.setIndeterminate(false);
@@ -109,6 +116,7 @@ public class UploadQueueAdapter extends RecyclerView.Adapter<UploadQueueAdapter.
                     binding.tvUploadStatus.setText("Upload Complete");
                     binding.tvUploadStatus.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.cloudnest_status_green));
                     binding.progressBarUpload.setProgress(100);
+                    binding.tvUploadSpeed.setVisibility(View.GONE);
                     break;
 
                 case FAILED:
@@ -116,12 +124,14 @@ public class UploadQueueAdapter extends RecyclerView.Adapter<UploadQueueAdapter.
                     binding.tvUploadStatus.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.cloudnest_status_red));
                     binding.btnRetryUpload.setVisibility(View.VISIBLE);
                     binding.progressBarUpload.setProgress(0);
+                    binding.tvUploadSpeed.setVisibility(View.GONE);
                     break;
 
                 case CANCELLED:
                     binding.tvUploadStatus.setText("Cancelled");
                     binding.tvUploadStatus.setTextColor(Color.GRAY);
                     binding.progressBarUpload.setVisibility(View.INVISIBLE);
+                    binding.tvUploadSpeed.setVisibility(View.GONE);
                     break;
             }
 
