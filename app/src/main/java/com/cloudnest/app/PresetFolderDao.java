@@ -45,6 +45,13 @@ public interface PresetFolderDao {
     LiveData<List<PresetFolderEntity>> getAllPresets();
 
     /**
+     * NEW: Synchronous retrieval for background services.
+     * FIXES: Build error in SyncScheduler and FolderWatcherService.
+     */
+    @Query("SELECT * FROM preset_folders")
+    List<PresetFolderEntity> getAllPresetsSync();
+
+    /**
      * Updates the last synchronization timestamp for a specific preset folder.
      * Updated SQL query to use 'last_sync_time' to match PresetFolderEntity.
      */
