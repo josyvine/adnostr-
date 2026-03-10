@@ -30,7 +30,7 @@ import java.util.Set;
 /**
  * Background Worker for Preset Folder Auto-Backup.
  * This worker intelligently syncs a local folder with a target folder in Google Drive.
- * UPDATED: Fixed Glitch 2 (Speed/Progress), Glitch 6 (Sync Time), and Glitch 9 (File Detection).
+ * UPDATED: Optimized for real-time automatic detection and background visibility.
  */
 public class AutoBackupWorker extends Worker {
 
@@ -75,16 +75,19 @@ public class AutoBackupWorker extends Worker {
             }
 
             // 2. Resolve Root and Target Folders
-            // We create a primary "CloudNest" folder, then subfolders for each preset
             String rootFolderId = findOrCreateFolder("CloudNest", "root");
             String targetFolderId = findOrCreateFolder(localFolder.getName(), rootFolderId);
 
-            // 3. Get list of files already in the Drive folder to avoid duplicates (Glitch 9)
+            // 3. Get list of files already in the Drive folder to avoid duplicates
             Set<String> remoteFileNames = getRemoteFileNames(targetFolderId);
 
             // 4. Identify new files that haven't been uploaded yet
             java.io.File[] localFiles = localFolder.listFiles();
             if (localFiles == null) return Result.success();
+
+            // Reset counters for this specific run
+            totalFilesToSync = 0;
+            currentlySyncingIndex = 0;
 
             for (java.io.File f : localFiles) {
                 if (f.isFile() && !remoteFileNames.contains(f.getName())) {
@@ -107,15 +110,18 @@ public class AutoBackupWorker extends Worker {
                 if (isStopped()) return Result.success();
 
                 if (localFile.isFile() && !remoteFileNames.contains(localFile.getName())) {
-                    uploadFileWithProgress(localFile, targetFolderId);
-                    currentlySyncingIndex++;
+                    // Check if file is readable (not locked by another process)
+                    if (localFile.canRead() && localFile.length() > 0) {
+                        uploadFileWithProgress(localFile, targetFolderId);
+                        currentlySyncingIndex++;
+                    }
                 }
             }
 
-            // 6. Update the 'lastSyncTime' in DB after successful sync (Fixes Glitch 6)
+            // 6. Update the 'lastSyncTime' in DB after successful sync
             db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
 
-            // Final Notification (Glitch 8)
+            // Final Notification
             NotificationHelper.showUploadComplete(getApplicationContext(), totalFilesToSync);
 
             return Result.success();
@@ -190,7 +196,7 @@ public class AutoBackupWorker extends Worker {
     }
 
     /**
-     * Uploads a single file and calculates real-time speed/progress (Fixes Glitch 2).
+     * Uploads a single file and calculates real-time speed/progress.
      */
     private void uploadFileWithProgress(java.io.File localFile, String parentFolderId) throws IOException {
         File fileMeta = new File();
@@ -245,7 +251,7 @@ public class AutoBackupWorker extends Worker {
 
         setProgressAsync(progressData);
 
-        // Update system notification (Glitch 2)
+        // Update system notification
         NotificationHelper.showUploadProgress(getApplicationContext(), overallPercent, details + " (" + currentSpeed + ")");
     }
 }
