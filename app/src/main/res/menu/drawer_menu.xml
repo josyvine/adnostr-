@@ -16,6 +16,12 @@
         <item
             android:id="@+id/nav_drive_browser"
             android:title="Google Drive" />
+        
+        <!-- FIXED FOR GLITCH 2: Added Trash Bin to the sidebar menu -->
+        <item
+            android:id="@+id/nav_trash"
+            android:title="Trash Bin" />
+
         <item
             android:id="@+id/nav_upload_manager"
             android:title="Upload Manager" />
