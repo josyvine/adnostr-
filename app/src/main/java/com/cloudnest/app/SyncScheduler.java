@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Utility class to manage background scheduling for Preset Folders.
  * This ensures that folders are scanned for new files automatically.
- * UPDATED: Added support for Instant Sync (Glitch 1) and full schedule refreshing.
+ * UPDATED: Fixed Tag Mismatch for Upload Manager visibility and improved Enqueue Policy.
  */
 public class SyncScheduler {
 
@@ -57,6 +57,7 @@ public class SyncScheduler {
     /**
      * NEW: Triggers an IMMEDIATE sync for a folder.
      * Logic for Glitch 1: Called by FolderWatcherService when a new file is detected.
+     * UPDATED: Changed tag to AUTO_BACKUP for UI visibility and policy to APPEND_OR_REPLACE.
      */
     public static void triggerImmediateSync(Context context, PresetFolderEntity folder) {
         Data inputData = new Data.Builder()
@@ -66,13 +67,13 @@ public class SyncScheduler {
 
         OneTimeWorkRequest instantRequest = new OneTimeWorkRequest.Builder(AutoBackupWorker.class)
                 .setInputData(inputData)
-                .addTag("AUTO_BACKUP_INSTANT")
+                .addTag("AUTO_BACKUP") // Changed from AUTO_BACKUP_INSTANT to match UI observer
                 .build();
 
-        // RUN_AS_REPLACE ensures we don't start 50 uploads if 50 files are added at once
+        // APPEND_OR_REPLACE ensures that new file detections don't cancel an active upload
         WorkManager.getInstance(context).enqueueUniqueWork(
                 "INSTANT_" + folder.id,
-                ExistingWorkPolicy.REPLACE,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
                 instantRequest
         );
         
