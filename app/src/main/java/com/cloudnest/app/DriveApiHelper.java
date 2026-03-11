@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * Utility class for Google Drive API operations.
  * Centralizes service initialization, folder search/creation, and quota checks.
- * UPDATED: Added logic for Permanent Deletion and Trash Management (Glitch 2).
+ * UPDATED: Added logic for Path Resolution to support recursive Auto-Backup.
  */
 public class DriveApiHelper {
 
@@ -64,6 +64,27 @@ public class DriveApiHelper {
     }
 
     /**
+     * NEW: Resolves a nested path on Google Drive.
+     * If the path "folder1/folder2" does not exist under the parentId, it creates it.
+     * This is essential for mirroring the local directory structure during Auto-Backup.
+     */
+    public static String getOrCreateFolderByPath(Drive driveService, String relativePath, String rootId) throws IOException {
+        String[] folders = relativePath.split("/");
+        String currentParentId = rootId;
+
+        for (String folderName : folders) {
+            if (folderName.isEmpty()) continue;
+            
+            String folderId = findFolderId(driveService, folderName, currentParentId);
+            if (folderId == null) {
+                folderId = createFolder(driveService, folderName, currentParentId);
+            }
+            currentParentId = folderId;
+        }
+        return currentParentId;
+    }
+
+    /**
      * Retrieves the storage quota status for the connected account.
      * Used by the Drive Cycling logic to check if a Drive is full.
      */
@@ -84,16 +105,14 @@ public class DriveApiHelper {
     }
 
     /**
-     * NEW: Permanently deletes a file or folder, bypassing the trash.
-     * FIXES: Glitch 2.
+     * Permanently deletes a file or folder, bypassing the trash.
      */
     public static void deleteFilePermanently(Drive driveService, String fileId) throws IOException {
         driveService.files().delete(fileId).execute();
     }
 
     /**
-     * NEW: Empties the entire trash for the current user's Drive.
-     * FIXES: Glitch 2.
+     * Empties the entire trash for the current user's Drive.
      */
     public static void emptyTrash(Drive driveService) throws IOException {
         driveService.files().emptyTrash().execute();
