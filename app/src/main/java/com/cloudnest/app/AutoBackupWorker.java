@@ -29,8 +29,8 @@ import java.util.Set;
 
 /**
  * Background Worker for Preset Folder Auto-Backup.
- * This worker intelligently syncs a local folder with a target folder in Google Drive.
- * UPDATED: Optimized for real-time automatic detection and background visibility.
+ * UPDATED: Implemented Recursive Sync to handle subfolders and system directories.
+ * This ensures "Copy Folder/Subfolder" and "DCIM/Screenshots" are mirrored correctly.
  */
 public class AutoBackupWorker extends Worker {
 
@@ -61,7 +61,6 @@ public class AutoBackupWorker extends Worker {
         long presetId = Long.parseLong(presetIdStr);
         java.io.File localFolder = new java.io.File(localFolderPath);
 
-        // If local folder no longer exists, remove the preset to stop future errors
         if (!localFolder.exists() || !localFolder.isDirectory()) {
             db.presetFolderDao().deleteById(presetId);
             return Result.success();
@@ -74,51 +73,28 @@ public class AutoBackupWorker extends Worker {
                 return Result.failure();
             }
 
-            // 2. Resolve Root and Target Folders
+            // 2. Resolve Root CloudNest Folder
             String rootFolderId = findOrCreateFolder("CloudNest", "root");
-            String targetFolderId = findOrCreateFolder(localFolder.getName(), rootFolderId);
-
-            // 3. Get list of files already in the Drive folder to avoid duplicates
-            Set<String> remoteFileNames = getRemoteFileNames(targetFolderId);
-
-            // 4. Identify new files that haven't been uploaded yet
-            java.io.File[] localFiles = localFolder.listFiles();
-            if (localFiles == null) return Result.success();
-
-            // Reset counters for this specific run
+            
+            // 3. Recursive Count: Determine total files in all subfolders for progress bar accuracy
             totalFilesToSync = 0;
             currentlySyncingIndex = 0;
+            countFilesRecursive(localFolder);
 
-            for (java.io.File f : localFiles) {
-                if (f.isFile() && !remoteFileNames.contains(f.getName())) {
-                    totalFilesToSync++;
-                }
-            }
-
-            // If everything is already in the cloud, just update the time and finish
             if (totalFilesToSync == 0) {
                 db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
                 return Result.success();
             }
 
-            // 5. Start Sync with Progress and Speed tracking
+            // 4. Start Recursive Sync
             lastTime = System.currentTimeMillis();
             lastBytes = 0;
+            
+            // The sync starts from the preset's root folder mirrored into the "CloudNest" Drive folder
+            String targetRootId = findOrCreateFolder(localFolder.getName(), rootFolderId);
+            syncFolderRecursive(localFolder, targetRootId);
 
-            for (java.io.File localFile : localFiles) {
-                // Check if worker was cancelled by user via Upload Manager
-                if (isStopped()) return Result.success();
-
-                if (localFile.isFile() && !remoteFileNames.contains(localFile.getName())) {
-                    // Check if file is readable (not locked by another process)
-                    if (localFile.canRead() && localFile.length() > 0) {
-                        uploadFileWithProgress(localFile, targetFolderId);
-                        currentlySyncingIndex++;
-                    }
-                }
-            }
-
-            // 6. Update the 'lastSyncTime' in DB after successful sync
+            // 5. Update Database
             db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
 
             // Final Notification
@@ -127,9 +103,59 @@ public class AutoBackupWorker extends Worker {
             return Result.success();
 
         } catch (Exception e) {
-            Log.e(TAG, "Auto-Backup sync failed: " + e.getMessage());
+            Log.e(TAG, "Auto-Backup recursive sync failed: " + e.getMessage());
             NotificationHelper.showUploadFailed(getApplicationContext());
             return Result.retry();
+        }
+    }
+
+    /**
+     * Walks the local directory tree to count all files that need syncing.
+     */
+    private void countFilesRecursive(java.io.File folder) {
+        java.io.File[] files = folder.listFiles();
+        if (files == null) return;
+
+        for (java.io.File f : files) {
+            if (f.isDirectory()) {
+                countFilesRecursive(f);
+            } else if (f.isFile() && f.length() > 0) {
+                totalFilesToSync++;
+            }
+        }
+    }
+
+    /**
+     * The core recursive engine. Mirrors local folders to Drive and uploads files.
+     */
+    private void syncFolderRecursive(java.io.File localFolder, String driveFolderId) throws IOException {
+        if (isStopped()) return;
+
+        // Get existing files in this specific Drive folder to avoid duplicates
+        Set<String> remoteFileNames = getRemoteFileNames(driveFolderId);
+        java.io.File[] localItems = localFolder.listFiles();
+        if (localItems == null) return;
+
+        for (java.io.File item : localItems) {
+            if (isStopped()) return;
+
+            if (item.isDirectory()) {
+                // Resolve or Create this subfolder on Drive
+                String subFolderId = findOrCreateFolder(item.getName(), driveFolderId);
+                // Recurse into the subfolder
+                syncFolderRecursive(item, subFolderId);
+            } else {
+                // It's a file. Upload if it doesn't exist on Drive yet.
+                if (!remoteFileNames.contains(item.getName())) {
+                    if (item.canRead() && item.length() > 0) {
+                        uploadFileWithProgress(item, driveFolderId);
+                        currentlySyncingIndex++;
+                    }
+                } else {
+                    // File already exists, increment index to keep progress bar accurate
+                    currentlySyncingIndex++;
+                }
+            }
         }
     }
 
@@ -195,9 +221,6 @@ public class AutoBackupWorker extends Worker {
         return names;
     }
 
-    /**
-     * Uploads a single file and calculates real-time speed/progress.
-     */
     private void uploadFileWithProgress(java.io.File localFile, String parentFolderId) throws IOException {
         File fileMeta = new File();
         fileMeta.setName(localFile.getName());
@@ -208,7 +231,7 @@ public class AutoBackupWorker extends Worker {
         Drive.Files.Create createRequest = driveService.files().create(fileMeta, mediaContent);
 
         MediaHttpUploader uploader = createRequest.getMediaHttpUploader();
-        uploader.setDirectUploadEnabled(false); // Enable chunked upload for progress
+        uploader.setDirectUploadEnabled(false); 
         uploader.setProgressListener(u -> {
             calculateSpeed(u.getNumBytesUploaded());
             updateWorkerProgress(localFile.getName(), u.getProgress());
@@ -237,11 +260,11 @@ public class AutoBackupWorker extends Worker {
     }
 
     private void updateWorkerProgress(String fileName, double fileProgress) {
-        // Calculate the overall percentage of the entire folder sync
         int overallPercent = (int) (((currentlySyncingIndex + fileProgress) / (double) totalFilesToSync) * 100);
+        if (overallPercent > 100) overallPercent = 100;
+        
         String details = "Auto-sync: " + (currentlySyncingIndex + 1) + " of " + totalFilesToSync;
 
-        // Data keys used by UploadManagerFragment and UploadQueueAdapter
         Data progressData = new Data.Builder()
                 .putString("CURRENT_FILE", fileName)
                 .putInt("PROGRESS_PERCENT", overallPercent)
@@ -250,8 +273,6 @@ public class AutoBackupWorker extends Worker {
                 .build();
 
         setProgressAsync(progressData);
-
-        // Update system notification
         NotificationHelper.showUploadProgress(getApplicationContext(), overallPercent, details + " (" + currentSpeed + ")");
     }
 }
