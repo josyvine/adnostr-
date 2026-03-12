@@ -41,6 +41,7 @@ import com.google.android.material.snackbar.Snackbar;
  * Manages the Navigation Drawer, Floating Action Button (FAB),
  * Runtime Permissions, Back Button logic, and Global UI.
  * UPDATED: Integrated Trash Bin navigation (Glitch 2) and Folder Watcher (Glitch 1).
+ * UPDATED: Added support for FileDatabaseFragment navigation.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -88,7 +89,8 @@ public class MainActivity extends AppCompatActivity {
                     R.id.nav_storage_graph,
                     R.id.nav_preset_folders, 
                     R.id.nav_drive_accounts,
-                    R.id.nav_trash) 
+                    R.id.nav_trash,
+                    R.id.nav_file_database) // ENHANCEMENT: Added File Database
                     .setOpenableLayout(drawer)
                     .build();
 
@@ -98,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
             // Hide/Show FAB based on fragment destination to prevent overlap
             navController.addOnDestinationChangedListener((controller, destination, arguments) -> {
                 int id = destination.getId();
-                if (id == R.id.nav_preset_folders || id == R.id.nav_drive_accounts || id == R.id.nav_trash) {
+                if (id == R.id.nav_preset_folders || id == R.id.nav_drive_accounts || id == R.id.nav_trash || id == R.id.nav_file_database) {
                     binding.fab.hide();
                 } else {
                     binding.fab.show();
