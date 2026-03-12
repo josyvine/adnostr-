@@ -13,31 +13,29 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
 import com.google.api.client.googleapis.media.MediaHttpUploader;
-import com.google.api.client.googleapis.media.MediaHttpUploaderProgressListener;
 import com.google.api.client.http.FileContent;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 /**
  * Background Worker for Preset Folder Auto-Backup.
  * UPDATED: Implemented Recursive Sync to handle subfolders and system directories.
- * This ensures "Copy Folder/Subfolder" and "DCIM/Screenshots" are mirrored correctly.
+ * UPDATED: Added "Drive Full" detection and automatic account switching logic.
  */
 public class AutoBackupWorker extends Worker {
 
     private static final String TAG = "AutoBackupWorker";
     private Drive driveService;
     private CloudNestDatabase db;
-    // --- ENHANCEMENT ADDITION ---
     private SequenceTrackerHelper tracker;
     private long currentPresetId;
 
@@ -51,7 +49,6 @@ public class AutoBackupWorker extends Worker {
     public AutoBackupWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         db = CloudNestDatabase.getInstance(context);
-        // --- ENHANCEMENT ADDITION ---
         tracker = new SequenceTrackerHelper(context);
     }
 
@@ -63,7 +60,6 @@ public class AutoBackupWorker extends Worker {
 
         if (localFolderPath == null || presetIdStr == null) return Result.failure();
 
-        // --- ENHANCEMENT ADDITION ---
         currentPresetId = Long.parseLong(presetIdStr);
         java.io.File localFolder = new java.io.File(localFolderPath);
 
@@ -73,16 +69,9 @@ public class AutoBackupWorker extends Worker {
         }
 
         try {
-            // 1. Authenticate with Google Drive
             authenticateDrive();
-            if (driveService == null) {
-                return Result.failure();
-            }
+            if (driveService == null) return Result.failure();
 
-            // 2. Resolve Root CloudNest Folder
-            String rootFolderId = findOrCreateFolder("CloudNest", "root");
-            
-            // 3. Recursive Count: Determine total files in all subfolders for progress bar accuracy
             totalFilesToSync = 0;
             currentlySyncingIndex = 0;
             countFilesRecursive(localFolder);
@@ -92,22 +81,26 @@ public class AutoBackupWorker extends Worker {
                 return Result.success();
             }
 
-            // 4. Start Recursive Sync
             lastTime = System.currentTimeMillis();
             lastBytes = 0;
             
-            // The sync starts from the preset's root folder mirrored into the "CloudNest" Drive folder
+            String rootFolderId = findOrCreateFolder("CloudNest", "root");
             String targetRootId = findOrCreateFolder(localFolder.getName(), rootFolderId);
             syncFolderRecursive(localFolder, targetRootId);
 
-            // 5. Update Database
             db.presetFolderDao().updateSyncTime(currentPresetId, System.currentTimeMillis());
-
-            // Final Notification
             NotificationHelper.showUploadComplete(getApplicationContext(), totalFilesToSync);
 
             return Result.success();
 
+        } catch (GoogleJsonResponseException e) {
+            // --- GLITCH FIX: DETECT DRIVE FULL ---
+            if (e.getStatusCode() == 403) {
+                handleDriveFull();
+                return Result.retry();
+            }
+            Log.e(TAG, "Auto-Backup failed: " + e.getMessage());
+            return Result.retry();
         } catch (Exception e) {
             Log.e(TAG, "Auto-Backup recursive sync failed: " + e.getMessage());
             NotificationHelper.showUploadFailed(getApplicationContext());
@@ -115,9 +108,29 @@ public class AutoBackupWorker extends Worker {
         }
     }
 
-    /**
-     * Walks the local directory tree to count all files that need syncing.
-     */
+    // --- GLITCH FIX: ACCOUNT SWITCHING LOGIC ---
+    private void handleDriveFull() {
+        GoogleSignInAccount currentAccount = GoogleSignIn.getLastSignedInAccount(getApplicationContext());
+        if (currentAccount != null) {
+            // 1. Mark current account as full in database
+            DriveAccountEntity current = db.driveAccountDao().getAccountByEmail(currentAccount.getEmail());
+            if (current != null) {
+                current.isFull = true;
+                current.isActive = false;
+                db.driveAccountDao().update(current);
+            }
+            
+            // 2. Find next available account
+            DriveAccountEntity next = db.driveAccountDao().getNextAvailableAccount(currentAccount.getEmail());
+            if (next != null) {
+                db.driveAccountDao().setActive(next.email, true);
+                Log.d(TAG, "Drive full. Switched to: " + next.email);
+            } else {
+                Log.e(TAG, "No more drives available!");
+            }
+        }
+    }
+
     private void countFilesRecursive(java.io.File folder) {
         java.io.File[] files = folder.listFiles();
         if (files == null) return;
@@ -131,13 +144,9 @@ public class AutoBackupWorker extends Worker {
         }
     }
 
-    /**
-     * The core recursive engine. Mirrors local folders to Drive and uploads files.
-     */
     private void syncFolderRecursive(java.io.File localFolder, String driveFolderId) throws IOException {
         if (isStopped()) return;
 
-        // Get existing files in this specific Drive folder to avoid duplicates
         Set<String> remoteFileNames = getRemoteFileNames(driveFolderId);
         java.io.File[] localItems = localFolder.listFiles();
         if (localItems == null) return;
@@ -146,25 +155,19 @@ public class AutoBackupWorker extends Worker {
             if (isStopped()) return;
 
             if (item.isDirectory()) {
-                // Resolve or Create this subfolder on Drive
                 String subFolderId = findOrCreateFolder(item.getName(), driveFolderId);
-                // Recurse into the subfolder
                 syncFolderRecursive(item, subFolderId);
             } else {
-                // It's a file. Upload if it doesn't exist on Drive yet.
                 if (!remoteFileNames.contains(item.getName())) {
                     if (item.canRead() && item.length() > 0) {
-                        // --- ENHANCEMENT ADDITION: TRACKING ---
                         String driveId = uploadFileWithProgress(item, driveFolderId);
                         if (driveId != null) {
                             int seqNum = tracker.getNextSequenceNumber(currentPresetId);
                             tracker.trackFileUpload(item.getAbsolutePath(), seqNum, "user@gmail.com", driveId, currentPresetId, item.length());
                         }
-                        // -------------------------------------
                         currentlySyncingIndex++;
                     }
                 } else {
-                    // File already exists, increment index to keep progress bar accurate
                     currentlySyncingIndex++;
                 }
             }
