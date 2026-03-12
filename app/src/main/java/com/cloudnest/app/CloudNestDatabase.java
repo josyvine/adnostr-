@@ -17,7 +17,7 @@ import androidx.room.RoomDatabase;
  * 2. FileTrackEntity: Manages the global sequential numbering of uploaded files.
  * 3. PresetFolderEntity: Stores configuration for auto-backup folders.
  */
-@Database(entities = {DriveAccountEntity.class, FileTrackEntity.class, PresetFolderEntity.class}, version = 1, exportSchema = false)
+@Database(entities = {DriveAccountEntity.class, FileTrackEntity.class, PresetFolderEntity.class}, version = 2, exportSchema = false)
 public abstract class CloudNestDatabase extends RoomDatabase {
 
     // Define the DAOs that the database will provide
