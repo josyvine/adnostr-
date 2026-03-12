@@ -4,7 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@android:color/white">
 
     <!-- Drive Selector Spinner -->
     <TextView
@@ -12,12 +13,15 @@
         android:layout_height="wrap_content"
         android:text="Select Google Drive Account:"
         android:textSize="14sp"
+        android:textColor="@android:color/black"
         android:paddingBottom="8dp" />
 
     <Spinner
         android:id="@+id/spinner_drive_selector"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:background="@android:drawable/btn_dropdown"
         android:padding="8dp" />
 
     <View
