@@ -37,6 +37,9 @@ public class AutoBackupWorker extends Worker {
     private static final String TAG = "AutoBackupWorker";
     private Drive driveService;
     private CloudNestDatabase db;
+    // --- ENHANCEMENT ADDITION ---
+    private SequenceTrackerHelper tracker;
+    private long currentPresetId;
 
     // Progress Tracking
     private int totalFilesToSync = 0;
@@ -48,6 +51,8 @@ public class AutoBackupWorker extends Worker {
     public AutoBackupWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         db = CloudNestDatabase.getInstance(context);
+        // --- ENHANCEMENT ADDITION ---
+        tracker = new SequenceTrackerHelper(context);
     }
 
     @NonNull
@@ -58,11 +63,12 @@ public class AutoBackupWorker extends Worker {
 
         if (localFolderPath == null || presetIdStr == null) return Result.failure();
 
-        long presetId = Long.parseLong(presetIdStr);
+        // --- ENHANCEMENT ADDITION ---
+        currentPresetId = Long.parseLong(presetIdStr);
         java.io.File localFolder = new java.io.File(localFolderPath);
 
         if (!localFolder.exists() || !localFolder.isDirectory()) {
-            db.presetFolderDao().deleteById(presetId);
+            db.presetFolderDao().deleteById(currentPresetId);
             return Result.success();
         }
 
@@ -82,7 +88,7 @@ public class AutoBackupWorker extends Worker {
             countFilesRecursive(localFolder);
 
             if (totalFilesToSync == 0) {
-                db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
+                db.presetFolderDao().updateSyncTime(currentPresetId, System.currentTimeMillis());
                 return Result.success();
             }
 
@@ -95,7 +101,7 @@ public class AutoBackupWorker extends Worker {
             syncFolderRecursive(localFolder, targetRootId);
 
             // 5. Update Database
-            db.presetFolderDao().updateSyncTime(presetId, System.currentTimeMillis());
+            db.presetFolderDao().updateSyncTime(currentPresetId, System.currentTimeMillis());
 
             // Final Notification
             NotificationHelper.showUploadComplete(getApplicationContext(), totalFilesToSync);
@@ -148,7 +154,13 @@ public class AutoBackupWorker extends Worker {
                 // It's a file. Upload if it doesn't exist on Drive yet.
                 if (!remoteFileNames.contains(item.getName())) {
                     if (item.canRead() && item.length() > 0) {
-                        uploadFileWithProgress(item, driveFolderId);
+                        // --- ENHANCEMENT ADDITION: TRACKING ---
+                        String driveId = uploadFileWithProgress(item, driveFolderId);
+                        if (driveId != null) {
+                            int seqNum = tracker.getNextSequenceNumber(currentPresetId);
+                            tracker.trackFileUpload(item.getAbsolutePath(), seqNum, "user@gmail.com", driveId, currentPresetId, item.length());
+                        }
+                        // -------------------------------------
                         currentlySyncingIndex++;
                     }
                 } else {
@@ -221,7 +233,7 @@ public class AutoBackupWorker extends Worker {
         return names;
     }
 
-    private void uploadFileWithProgress(java.io.File localFile, String parentFolderId) throws IOException {
+    private String uploadFileWithProgress(java.io.File localFile, String parentFolderId) throws IOException {
         File fileMeta = new File();
         fileMeta.setName(localFile.getName());
         fileMeta.setParents(Collections.singletonList(parentFolderId));
@@ -237,7 +249,7 @@ public class AutoBackupWorker extends Worker {
             updateWorkerProgress(localFile.getName(), u.getProgress());
         });
 
-        createRequest.setFields("id").execute();
+        return createRequest.setFields("id").execute().getId();
     }
 
     private void calculateSpeed(long bytesUploaded) {
