@@ -52,7 +52,19 @@
         android:id="@+id/nav_preset_folders"
         android:name="com.cloudnest.app.PresetFoldersFragment"
         android:label="Auto-Backup"
-        tools:layout="@layout/fragment_preset_folders" />
+        tools:layout="@layout/fragment_preset_folders">
+        <!-- ENHANCEMENT: Added action to navigate to the new Visual Ledger -->
+        <action
+            android:id="@+id/action_preset_to_ledger"
+            app:destination="@id/nav_file_database" />
+    </fragment>
+
+    <!-- NEW: Visual Cloud Ledger Screen -->
+    <fragment
+        android:id="@+id/nav_file_database"
+        android:name="com.cloudnest.app.FileDatabaseFragment"
+        android:label="Cloud Ledger"
+        tools:layout="@layout/fragment_file_database" />
 
     <!-- 6. Storage Graph -->
     <fragment
