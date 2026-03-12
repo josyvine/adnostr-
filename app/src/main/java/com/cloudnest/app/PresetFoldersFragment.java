@@ -6,6 +6,9 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
@@ -32,6 +35,7 @@ import java.util.concurrent.Executors;
  * Auto-Backup Configuration Screen.
  * Lists all local folders marked as "Preset" for automatic syncing.
  * UPDATED: Fixed Glitch 6 (Sync status visibility) and Glitch 9 (Manual trigger logic).
+ * UPDATED: Added menu inflation for Visual Cloud Ledger access.
  */
 public class PresetFoldersFragment extends Fragment implements PresetFolderAdapter.OnPresetActionListener {
 
@@ -39,6 +43,13 @@ public class PresetFoldersFragment extends Fragment implements PresetFolderAdapt
     private PresetFolderAdapter adapter;
     private CloudNestDatabase db;
     private ExecutorService dbExecutor;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // --- ENHANCEMENT: Enable options menu ---
+        setHasOptionsMenu(true);
+    }
 
     @Nullable
     @Override
@@ -58,6 +69,22 @@ public class PresetFoldersFragment extends Fragment implements PresetFolderAdapt
         setupRecyclerView();
         loadPresetFolders();
         setupAddButton();
+    }
+
+    // --- ENHANCEMENT: Add Menu Handling ---
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        inflater.inflate(R.menu.preset_top_menu, menu);
+        super.onCreateOptionsMenu(menu, inflater);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_view_ledger) {
+            Navigation.findNavController(requireView()).navigate(R.id.action_preset_to_ledger);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     private void setupRecyclerView() {
