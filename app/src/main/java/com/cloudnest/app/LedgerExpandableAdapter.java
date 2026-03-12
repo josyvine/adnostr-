@@ -85,4 +85,4 @@ public class LedgerExpandableAdapter extends RecyclerView.Adapter<LedgerExpandab
             tvTotalSize = v.findViewById(R.id.tv_ledger_total_size);
         }
     }
-}
+} 
