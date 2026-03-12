@@ -74,21 +74,6 @@ public class FileDatabaseFragment extends Fragment {
                     @Override
                     public void onNothingSelected(AdapterView<?> parent) {}
                 });
-
-                // --- FIXED: Automatically load data for the first account found ---
-                // This ensures the screen is not blank when it first opens.
-                if (!driveList.isEmpty()) {
-                    binding.spinnerDriveSelector.setSelection(0);
-                    loadLedgerData(driveList.get(0).email);
-                }
-            } else {
-                // Optional: Handle case where there are no accounts at all
-                List<String> noAccountsList = new ArrayList<>();
-                noAccountsList.add("No drives connected");
-                ArrayAdapter<String> emptyAdapter = new ArrayAdapter<>(requireContext(), android.R.layout.simple_spinner_item, noAccountsList);
-                emptyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-                binding.spinnerDriveSelector.setAdapter(emptyAdapter);
-                binding.spinnerDriveSelector.setEnabled(false);
             }
         });
     }
