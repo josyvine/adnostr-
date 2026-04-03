@@ -29,4 +29,23 @@
     <color name="nav_item_unselected">#666666</color>
     <color name="nav_item_selected">#FFFFFF</color>
 
+    <!-- MISSING TEMPLATE COLORS (FIX FOR BUILD ERROR) -->
+    <!-- AMOLED Theme -->
+    <color name="amoled_colorPrimary">#2196F3</color>
+    <color name="amoled_backgroundColor">#000000</color>
+    <color name="amoled_textColor">#FFFFFF</color>
+    <color name="amoled_headerTextColor">#FFFFFF</color>
+
+    <!-- Dark Theme (dt) -->
+    <color name="dt_colorPrimary">#2196F3</color>
+    <color name="dt_backgroundColor">#121212</color>
+    <color name="dt_textColor">#E0E0E0</color>
+    <color name="dt_headerTextColor">#FFFFFF</color>
+
+    <!-- Light Theme (lt) -->
+    <color name="lt_colorPrimary">#1976D2</color>
+    <color name="lt_backgroundColor">#FFFFFF</color>
+    <color name="lt_textColor">#212121</color>
+    <color name="lt_headerTextColor">#000000</color>
+
 </resources>
