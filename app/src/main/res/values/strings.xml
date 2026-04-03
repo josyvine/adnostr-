@@ -1,51 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- App Name -->
-    <string name="app_name">CloudNest</string>
+    <!-- Core Application Info -->
+    <string name="app_name">AdNostr</string>
 
-    <!-- Navigation Drawer Titles -->
-    <string name="title_dashboard">Dashboard</string>
-    <string name="title_phone_storage">Phone Storage</string>
-    <string name="title_sd_storage">SD Card Storage</string>
-    <string name="title_drive_browser">Google Drive</string>
-    <string name="title_upload_manager">Upload Manager</string>
-    <string name="title_storage_graph">Storage Usage</string>
-    <string name="title_preset_folders">Preset Folders</string>
-    <string name="title_drive_accounts">Drive Accounts</string>
+    <!-- Navigation Titles -->
+    <string name="title_user_dashboard">Interests</string>
+    <string name="title_adv_dashboard">Business Stats</string>
+    <string name="title_create_ad">New Campaign</string>
+    <string name="title_relay_marketplace">Relay Market</string>
     <string name="title_settings">Settings</string>
-    <string name="title_help">How To Use</string>
-    <string name="title_contact">Contact Us</string>
 
-    <!-- Contact Form Labels -->
-    <string name="contact_title">Contact Support</string>
-    <string name="hint_name">Your Name</string>
-    <string name="hint_email">Your Email</string>
-    <string name="hint_message">How can we help you?</string>
-    <string name="btn_send">SEND MESSAGE</string>
+    <!-- Splash & Onboarding -->
+    <string name="tagline">Decentralized Local Discovery</string>
+    <string name="identity_promise">No Signups • No Tracking • Nostr Protocol</string>
+    <string name="role_selection_header">How do you want to use the app?</string>
+    <string name="role_user_title">👤 Continue as User</string>
+    <string name="role_user_desc">I want to receive amazing local deals, discounts, and ads based on my interests. Total privacy, no data tracking.</string>
+    <string name="role_advertiser_title">📢 Continue as Advertiser</string>
+    <string name="role_advertiser_desc">I am a business. I want to create rich ads and broadcast them globally or locally using the decentralized network.</string>
 
-    <!-- Settings Labels -->
-    <string name="pref_auto_backup">Auto Backup</string>
-    <string name="pref_wifi_only">Upload Only on WiFi</string>
-    <string name="pref_notifications">Upload Notifications</string>
-    <string name="pref_dark_mode">Dark Mode</string>
-    <string name="pref_bg_sync">Background Sync</string>
+    <!-- Error Diagnostic Popup -->
+    <string name="error_header">ADNOSTR: SYSTEM FAILURE</string>
+    <string name="error_instruction">A Java exception occurred. Please diagnose the log below to resolve the issue.</string>
+    <string name="btn_copy_log">COPY LOG</string>
+    <string name="btn_close">CLOSE</string>
 
-    <!-- Help Page Text -->
-    <string name="help_title">Welcome to CloudNest</string>
-    <string name="help_desc">Securely backup your phone and SD card files to Google Drive.</string>
+    <!-- User Dashboard -->
+    <string name="interest_header">What are you interested in?</string>
+    <string name="interest_sub">Select hashtags to receive relevant decentralized local deals via popup notifications.</string>
+    <string name="btn_start_ads">START RECEIVING ADS</string>
 
-    <!-- Dashboard Status Messages -->
-    <string name="storage_loading">Loading storage info...</string>
-    <string name="storage_error">Failed to load storage data</string>
-    <string name="drive_full_warning">Drive storage full. Upload to another Drive account.</string>
+    <!-- Advertiser Dashboard -->
+    <string name="metrics_active_ads">Active Ads</string>
+    <string name="metrics_relay_reach">Reach (Relays)</string>
+    <string name="btn_manage_network">MANAGE RELAY NETWORK</string>
+    <string name="btn_create_ad">CREATE AD</string>
 
-    <!-- General UI -->
-    <string name="upload">Upload</string>
-    <string name="delete">Delete</string>
-    <string name="share">Share</string>
-    <string name="cancel">Cancel</string>
-    <string name="save">Save</string>
-    <string name="logout">Logout</string>
-    <string name="refresh">Refresh</string>
+    <!-- Relay Management -->
+    <string name="relay_header">My Relay Network</string>
+    <string name="relay_sub">Manage the decentralized nodes your ads are broadcasted to. Add premium relays to increase delivery speed.</string>
+    
+    <!-- Marketplace -->
+    <string name="marketplace_header">Premium Relays Marketplace</string>
+    <string name="marketplace_sub">Buy access to high-performance relays directly from other advertisers for maximum ad delivery speed.</string>
 
+    <!-- Settings -->
+    <string name="settings_identity_header">Your Decentralized Identity</string>
+    <string name="settings_role_header">Profile Management</string>
+    <string name="btn_reset_data">RESET ALL DATA &amp; KEYS</string>
 </resources>
