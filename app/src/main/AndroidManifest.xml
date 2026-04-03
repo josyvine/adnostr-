@@ -1,23 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.adnostr.app">
 
-    <!-- Network permissions for Nostr WebSockets and IPFS -->
+    <!-- Network permissions for Nostr WebSockets and IPFS Gateways -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Advertiser GPS Location for generating map links -->
+    <!-- Advertiser GPS Location for generating shop map links -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- STORAGE PERMISSIONS: Required to select and upload images to IPFS -->
+    <!-- For devices running Android 12 (API 32) and below -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    <!-- For devices running Android 13 (API 33) and above -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <!-- Background Execution & WorkManager for listening to Ad Relays -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Notifications for alerting Users about new Local Deals -->
+    <!-- Notifications for alerting Users about new Local Deals (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
-    <!-- Allows the Ad Popup Card and Error Card to show over other apps -->
+    <!-- Allows the Ad Popup Card and Error Card to show over other apps/lock screen -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
@@ -30,7 +38,7 @@
         android:theme="@style/Theme.AdNostr"
         tools:targetApi="31">
 
-        <!-- Splash Screen: Silently generates Nostr Keys in background -->
+        <!-- Splash Screen: Silently generates Nostr Keys and routes the user -->
         <activity
             android:name=".SplashActivity"
             android:exported="true"
@@ -42,21 +50,21 @@
             </intent-filter>
         </activity>
 
-        <!-- The Fork: Asks user if they are an Advertiser or standard User -->
+        <!-- Onboarding: Path selection for User vs Advertiser -->
         <activity
             android:name=".RoleSelectionActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
-        <!-- Main App Interface: Hosts bottom navigation & fragments -->
+        <!-- Main Interface: Hosts Dashboards, Ad Creation, and Settings -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
-        <!-- The Ad Popup Overlay -->
+        <!-- Ad Delivery Card: Displays the IPFS swipe gallery popup -->
         <activity
             android:name=".AdPopupActivity"
             android:excludeFromRecents="true"
@@ -66,7 +74,7 @@
             android:theme="@style/Theme.AdNostr.Transparent" />
 
         <!-- CRITICAL: The Global Error Display Activity -->
-        <!-- Running in a separate process so it survives the main app crash -->
+        <!-- Runs in a separate process to capture crashes from the main process -->
         <activity
             android:name=".ErrorDisplayActivity"
             android:process=":error_handler"
