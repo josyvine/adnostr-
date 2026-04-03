@@ -24,8 +24,7 @@ import coil.request.ImageRequest;
 
 /**
  * The Ad Delivery Overlay.
- * Displays a modern, sleek card for received decentralized ads.
- * Handles swipeable images (via Coil) and dynamic intent actions for business links.
+ * UPDATED: Fixed JSON Array parsing crash and added robust content validation.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -37,18 +36,16 @@ public class AdPopupActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         // 1. Transparent Overlay Flags
-        // Allows the activity to show over the lock screen and dismiss the keyguard if needed
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
                 | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         // 2. Initialize ViewBinding
         binding = ActivityAdPopupBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
         // 3. Extract Ad Data from the incoming Intent
-        // Background listener (NostrListenerWorker) sends the JSON payload here
         String adJsonString = getIntent().getStringExtra("AD_PAYLOAD_JSON");
 
         if (adJsonString == null || adJsonString.isEmpty()) {
@@ -62,8 +59,8 @@ public class AdPopupActivity extends AppCompatActivity {
             parseAndPopulateAd(adJsonString);
         } catch (Exception e) {
             Log.e(TAG, "Failed to render Ad UI: " + e.getMessage());
-            // Global Crash Watcher will handle this if it's a fatal error
-            throw new RuntimeException("Ad Rendering Failure", e);
+            // This rethrow will trigger the Global Error Popup for diagnosis
+            throw new RuntimeException("Ad Rendering Failure: " + e.getMessage(), e);
         }
 
         // 5. Setup Close Button
@@ -71,34 +68,50 @@ public class AdPopupActivity extends AppCompatActivity {
     }
 
     /**
-     * Extracts fields from the kind:30001 event and updates the UI components.
+     * Extracts fields from the kind:30001 event.
+     * FIXED: Now correctly handles standard Nostr Relay messages (JSON Arrays).
      */
     private void parseAndPopulateAd(String jsonStr) throws Exception {
-        JSONObject event = new JSONObject(jsonStr);
-        JSONObject content = new JSONObject(event.getString("content"));
+        JSONObject event;
+
+        // CRITICAL FIX: Check if the string is a JSONArray (Relay message) or JSONObject (Raw Event)
+        if (jsonStr.trim().startsWith("[")) {
+            JSONArray relayMsg = new JSONArray(jsonStr);
+            // Nostr EVENT messages are: ["EVENT", "sub_id", {event_object}]
+            if (relayMsg.length() >= 3 && "EVENT".equals(relayMsg.getString(0))) {
+                event = relayMsg.getJSONObject(2);
+            } else {
+                throw new Exception("Malformed Nostr relay message array.");
+            }
+        } else {
+            event = new JSONObject(jsonStr);
+        }
+
+        // Extract the nested 'content' string
+        String contentRaw = event.optString("content", "");
+        if (contentRaw.isEmpty()) throw new Exception("Ad event contains no content payload.");
+        
+        JSONObject content = new JSONObject(contentRaw);
 
         // Set Text Content
         String title = content.optString("title", "Local Deal Found");
-        String desc = content.optString("desc", "Click for details");
+        String desc = content.optString("desc", "Check out this new deal near you.");
         binding.tvPopupTitle.setText(title);
         binding.tvPopupDesc.setText(desc);
 
         // Handle Images (IPFS Gateway Loading)
         JSONArray imageArray = content.optJSONArray("images");
         if (imageArray != null && imageArray.length() > 0) {
-            // Get the first image as the primary cover
             String ipfsUri = imageArray.getString(0);
             String gatewayUrl = ipfsUri.replace("ipfs://", "https://cloudflare-ipfs.com/ipfs/");
             
-            // Load image using Coil (Modern, lightweight)
             ImageRequest request = new ImageRequest.Builder(this)
                     .data(gatewayUrl)
                     .crossfade(true)
                     .target(binding.ivAdCover)
                     .build();
             
-            ImageLoader imageLoader = Coil.imageLoader(this);
-            imageLoader.enqueue(request);
+            Coil.imageLoader(this).enqueue(request);
         }
 
         // Handle Dynamic Action Buttons
@@ -108,12 +121,9 @@ public class AdPopupActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Logic to show/hide and configure buttons based on the advertiser's provided links.
-     */
     private void setupActionButtons(JSONObject links) {
-        // 1. WhatsApp Button
-        String whatsapp = links.optString("whatsapp");
+        // WhatsApp Button
+        String whatsapp = links.optString("whatsapp", "");
         if (!whatsapp.isEmpty()) {
             binding.btnActionWhatsapp.setVisibility(View.VISIBLE);
             binding.btnActionWhatsapp.setOnClickListener(v -> {
@@ -122,22 +132,22 @@ public class AdPopupActivity extends AppCompatActivity {
             });
         }
 
-        // 2. Google Maps Button
-        String maps = links.optString("maps");
+        // Google Maps Button
+        String maps = links.optString("maps", "");
         if (!maps.isEmpty()) {
             binding.btnActionMap.setVisibility(View.VISIBLE);
             binding.btnActionMap.setOnClickListener(v -> openUrlIntent(maps));
         }
 
-        // 3. Website Button
-        String website = links.optString("website");
+        // Website Button
+        String website = links.optString("website", "");
         if (!website.isEmpty()) {
             binding.btnActionWebsite.setVisibility(View.VISIBLE);
             binding.btnActionWebsite.setOnClickListener(v -> openUrlIntent(website));
         }
 
-        // 4. Call Now Button
-        String call = links.optString("call");
+        // Call Now Button
+        String call = links.optString("call", "");
         if (!call.isEmpty()) {
             binding.btnActionCall.setVisibility(View.VISIBLE);
             binding.btnActionCall.setOnClickListener(v -> {
@@ -147,9 +157,6 @@ public class AdPopupActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Helper to open external links (Maps, Web, WhatsApp) via standard Android Intents.
-     */
     private void openUrlIntent(String url) {
         try {
             Intent i = new Intent(Intent.ACTION_VIEW);
@@ -162,7 +169,6 @@ public class AdPopupActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        // Standard close on back press
         super.onBackPressed();
         finish();
     }
