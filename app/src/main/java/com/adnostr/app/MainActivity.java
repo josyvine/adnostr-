@@ -15,6 +15,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
+import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.PeriodicWorkRequest;
@@ -29,13 +30,12 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Main Interface Host for AdNostr.
- * Dynamically switches layouts between User Mode and Advertiser Mode.
- * UPDATED: Handles storage permissions for IPFS and stabilizes Settings navigation.
+ * UPDATED: Fixed Settings navigation glitch and added full hardware permission handling.
  */
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_Main";
-    private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final int PERMISSION_REQUEST_CODE = 2002;
     
     private ActivityMainBinding binding;
     private AdNostrDatabaseHelper db;
@@ -64,64 +64,75 @@ public class MainActivity extends AppCompatActivity {
             // Configure the Bottom Navigation with the NavController
             NavigationUI.setupWithNavController(binding.bottomNav, navController);
 
-            // Dynamically adjust UI/Menu based on User Role
+            // UPDATED: Dynamically adjust UI/Menu and Top Level Destinations
             configureRoleBasedUI();
         }
 
-        // 4. Request necessary permissions for IPFS and Location
-        checkAndRequestPermissions();
+        // 4. Request Permissions for GPS (Maps) and Storage (IPFS)
+        checkAndRequestAppPermissions();
 
-        // 5. Start the Background Nostr Listener (WorkManager)
+        // 5. Start Ad Listener
         startBackgroundAdListener();
     }
 
     /**
-     * Ensures app has permissions to upload images and access location.
+     * Logic to handle Location, Storage, and Notification permissions.
      */
-    private void checkAndRequestPermissions() {
-        List<String> permissionsNeeded = new ArrayList<>();
+    private void checkAndRequestAppPermissions() {
+        List<String> permissions = new ArrayList<>();
         
-        permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
-
+        // Location is needed for Advertiser Maps
+        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        
+        // Storage/Media is needed for IPFS Image Selection
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsNeeded.add(Manifest.permission.READ_MEDIA_IMAGES);
-            permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS);
         } else {
-            permissionsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
         }
 
-        List<String> listPermissionsAssign = new ArrayList<>();
-        for (String perm : permissionsNeeded) {
-            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
-                listPermissionsAssign.add(perm);
+        List<String> listPermissionsNeeded = new ArrayList<>();
+        for (String p : permissions) {
+            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                listPermissionsNeeded.add(p);
             }
         }
 
-        if (!listPermissionsAssign.isEmpty()) {
-            ActivityCompat.requestPermissions(this, listPermissionsAssign.toArray(new String[0]), PERMISSION_REQUEST_CODE);
+        if (!listPermissionsNeeded.isEmpty()) {
+            ActivityCompat.requestPermissions(this, listPermissionsNeeded.toArray(new String[0]), PERMISSION_REQUEST_CODE);
         }
     }
 
     /**
-     * Adjusts the visible menu items and initial destination 
-     * based on whether the person is a User or an Advertiser.
+     * UPDATED: Adjusts the visible menu items ensuring Settings is ALWAYS available.
+     * Prevents the glitch where Settings click does nothing in Advertiser mode.
      */
     private void configureRoleBasedUI() {
         String role = db.getUserRole();
-        Log.i(TAG, "Configuring UI for Role: " + role);
-
         Menu menu = binding.bottomNav.getMenu();
 
+        // Standard Top Level destinations (prevents "Up" button on main tabs)
+        AppBarConfiguration.Builder builder = new AppBarConfiguration.Builder(
+                R.id.nav_user_dashboard, 
+                R.id.nav_advertiser_dashboard, 
+                R.id.nav_settings
+        );
+        
+        NavigationUI.setupActionBarWithNavController(this, navController, builder.build());
+
         if (RoleSelectionActivity.ROLE_USER.equals(role)) {
+            // USER VIEW
+            menu.findItem(R.id.nav_user_dashboard).setVisible(true);
             menu.findItem(R.id.nav_advertiser_dashboard).setVisible(false);
             menu.findItem(R.id.nav_create_ad).setVisible(false);
             menu.findItem(R.id.nav_relay_marketplace).setVisible(false);
-            menu.findItem(R.id.nav_user_dashboard).setVisible(true);
             menu.findItem(R.id.nav_settings).setVisible(true);
             
             navController.navigate(R.id.nav_user_dashboard);
             
-        } else if (RoleSelectionActivity.ROLE_ADVERTISER.equals(role)) {
+        } else {
+            // ADVERTISER VIEW
             menu.findItem(R.id.nav_user_dashboard).setVisible(false);
             menu.findItem(R.id.nav_advertiser_dashboard).setVisible(true);
             menu.findItem(R.id.nav_create_ad).setVisible(true);
@@ -134,8 +145,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void startBackgroundAdListener() {
         if (RoleSelectionActivity.ROLE_USER.equals(db.getUserRole())) {
-            Log.d(TAG, "Starting Background Nostr Relay Listener...");
-            
             PeriodicWorkRequest adListenRequest = new PeriodicWorkRequest.Builder(
                     NostrListenerWorker.class, 
                     15, TimeUnit.MINUTES)
@@ -163,12 +172,11 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSION_REQUEST_CODE) {
-            boolean allGranted = true;
-            for (int res : grantResults) {
-                if (res != PackageManager.PERMISSION_GRANTED) allGranted = false;
-            }
-            if (!allGranted) {
-                Toast.makeText(this, "Permissions required for full functionality.", Toast.LENGTH_SHORT).show();
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "Permissions denied. Some features will not work.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
             }
         }
     }
