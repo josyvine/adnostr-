@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 
+      Decentralized communication uses a wide variety of domains (relays and gateways).
+      This configuration ensures that all traffic is handled securely.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- 
+      Optional: If you need to test with local development relays that do not have 
+      SSL certificates (e.g., ws://localhost), add their domain here.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain> <!-- Android Emulator Loopback -->
+    </domain-config>
+
+    <!-- 
+      Specific configuration for IPFS Gateways to ensure high-performance 
+      media loading without blocking.
+    -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">cloudflare-ipfs.com</domain>
+        <domain includeSubdomains="true">ipfs.io</domain>
+        <domain includeSubdomains="true">gateway.pinata.cloud</domain>
+    </domain-config>
+</network-security-config>
