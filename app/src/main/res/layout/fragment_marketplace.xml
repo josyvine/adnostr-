@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:padding="16dp">
+
+    <!-- HEADER SECTION -->
+    <TextView
+        android:id="@+id/tvMarketplaceHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Premium Relays Marketplace"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/tvMarketplaceSub"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Buy access to high-performance relays directly from other advertisers for maximum ad delivery speed. Swipe down to refresh."
+        android:textColor="#888888"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvMarketplaceHeader" />
+
+    <!-- SWIPE-TO-REFRESH CONTAINER -->
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefreshLayout"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvMarketplaceSub">
+
+        <!-- MARKETPLACE LIST CONTAINER -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvMarketplace"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            tools:listitem="@layout/item_marketplace_offer" />
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- EMPTY STATE -->
+    <TextView
+        android:id="@+id/tvNoListings"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="No marketplace listings found.\nSwipe down to check again."
+        android:textColor="#444444"
+        android:gravity="center"
+        android:visibility="gone"
+        tools:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/swipeRefreshLayout" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
