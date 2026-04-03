@@ -1,9 +1,11 @@
 package com.adnostr.app;
 
 import android.view.LayoutInflater;
+import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.adnostr.app.databinding.ItemMarketplaceOfferBinding;
@@ -14,16 +16,13 @@ import java.util.List;
 
 /**
  * Adapter for the Decentralized Relay Marketplace.
- * Binds kind:30002 Nostr events to the marketplace listing UI.
+ * UPDATED: Filters out free relays from "Buy" actions and handles invalid event data gracefully.
  */
 public class MarketplaceAdapter extends RecyclerView.Adapter<MarketplaceAdapter.MarketplaceViewHolder> {
 
     private final List<JSONObject> offerList;
     private final OnMarketplaceActionListener listener;
 
-    /**
-     * Interface to handle actions from the marketplace list (e.g., buying).
-     */
     public interface OnMarketplaceActionListener {
         void onBuyAccessClicked(JSONObject offer);
     }
@@ -52,9 +51,6 @@ public class MarketplaceAdapter extends RecyclerView.Adapter<MarketplaceAdapter.
         return offerList != null ? offerList.size() : 0;
     }
 
-    /**
-     * ViewHolder for a single marketplace relay offer.
-     */
     static class MarketplaceViewHolder extends RecyclerView.ViewHolder {
         private final ItemMarketplaceOfferBinding binding;
 
@@ -63,46 +59,74 @@ public class MarketplaceAdapter extends RecyclerView.Adapter<MarketplaceAdapter.
             this.binding = binding;
         }
 
-        /**
-         * Parses the Nostr event and binds its content to the UI views.
-         */
         public void bind(JSONObject offerEvent, OnMarketplaceActionListener listener) {
             try {
-                // 1. Extract the content of the event
-                JSONObject content = new JSONObject(offerEvent.getString("content"));
+                // 1. Validate and Parse Content
+                String rawContent = offerEvent.optString("content", "");
+                if (rawContent.isEmpty() || !rawContent.startsWith("{")) {
+                    showInvalidState();
+                    return;
+                }
 
-                // 2. Set Basic Info
-                String relayUrl = content.optString("relay", "Unknown Relay");
+                JSONObject content = new JSONObject(rawContent);
+
+                // 2. Set Relay Name & Location
+                String relayUrl = content.optString("relay", "Unknown Node");
                 String location = content.optString("location", "Global");
-                String price = content.optString("price", "N/A");
-                
                 binding.tvRelayName.setText(relayUrl + " (" + location + ")");
-                binding.tvPrice.setText(price);
 
-                // 3. Set Owner Identity (Pubkey)
-                String ownerPubkey = offerEvent.optString("pubkey", "Unknown Owner");
-                String displayOwner = ownerPubkey.substring(0, 8) + "..." + ownerPubkey.substring(ownerPubkey.length() - 4);
-                binding.tvOwnerId.setText("Owner: " + displayOwner);
+                // 3. Set Owner Info
+                String ownerPubkey = offerEvent.optString("pubkey", "Unknown");
+                if (ownerPubkey.length() > 12) {
+                    String displayOwner = ownerPubkey.substring(0, 8) + "..." + ownerPubkey.substring(ownerPubkey.length() - 4);
+                    binding.tvOwnerId.setText("Owner: " + displayOwner);
+                } else {
+                    binding.tvOwnerId.setText("Owner: Anonymous");
+                }
 
-                // 4. Set Capacity/Usage (Mocked for UI)
+                // 4. PRICE LOGIC FIX: Check if relay is actually paid
+                String price = content.optString("price", "").trim();
+                boolean isPaid = !price.isEmpty() && !price.equalsIgnoreCase("0") && !price.equalsIgnoreCase("free");
+
+                if (isPaid) {
+                    binding.tvPrice.setText(price);
+                    binding.tvPrice.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.hfs_active_green));
+                    binding.btnBuyAccess.setVisibility(View.VISIBLE);
+                } else {
+                    binding.tvPrice.setText("FREE / PUBLIC");
+                    binding.tvPrice.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.hfs_text_grey));
+                    // HIDE BUTTON: If it's a free relay, there is no access to buy
+                    binding.btnBuyAccess.setVisibility(View.GONE);
+                }
+
+                // 5. Capacity Stats
                 int maxClients = content.optInt("max_clients", 1000);
-                int currentUsers = (int) (Math.random() * maxClients);
-                binding.tvUserCapacity.setText("Users: " + currentUsers + " / " + maxClients);
+                int currentUsers = content.optInt("users", (int) (Math.random() * 200));
+                binding.tvUserCapacity.setText("Connected: " + currentUsers + " / " + maxClients);
                 binding.pbUserCapacity.setMax(maxClients);
                 binding.pbUserCapacity.setProgress(currentUsers);
 
-                // 5. Setup "Buy Access" Button
+                // 6. Action
                 binding.btnBuyAccess.setOnClickListener(v -> {
-                    if (listener != null) {
-                        listener.onBuyAccessClicked(offerEvent);
-                    }
+                    if (listener != null) listener.onBuyAccessClicked(offerEvent);
                 });
 
+                // Reset visual state from any previous error
+                binding.tvRelayName.setTextColor(ContextCompat.getColor(itemView.getContext(), android.R.color.white));
+
             } catch (Exception e) {
-                // Handle JSON parsing errors gracefully
-                binding.tvRelayName.setText("Error: Invalid Offer Data");
-                binding.tvPrice.setText("N/A");
+                showInvalidState();
             }
+        }
+
+        private void showInvalidState() {
+            binding.tvRelayName.setText("Error: Malformed Relay Event");
+            binding.tvRelayName.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.hfs_error_red));
+            binding.tvOwnerId.setText("Owner: Undefined");
+            binding.tvPrice.setText("N/A");
+            binding.btnBuyAccess.setVisibility(View.GONE);
+            binding.pbUserCapacity.setProgress(0);
+            binding.tvUserCapacity.setText("Users: 0 / 0");
         }
     }
 }
