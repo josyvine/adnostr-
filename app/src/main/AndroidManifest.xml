@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.adnostr.app">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Network permissions for Nostr WebSockets and IPFS Gateways -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -24,7 +23,7 @@
 
     <!-- Notifications for alerting Users about new Local Deals (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    
+
     <!-- Allows the Ad Popup Card and Error Card to show over other apps/lock screen -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
