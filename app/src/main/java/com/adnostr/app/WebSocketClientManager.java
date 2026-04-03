@@ -7,12 +7,13 @@ import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Decentralized Network Manager.
- * UPDATED: Optimized connection lifecycle and verified broadcast messaging format.
- * FIXED: Removed ReadyState enum constants to resolve "cannot find symbol" build errors.
+ * UPDATED: Added support for connecting to a massive relay pool simultaneously 
+ * to restore the 30+ relay connection status.
  */
 public class WebSocketClientManager {
 
@@ -52,20 +53,30 @@ public class WebSocketClientManager {
     }
 
     /**
+     * NEW: Connects to a set of relays simultaneously.
+     * Restores the decentralized reach by utilizing the full bootstrap pool.
+     */
+    public void connectPool(Set<String> relayUrls) {
+        if (relayUrls == null || relayUrls.isEmpty()) return;
+        
+        Log.i(TAG, "Initiating connection to " + relayUrls.size() + " decentralized nodes...");
+        for (String url : relayUrls) {
+            connectRelay(url);
+        }
+    }
+
+    /**
      * Attempts to connect to a decentralized relay if not already active.
      */
     public void connectRelay(final String relayUrl) {
+        // Validation: Ensure URL is not empty and starts with wss://
+        if (relayUrl == null || !relayUrl.startsWith("wss://")) return;
+
         if (activeRelays.containsKey(relayUrl)) {
             WebSocketClient existing = activeRelays.get(relayUrl);
-            
-            /* 
-             * FIXED LOGIC: We check if the socket is already open or currently 
-             * attempting to connect. If existing.isClosed() is false, it means 
-             * the socket is either OPEN, CONNECTING, or NOT_YET_CONNECTED.
-             * This avoids using the problematic ReadyState.CONNECTING symbol.
-             */
+
+            // FIXED LOGIC: If the socket exists and is NOT closed, skip to avoid duplicates.
             if (existing != null && !existing.isClosed()) {
-                Log.d(TAG, "Relay session already active or connecting: " + relayUrl);
                 return;
             }
         }
@@ -107,7 +118,8 @@ public class WebSocketClientManager {
                 }
             };
 
-            Log.d(TAG, "Connecting to " + relayUrl + "...");
+            // Set a reasonable connection timeout for decentralized nodes
+            client.setConnectionLostTimeout(30); 
             client.connect();
 
         } catch (Exception e) {
@@ -116,8 +128,7 @@ public class WebSocketClientManager {
     }
 
     /**
-     * Broadcasts a signed Nostr event JSON to all active relays.
-     * Logic: Wraps the event in the Nostr 'EVENT' message type.
+     * Broadcasts a signed Nostr event JSON to all active relays in the pool.
      */
     public void broadcastEvent(String eventJson) {
         if (activeRelays.isEmpty()) {
@@ -125,7 +136,6 @@ public class WebSocketClientManager {
             return;
         }
 
-        // Standard Nostr Broadcast Format: ["EVENT", {signed_event_json}]
         String nostrMessage = "[\"EVENT\"," + eventJson + "]";
 
         int sentCount = 0;
@@ -140,15 +150,20 @@ public class WebSocketClientManager {
     }
 
     /**
-     * Subscribes to specific event filters on a relay.
+     * Subscribes to specific event filters on all active relays.
      */
+    public void subscribeAll(String subscriptionJson) {
+        for (WebSocketClient client : activeRelays.values()) {
+            if (client != null && client.isOpen()) {
+                client.send(subscriptionJson);
+            }
+        }
+    }
+
     public void subscribe(String relayUrl, String subscriptionJson) {
         WebSocketClient client = activeRelays.get(relayUrl);
         if (client != null && client.isOpen()) {
             client.send(subscriptionJson);
-            Log.d(TAG, "Subscription sent to " + relayUrl);
-        } else {
-            Log.w(TAG, "Subscription failed: " + relayUrl + " is not connected.");
         }
     }
 
@@ -170,7 +185,9 @@ public class WebSocketClientManager {
     public int getConnectedRelayCount() {
         int count = 0;
         for (WebSocketClient client : activeRelays.values()) {
-            if (client != null && client.isOpen()) count++;
+            if (client != null && client.isOpen()) {
+                count++;
+            }
         }
         return count;
     }
