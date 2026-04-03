@@ -14,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
+import androidx.navigation.Navigation; // REQUIRED FIX: Added missing import
 
 import com.adnostr.app.databinding.FragmentCreateAdBinding;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -166,6 +167,8 @@ public class CreateAdFragment extends Fragment {
         // Logic will bridge to WebSocketClientManager to push to relays
         Log.i(TAG, "Broadcasting Ad Event: " + signedEventJson);
         Toast.makeText(getContext(), "Ad Broadcasted to Decentralized Network!", Toast.LENGTH_LONG).show();
+        
+        // Navigation now works because of the added import
         Navigation.findNavController(requireView()).navigateUp();
     }
 
