@@ -1,42 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand Colors -->
-    <color name="colorPrimary">#2196F3</color>
-    <color name="colorPrimaryDark">#1976D2</color>
-    <color name="colorAccent">#03DAC5</color>
+    <!-- Basic Palette -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    
+    <!-- System & Brand Colors -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
 
-    <!-- FIXED: Added missing color required by NotificationHelper.java -->
-    <color name="cloudnest_blue">#2196F3</color>
+    <!-- AdNostr Dark Theme Palette -->
+    <color name="hfs_background_dark">#121212</color>
+    <color name="hfs_card_dark">#1E1E1E</color>
+    <color name="hfs_border_grey">#333333</color>
+    <color name="hfs_text_grey">#B0B0B0</color>
+    <color name="hfs_subtext_grey">#666666</color>
 
-    <!-- UI Status Colors -->
-    <color name="cloudnest_status_green">#4CAF50</color>
-    <color name="cloudnest_status_yellow">#FFC107</color>
-    <color name="cloudnest_status_red">#F44336</color>
-    <color name="cloudnest_gray">#9E9E9E</color>
+    <!-- State Colors -->
+    <color name="hfs_active_green">#4CAF50</color>
+    <color name="hfs_active_blue">#2196F3</color>
+    <color name="hfs_inactive_red">#FF5252</color>
+    <color name="hfs_error_red">#FF5252</color>
+    <color name="hfs_warning_orange">#FF9800</color>
 
-    <!-- Standard UI Colors -->
-    <color name="white">#FFFFFF</color>
-    <color name="black">#000000</color>
+    <!-- Navigation Colors -->
+    <color name="nav_item_unselected">#666666</color>
+    <color name="nav_item_selected">#FFFFFF</color>
 
-    <!-- MISSING COLORS FIXED HERE -->
-    <color name="hfs_primary_blue">#2196F3</color>
-    <color name="nav_unselected">#9E9E9E</color>
-
-    <!-- Amoled Theme Colors -->
-    <color name="amoled_colorPrimary">#2196F3</color>
-    <color name="amoled_backgroundColor">#000000</color>
-    <color name="amoled_textColor">#FFFFFF</color>
-    <color name="amoled_headerTextColor">#FFFFFF</color>
-
-    <!-- Dark Theme Colors -->
-    <color name="dt_colorPrimary">#1976D2</color>
-    <color name="dt_backgroundColor">#121212</color>
-    <color name="dt_textColor">#E0E0E0</color>
-    <color name="dt_headerTextColor">#FFFFFF</color>
-
-    <!-- Light Theme Colors -->
-    <color name="lt_colorPrimary">#2196F3</color>
-    <color name="lt_backgroundColor">#F5F5F5</color>
-    <color name="lt_textColor">#212121</color>
-    <color name="lt_headerTextColor">#000000</color>
 </resources>
