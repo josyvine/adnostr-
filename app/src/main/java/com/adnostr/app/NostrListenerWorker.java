@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
  * Background Ad Synchronizer.
  * UPDATED: Fixed relay message extraction and background lifecycle management 
  * to ensure ads are actually received and processed.
+ * FIXED: Resolved JSONArray symbol error by using .put() instead of .add().
  */
 public class NostrListenerWorker extends Worker {
 
@@ -70,10 +71,11 @@ public class NostrListenerWorker extends Worker {
             // Build Filter: ["REQ", "sub_id", {"kinds": [30001], "#t": ["tag1", "tag2"]}]
             JSONObject filter = new JSONObject();
             filter.put("kinds", new JSONArray().put(30001));
-            
+
             JSONArray tags = new JSONArray();
             for (String tag : interests) {
-                tags.add(tag.toLowerCase());
+                // FIXED: JSONArray uses .put(), not .add()
+                tags.put(tag.toLowerCase());
             }
             filter.put("#t", tags);
 
@@ -133,7 +135,7 @@ public class NostrListenerWorker extends Worker {
     private void processRelayEvent(String rawMessage) {
         try {
             if (!rawMessage.startsWith("[")) return;
-            
+
             JSONArray msgArray = new JSONArray(rawMessage);
             if (!"EVENT".equals(msgArray.getString(0))) return;
 
