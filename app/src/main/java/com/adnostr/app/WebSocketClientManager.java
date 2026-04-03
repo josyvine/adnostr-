@@ -6,21 +6,20 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Decentralized Network Manager.
- * Maintains persistent WebSocket connections to multiple Nostr relays.
- * Handles event broadcasting (Ads) and real-time subscription management.
+ * UPDATED: Optimized connection lifecycle and verified broadcast messaging format 
+ * for decentralized Nostr relays.
  */
 public class WebSocketClientManager {
 
     private static final String TAG = "AdNostr_WSManager";
     private static WebSocketClientManager instance;
 
-    // Thread-safe map of active relay connections
+    // Thread-safe map of active relay connections (URL -> Client)
     private final Map<String, WebSocketClient> activeRelays = new ConcurrentHashMap<>();
     
     // Callback to notify UI components of network changes
@@ -28,6 +27,7 @@ public class WebSocketClientManager {
 
     /**
      * Interface for monitoring relay connectivity status.
+     * Note: Callbacks occur on the WebSocket background thread.
      */
     public interface RelayStatusListener {
         void onRelayConnected(String url);
@@ -37,7 +37,7 @@ public class WebSocketClientManager {
     }
 
     private WebSocketClientManager() {
-        // Private constructor for Singleton pattern
+        // Private constructor for Singleton
     }
 
     public static synchronized WebSocketClientManager getInstance() {
@@ -52,21 +52,22 @@ public class WebSocketClientManager {
     }
 
     /**
-     * Attempts to connect to a new decentralized relay.
-     * 
-     * @param relayUrl The wss:// address of the relay.
+     * Attempts to connect to a decentralized relay if not already active.
      */
     public void connectRelay(final String relayUrl) {
         if (activeRelays.containsKey(relayUrl)) {
-            Log.d(TAG, "Relay already connected or connecting: " + relayUrl);
-            return;
+            WebSocketClient existing = activeRelays.get(relayUrl);
+            if (existing != null && (existing.isOpen() || existing.isConnecting())) {
+                Log.d(TAG, "Relay session already active: " + relayUrl);
+                return;
+            }
         }
 
         try {
             WebSocketClient client = new WebSocketClient(new URI(relayUrl)) {
                 @Override
                 public void onOpen(ServerHandshake handshakedata) {
-                    Log.i(TAG, "Successfully connected to relay: " + relayUrl);
+                    Log.i(TAG, "Relay Connection Established: " + relayUrl);
                     activeRelays.put(relayUrl, this);
                     if (statusListener != null) {
                         statusListener.onRelayConnected(relayUrl);
@@ -75,7 +76,6 @@ public class WebSocketClientManager {
 
                 @Override
                 public void onMessage(String message) {
-                    Log.v(TAG, "Message from " + relayUrl + ": " + message);
                     if (statusListener != null) {
                         statusListener.onMessageReceived(relayUrl, message);
                     }
@@ -83,7 +83,7 @@ public class WebSocketClientManager {
 
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
-                    Log.w(TAG, "Disconnected from " + relayUrl + ". Reason: " + reason);
+                    Log.w(TAG, "Relay Closed [" + relayUrl + "]: " + reason);
                     activeRelays.remove(relayUrl);
                     if (statusListener != null) {
                         statusListener.onRelayDisconnected(relayUrl, reason);
@@ -92,61 +92,59 @@ public class WebSocketClientManager {
 
                 @Override
                 public void onError(Exception ex) {
-                    Log.e(TAG, "Relay Error [" + relayUrl + "]: " + ex.getMessage());
+                    Log.e(TAG, "Relay Failure [" + relayUrl + "]: " + ex.getMessage());
+                    activeRelays.remove(relayUrl);
                     if (statusListener != null) {
                         statusListener.onError(relayUrl, ex);
                     }
                 }
             };
 
-            Log.d(TAG, "Initiating connection to " + relayUrl);
+            Log.d(TAG, "Connecting to " + relayUrl + "...");
             client.connect();
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to initialize WebSocket for " + relayUrl + ": " + e.getMessage());
-            // Global Exception Handler in AdNostrApplication will catch fatal setup errors
+            Log.e(TAG, "Initial WebSocket setup failed for " + relayUrl + ": " + e.getMessage());
         }
     }
 
     /**
-     * Broadcasts a signed Nostr event (like an Ad or Profile) to all active relays.
-     * 
-     * @param eventJson The signed JSON event string.
+     * Broadcasts a signed Nostr event JSON to all active relays.
+     * Logic: Wraps the event in the Nostr 'EVENT' message type.
      */
     public void broadcastEvent(String eventJson) {
         if (activeRelays.isEmpty()) {
-            Log.w(TAG, "Broadcast failed: No active relay connections.");
+            Log.w(TAG, "Zero active relays. Broadcast cancelled.");
             return;
         }
 
+        // Standard Nostr Broadcast Format: ["EVENT", {signed_event_json}]
         String nostrMessage = "[\"EVENT\"," + eventJson + "]";
         
+        int sentCount = 0;
         for (Map.Entry<String, WebSocketClient> entry : activeRelays.entrySet()) {
             WebSocketClient client = entry.getValue();
-            if (client.isOpen()) {
+            if (client != null && client.isOpen()) {
                 client.send(nostrMessage);
-                Log.d(TAG, "Event sent to: " + entry.getKey());
+                sentCount++;
             }
         }
+        Log.i(TAG, "Event broadcasted to " + sentCount + " active nodes.");
     }
 
     /**
-     * Sends a subscription request (REQ) to a specific relay.
-     * 
-     * @param relayUrl The target relay.
-     * @param subscriptionJson The REQ JSON message.
+     * Subscribes to specific event filters on a relay.
      */
     public void subscribe(String relayUrl, String subscriptionJson) {
         WebSocketClient client = activeRelays.get(relayUrl);
         if (client != null && client.isOpen()) {
             client.send(subscriptionJson);
             Log.d(TAG, "Subscription sent to " + relayUrl);
+        } else {
+            Log.w(TAG, "Subscription failed: " + relayUrl + " is not connected.");
         }
     }
 
-    /**
-     * Closes a specific relay connection.
-     */
     public void disconnectRelay(String relayUrl) {
         WebSocketClient client = activeRelays.remove(relayUrl);
         if (client != null) {
@@ -154,18 +152,19 @@ public class WebSocketClientManager {
         }
     }
 
-    /**
-     * Closes all network connections.
-     */
     public void shutdown() {
         for (String url : activeRelays.keySet()) {
             disconnectRelay(url);
         }
         activeRelays.clear();
-        Log.i(TAG, "All relay connections terminated.");
+        Log.i(TAG, "WebSocket Management Service Stopped.");
     }
 
     public int getConnectedRelayCount() {
-        return activeRelays.size();
+        int count = 0;
+        for (WebSocketClient client : activeRelays.values()) {
+            if (client != null && client.isOpen()) count++;
+        }
+        return count;
     }
 }
