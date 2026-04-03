@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- USER ROLE SPECIFIC ITEMS -->
+    <item
+        android:id="@+id/nav_user_dashboard"
+        android:icon="@android:drawable/ic_menu_myplaces"
+        android:title="Interests"
+        android:visible="true" />
+
+    <!-- ADVERTISER ROLE SPECIFIC ITEMS -->
+    <item
+        android:id="@+id/nav_advertiser_dashboard"
+        android:icon="@android:drawable/ic_menu_sort_by_size"
+        android:title="Stats"
+        android:visible="false" />
+
+    <item
+        android:id="@+id/nav_create_ad"
+        android:icon="@android:drawable/ic_menu_add"
+        android:title="Broadcast"
+        android:visible="false" />
+
+    <item
+        android:id="@+id/nav_relay_marketplace"
+        android:icon="@android:drawable/ic_menu_share"
+        android:title="Network"
+        android:visible="false" />
+
+    <!-- SHARED ITEMS -->
+    <item
+        android:id="@+id/nav_settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="Settings"
+        android:visible="true" />
+
+</menu>
