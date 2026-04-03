@@ -55,13 +55,16 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
+    // Flexbox Layout (REQUIRED FIX: Needed for Ad Popup Card alignment attributes)
+    implementation 'com.google.android.flexbox:flexbox:3.0.0'
+
     // Navigation
     implementation 'androidx.navigation:navigation-fragment:2.7.7'
     implementation 'androidx.navigation:navigation-ui:2.7.7'
 
     // Nostr Protocol & WebSockets
     implementation 'org.java-websocket:Java-WebSocket:1.5.3'
-    
+
     // Cryptography (For Nostr Secp256k1/Schnorr keys)
     implementation 'org.bouncycastle:bcprov-jdk15to18:1.77'
 
