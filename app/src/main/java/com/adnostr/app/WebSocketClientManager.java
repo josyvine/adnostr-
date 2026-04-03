@@ -3,7 +3,6 @@ package com.adnostr.app;
 import android.util.Log;
 
 import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.enums.ReadyState;
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
@@ -12,9 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Decentralized Network Manager.
- * UPDATED: Optimized connection lifecycle and verified broadcast messaging format 
- * for decentralized Nostr relays.
- * FIXED: Resolved symbol error by using fully qualified enum path for ReadyState.
+ * UPDATED: Optimized connection lifecycle and verified broadcast messaging format.
+ * FIXED: Removed ReadyState enum constants to resolve "cannot find symbol" build errors.
  */
 public class WebSocketClientManager {
 
@@ -60,9 +58,13 @@ public class WebSocketClientManager {
         if (activeRelays.containsKey(relayUrl)) {
             WebSocketClient existing = activeRelays.get(relayUrl);
             
-            // FIXED: Using fully qualified name to ensure the compiler finds the symbol
-            if (existing != null && (existing.isOpen() || 
-                existing.getReadyState() == org.java_websocket.enums.ReadyState.CONNECTING)) {
+            /* 
+             * FIXED LOGIC: We check if the socket is already open or currently 
+             * attempting to connect. If existing.isClosed() is false, it means 
+             * the socket is either OPEN, CONNECTING, or NOT_YET_CONNECTED.
+             * This avoids using the problematic ReadyState.CONNECTING symbol.
+             */
+            if (existing != null && !existing.isClosed()) {
                 Log.d(TAG, "Relay session already active or connecting: " + relayUrl);
                 return;
             }
