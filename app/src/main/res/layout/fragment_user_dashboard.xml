@@ -29,7 +29,6 @@
             android:orientation="horizontal"
             android:padding="12dp">
 
-            <!-- Green Status Dot -->
             <ImageView
                 android:id="@+id/ivStatusDot"
                 android:layout_width="12dp"
@@ -46,53 +45,131 @@
                 android:textColor="#B0B0B0"
                 android:textSize="13sp"
                 android:textStyle="bold" />
-
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- INSTRUCTIONAL TEXT -->
-    <TextView
-        android:id="@+id/tvDiscoveryHeader"
+    <!-- NEW: ADD CUSTOM HASHTAG SECTION -->
+    <LinearLayout
+        android:id="@+id/llAddTagContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:text="What are you interested in?"
-        android:textColor="#FFFFFF"
-        android:textSize="22sp"
-        android:textStyle="bold"
+        android:layout_marginTop="20dp"
+        android:orientation="horizontal"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/cvStatusHeader" />
+        app:layout_constraintTop_toBottomOf="@+id/cvStatusHeader">
 
-    <TextView
-        android:id="@+id/tvDiscoverySub"
-        android:layout_width="0dp"
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilCustomTag"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Add custom hashtag (e.g. pizza)"
+            android:textColorHint="#666666"
+            app:boxStrokeColor="#444444"
+            app:hintTextColor="#2196F3">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etCustomTag"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:maxLines="1"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAddTag"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="8dp"
+            android:backgroundTint="#2196F3"
+            android:padding="0dp"
+            app:cornerRadius="8dp"
+            app:icon="@android:drawable/ic_menu_add"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp" />
+    </LinearLayout>
+
+    <!-- NEW: HASHTAG MANAGEMENT BAR -->
+    <LinearLayout
+        android:id="@+id/llManageBar"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Select hashtags to receive relevant decentralized local deals via popup notifications."
-        android:textColor="#888888"
-        android:textSize="14sp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tvDiscoveryHeader" />
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@+id/llAddTagContainer">
 
-    <!-- HASHTAG INTEREST GRID -->
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="My Interests"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDeleteSelected"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DELETE SELECTED"
+            android:textColor="#FF5252"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </LinearLayout>
+
+    <!-- HASHTAG GRID -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvHashtags"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="8dp"
         android:layout_marginBottom="16dp"
         android:clipToPadding="false"
-        app:layout_constraintBottom_toTopOf="@+id/btnEditInterests"
+        app:layout_constraintBottom_toTopOf="@+id/llListeningState"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tvDiscoverySub"
+        app:layout_constraintTop_toBottomOf="@+id/llManageBar"
         tools:listitem="@layout/item_hashtag" />
 
-    <!-- ACTION BUTTON -->
+    <!-- NEW: ACTIVE LISTENING PROCESS INDICATOR -->
+    <LinearLayout
+        android:id="@+id/llListeningState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/btnStartAds"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:visibility="visible">
+
+        <ProgressBar
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginEnd="8dp"
+            android:indeterminateTint="#4CAF50" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Monitoring Decentralized Network..."
+                android:textColor="#4CAF50"
+                android:textSize="12sp"
+                android:textStyle="italic" />
+    </LinearLayout>
+
+    <!-- ACTION BUTTON (START/STOP TOGGLE) -->
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnEditInterests"
+        android:id="@+id/btnStartAds"
         android:layout_width="0dp"
         android:layout_height="55dp"
         android:layout_marginBottom="8dp"
@@ -104,18 +181,5 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
-
-    <!-- EMPTY STATE VIEW (Hidden by default) -->
-    <TextView
-        android:id="@+id/tvEmptyState"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Waiting for local deals..."
-        android:textColor="#444444"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@+id/rvHashtags"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/rvHashtags" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
