@@ -19,11 +19,13 @@ import org.json.JSONObject;
 import java.net.URI;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Background Ad Synchronizer.
- * Connects to decentralized relays, applies hashtag filters, 
- * and notifies the user when a matching deal is broadcasted.
+ * UPDATED: Fixed relay message extraction and background lifecycle management 
+ * to ensure ads are actually received and processed.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -31,12 +33,10 @@ public class NostrListenerWorker extends Worker {
     private final AdNostrDatabaseHelper db;
     private final Context context;
 
-    // Bootstrap relay list for discovery as per technical specs
     private final String[] BOOTSTRAP_RELAYS = {
             "wss://relay.damus.io",
             "wss://nos.lol",
-            "wss://relay.nostr.band",
-            "wss://relay.snort.social"
+            "wss://relay.nostr.band"
     };
 
     public NostrListenerWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
@@ -48,114 +48,114 @@ public class NostrListenerWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        Log.i(TAG, "Background Ad Listener starting execution...");
+        Log.i(TAG, "Background Ad sync initiated...");
+
+        // 1. Check if the user has enabled ad receiving
+        if (!db.isListening()) {
+            Log.d(TAG, "Ad monitoring is disabled by user. Skipping sync.");
+            return Result.success();
+        }
+
+        // 2. Fetch User Interests (Hashtags)
+        Set<String> interests = db.getInterests();
+        if (interests.isEmpty()) {
+            Log.d(TAG, "No interests selected. Skipping sync.");
+            return Result.success();
+        }
+
+        // 3. Coordinate multiple relay connections using a latch
+        final CountDownLatch latch = new CountDownLatch(1);
 
         try {
-            // 1. Fetch User Interests from Local Storage
-            Set<String> interests = db.getInterests();
-            if (interests.isEmpty()) {
-                Log.d(TAG, "No interests selected. Skipping relay sync.");
-                return Result.success();
-            }
-
-            // 2. Build the Nostr Subscription Filter (REQ)
-            // Example: ["REQ", "sub_id", {"kinds": [30001], "#t": ["food", "kochi"]}]
+            // Build Filter: ["REQ", "sub_id", {"kinds": [30001], "#t": ["tag1", "tag2"]}]
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(30001)); // Ad Events
+            filter.put("kinds", new JSONArray().put(30001));
             
             JSONArray tags = new JSONArray();
             for (String tag : interests) {
-                tags.put(tag.toLowerCase());
+                tags.add(tag.toLowerCase());
             }
             filter.put("#t", tags);
 
-            String subscriptionMessage = new JSONArray()
-                    .put("REQ")
-                    .put(UUID.randomUUID().toString()) // Random Sub ID
-                    .put(filter)
-                    .toString();
+            String subId = UUID.randomUUID().toString().substring(0, 8);
+            String reqMessage = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
-            // 3. Connect to a bootstrap relay and listen for events
-            // In a production app, we would loop through multiple relays.
-            // Here we connect to the primary one for the task duration.
-            connectAndFetchAds(BOOTSTRAP_RELAYS[0], subscriptionMessage);
+            // Connect to bootstrap relay
+            connectAndListen(BOOTSTRAP_RELAYS[0], reqMessage, latch);
 
-            // Allow the worker some time to receive events before closing
-            Thread.sleep(10000); // 10 Seconds of active listening
-
+            // Wait up to 15 seconds for incoming events before terminating the worker
+            latch.await(15, TimeUnit.SECONDS);
             return Result.success();
 
         } catch (Exception e) {
-            Log.e(TAG, "Background sync failed: " + e.getMessage());
-            // This error will be captured by the Global Exception Handler
+            Log.e(TAG, "Sync process failed: " + e.getMessage());
             return Result.retry();
         }
     }
 
-    /**
-     * Establishes a temporary WebSocket connection to the decentralized network.
-     */
-    private void connectAndFetchAds(String relayUrl, String subscriptionJson) {
+    private void connectAndListen(String relayUrl, String reqMessage, CountDownLatch latch) {
         try {
             WebSocketClient client = new WebSocketClient(new URI(relayUrl)) {
                 @Override
                 public void onOpen(ServerHandshake handshakedata) {
-                    Log.d(TAG, "Connected to relay: " + relayUrl);
-                    send(subscriptionJson);
+                    Log.d(TAG, "Connected to: " + relayUrl);
+                    send(reqMessage);
                 }
 
                 @Override
                 public void onMessage(String message) {
-                    Log.d(TAG, "Incoming Event: " + message);
-                    processNostrMessage(message);
+                    Log.v(TAG, "Relay data: " + message);
+                    processRelayEvent(message);
                 }
 
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
-                    Log.d(TAG, "Relay connection closed: " + reason);
+                    Log.d(TAG, "Relay closed. Sync complete.");
+                    latch.countDown();
                 }
 
                 @Override
                 public void onError(Exception ex) {
-                    Log.e(TAG, "WebSocket Error: " + ex.getMessage());
+                    Log.e(TAG, "WebSocket error: " + ex.getMessage());
+                    latch.countDown();
                 }
             };
             client.connect();
         } catch (Exception e) {
-            Log.e(TAG, "Failed to connect to relay: " + e.getMessage());
+            Log.e(TAG, "Relay connection failed: " + e.getMessage());
+            latch.countDown();
         }
     }
 
     /**
-     * Parses the relay message. If it's a valid ad, trigger a notification.
+     * Parses the relay packet and triggers a notification if it's a valid ad.
      */
-    private void processNostrMessage(String rawMessage) {
+    private void processRelayEvent(String rawMessage) {
         try {
+            if (!rawMessage.startsWith("[")) return;
+            
             JSONArray msgArray = new JSONArray(rawMessage);
-            String type = msgArray.getString(0);
+            if (!"EVENT".equals(msgArray.getString(0))) return;
 
-            if ("EVENT".equals(type)) {
-                JSONObject event = msgArray.getJSONObject(2);
-                String contentStr = event.getString("content");
-                JSONObject contentObj = new JSONObject(contentStr);
+            // Extract event object from the 3rd index of the Nostr message array
+            JSONObject event = msgArray.getJSONObject(2);
+            String contentStr = event.getString("content");
+            JSONObject content = new JSONObject(contentStr);
 
-                String title = contentObj.optString("title", "New Local Deal");
-                String desc = contentObj.optString("desc", "");
+            String title = content.optString("title", "Local Deal Found");
+            String desc = content.optString("desc", "A new ad matches your interests.");
 
-                // Trigger a system notification for the matching ad
-                showAdNotification(title, desc, rawMessage);
-            }
+            // Launch system notification
+            showAdNotification(title, desc, rawMessage);
+
         } catch (Exception e) {
-            Log.e(TAG, "Failed to parse incoming ad: " + e.getMessage());
+            Log.e(TAG, "Error parsing incoming ad relay packet: " + e.getMessage());
         }
     }
 
-    /**
-     * Builds and fires a high-priority notification.
-     */
-    private void showAdNotification(String title, String message, String fullJson) {
+    private void showAdNotification(String title, String message, String fullPayload) {
         Intent intent = new Intent(context, AdPopupActivity.class);
-        intent.putExtra("AD_PAYLOAD_JSON", fullJson);
+        intent.putExtra("AD_PAYLOAD_JSON", fullPayload);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -163,19 +163,20 @@ public class NostrListenerWorker extends Worker {
             flags |= PendingIntent.FLAG_IMMUTABLE;
         }
 
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, flags);
+        PendingIntent pi = PendingIntent.getActivity(context, 0, intent, flags);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, AdNostrApplication.AD_NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setContentTitle(title)
                 .setContentText(message)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setContentIntent(pendingIntent)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setContentIntent(pi)
                 .setAutoCancel(true);
 
-        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (notificationManager != null) {
-            notificationManager.notify((int) System.currentTimeMillis(), builder.build());
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) {
+            nm.notify((int) System.currentTimeMillis(), builder.build());
         }
     }
 }
