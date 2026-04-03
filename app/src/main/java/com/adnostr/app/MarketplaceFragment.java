@@ -25,8 +25,8 @@ import java.util.UUID;
 
 /**
  * Decentralized Relay Marketplace.
- * Fetches and displays kind:30002 (Relay Offer) events from the Nostr network,
- * allowing advertisers to buy premium relay access from other peers.
+ * UPDATED: Fixed background thread crash (Toasts) and added UI thread safety 
+ * for network response processing.
  */
 public class MarketplaceFragment extends Fragment implements MarketplaceAdapter.OnMarketplaceActionListener {
 
@@ -75,19 +75,20 @@ public class MarketplaceFragment extends Fragment implements MarketplaceAdapter.
         marketplaceOffers.clear();
         adapter.notifyDataSetChanged();
         
-        Log.i(TAG, "Fetching latest relay marketplace listings...");
+        Log.i(TAG, "Requesting marketplace relay offers...");
 
         try {
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(30002)); // Relay Offer events
+            filter.put("kinds", new JSONArray().put(30002));
 
+            String subId = "market-" + UUID.randomUUID().toString().substring(0, 4);
             String subscriptionMessage = new JSONArray()
                     .put("REQ")
-                    .put(UUID.randomUUID().toString())
+                    .put(subId)
                     .put(filter)
                     .toString();
 
-            // Set up a temporary listener for the response
+            // Set up the listener with UI Thread safety
             wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
                 @Override
                 public void onRelayConnected(String url) {
@@ -96,82 +97,87 @@ public class MarketplaceFragment extends Fragment implements MarketplaceAdapter.
                 
                 @Override
                 public void onMessageReceived(String url, String message) {
-                    processMarketplaceEvent(message);
+                    // All UI updates and parsing moved to UI thread
+                    if (isAdded() && getActivity() != null) {
+                        getActivity().runOnUiThread(() -> processMarketplaceEvent(message));
+                    }
                 }
                 
                 @Override
                 public void onRelayDisconnected(String url, String reason) {
-                    binding.swipeRefreshLayout.setRefreshing(false);
+                    if (isAdded() && getActivity() != null) {
+                        getActivity().runOnUiThread(() -> binding.swipeRefreshLayout.setRefreshing(false));
+                    }
                 }
 
                 @Override
                 public void onError(String url, Exception ex) {
-                    binding.swipeRefreshLayout.setRefreshing(false);
-                    Toast.makeText(getContext(), "Network Error", Toast.LENGTH_SHORT).show();
+                    // FIXED: UI Thread required for Toasting
+                    if (isAdded() && getActivity() != null) {
+                        getActivity().runOnUiThread(() -> {
+                            binding.swipeRefreshLayout.setRefreshing(false);
+                            Toast.makeText(getContext(), "Relay Connection Error", Toast.LENGTH_SHORT).show();
+                        });
+                    }
                 }
             });
 
-            // Connect to a public relay to fetch the data
+            // Trigger connection to a high-traffic bootstrap relay
             wsManager.connectRelay("wss://relay.damus.io");
             
         } catch (Exception e) {
-            Log.e(TAG, "Failed to create marketplace request: " + e.getMessage());
+            Log.e(TAG, "Marketplace subscription failed: " + e.getMessage());
             binding.swipeRefreshLayout.setRefreshing(false);
         }
     }
 
     private void processMarketplaceEvent(String rawMessage) {
         try {
+            if (!rawMessage.startsWith("[")) return;
+            
             JSONArray msgArray = new JSONArray(rawMessage);
-            if ("EVENT".equals(msgArray.getString(0))) {
+            String type = msgArray.getString(0);
+
+            if ("EVENT".equals(type)) {
                 JSONObject event = msgArray.getJSONObject(2);
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        marketplaceOffers.add(event);
-                        adapter.notifyItemInserted(marketplaceOffers.size() - 1);
-                        binding.tvNoListings.setVisibility(View.GONE);
-                    });
-                }
-            } else if ("EOSE".equals(msgArray.getString(0))) {
-                // End Of Stored Events - stop refreshing indicator
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> binding.swipeRefreshLayout.setRefreshing(false));
+                marketplaceOffers.add(event);
+                adapter.notifyItemInserted(marketplaceOffers.size() - 1);
+                binding.tvNoListings.setVisibility(View.GONE);
+            } else if ("EOSE".equals(type)) {
+                // End of stored events reached
+                binding.swipeRefreshLayout.setRefreshing(false);
+                if (marketplaceOffers.isEmpty()) {
+                    binding.tvNoListings.setVisibility(View.VISIBLE);
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error parsing marketplace event", e);
+            Log.e(TAG, "Error processing marketplace message: " + e.getMessage());
         }
     }
 
-    /**
-     * Handles the "BUY ACCESS" button click from the adapter.
-     * Opens the relay owner's payment link in an external browser.
-     */
     @Override
     public void onBuyAccessClicked(JSONObject offer) {
         try {
             JSONObject content = new JSONObject(offer.getString("content"));
             String paymentUrl = content.optString("payment_link", "");
             
-            if (paymentUrl.startsWith("http")) {
+            if (!paymentUrl.isEmpty() && paymentUrl.startsWith("http")) {
                 Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(paymentUrl));
                 startActivity(browserIntent);
             } else {
-                Toast.makeText(getContext(), "No valid payment link provided by owner.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "This relay has no external payment link.", Toast.LENGTH_SHORT).show();
             }
         } catch (Exception e) {
-            Toast.makeText(getContext(), "Invalid offer data.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Cannot open purchase link.", Toast.LENGTH_SHORT).show();
         }
     }
 
     @Override
     public void onStop() {
         super.onStop();
-        // Disconnect the temporary listener when leaving the screen
-        wsManager.disconnectRelay("wss://relay.damus.io");
+        // Clean up network listener to prevent memory leaks and background crashes
         wsManager.setStatusListener(null);
     }
-
 
     @Override
     public void onDestroyView() {
