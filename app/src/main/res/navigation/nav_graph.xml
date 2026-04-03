@@ -3,108 +3,40 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/nav_graph"
-    app:startDestination="@id/nav_dashboard">
+    app:startDestination="@id/nav_user_dashboard">
 
-    <!-- 1. Dashboard / Home -->
+    <!-- USER PATH: Interest Selection & Background Monitor Status -->
     <fragment
-        android:id="@+id/nav_dashboard"
-        android:name="com.cloudnest.app.DashboardFragment"
-        android:label="Dashboard"
-        tools:layout="@layout/fragment_dashboard">
-        <action
-            android:id="@+id/action_dashboard_to_localBrowser"
-            app:destination="@id/nav_local_browser" />
-        <action
-            android:id="@+id/action_dashboard_to_driveBrowser"
-            app:destination="@id/nav_drive_browser" />
-    </fragment>
+        android:id="@+id/nav_user_dashboard"
+        android:name="com.adnostr.app.UserDashboardFragment"
+        android:label="My Interests"
+        tools:layout="@layout/fragment_user_dashboard" />
 
-    <!-- 2. Local File Browser (Shared for Phone and SD) -->
+    <!-- ADVERTISER PATH: Business Metrics & Active Ad Reach -->
     <fragment
-        android:id="@+id/nav_local_browser"
-        android:name="com.cloudnest.app.LocalBrowserFragment"
-        android:label="File Browser"
-        tools:layout="@layout/fragment_file_browser" />
+        android:id="@+id/nav_advertiser_dashboard"
+        android:name="com.adnostr.app.AdvDashboardFragment"
+        android:label="Advertiser Stats"
+        tools:layout="@layout/fragment_adv_dashboard" />
 
-    <!-- 3. Google Drive Browser -->
+    <!-- ADVERTISER PATH: Ad Content Creation (IPFS & Maps) -->
     <fragment
-        android:id="@+id/nav_drive_browser"
-        android:name="com.cloudnest.app.DriveBrowserFragment"
-        android:label="Google Drive"
-        tools:layout="@layout/fragment_file_browser" />
+        android:id="@+id/nav_create_ad"
+        android:name="com.adnostr.app.CreateAdFragment"
+        android:label="Broadcast New Ad"
+        tools:layout="@layout/fragment_create_ad" />
 
-    <!-- FIXED FOR GLITCH 2: Added Trash Browser Destination -->
+    <!-- ADVERTISER PATH: Decentralized Relay Buying & Selling -->
     <fragment
-        android:id="@+id/nav_trash"
-        android:name="com.cloudnest.app.TrashBrowserFragment"
-        android:label="Trash bin"
-        tools:layout="@layout/fragment_file_browser" />
+        android:id="@+id/nav_relay_marketplace"
+        android:name="com.adnostr.app.MarketplaceFragment"
+        android:label="Relay Marketplace"
+        tools:layout="@layout/fragment_marketplace" />
 
-    <!-- 4. Upload Manager -->
-    <fragment
-        android:id="@+id/nav_upload_manager"
-        android:name="com.cloudnest.app.UploadManagerFragment"
-        android:label="Upload Manager"
-        tools:layout="@layout/fragment_upload_manager" />
-
-    <!-- 5. Preset Folders (Auto-Backup) -->
-    <fragment
-        android:id="@+id/nav_preset_folders"
-        android:name="com.cloudnest.app.PresetFoldersFragment"
-        android:label="Auto-Backup"
-        tools:layout="@layout/fragment_preset_folders">
-        <!-- ENHANCEMENT: Added action to navigate to the new Visual Ledger -->
-        <action
-            android:id="@+id/action_preset_to_ledger"
-            app:destination="@id/nav_file_database" />
-    </fragment>
-
-    <!-- NEW: Visual Cloud Ledger Screen -->
-    <fragment
-        android:id="@+id/nav_file_database"
-        android:name="com.cloudnest.app.FileDatabaseFragment"
-        android:label="Cloud Ledger"
-        tools:layout="@layout/fragment_file_database" />
-
-    <!-- 6. Storage Graph -->
-    <fragment
-        android:id="@+id/nav_storage_graph"
-        android:name="com.cloudnest.app.StorageGraphFragment"
-        android:label="Storage Usage"
-        tools:layout="@layout/fragment_storage_graph">
-        <action
-            android:id="@+id/action_storageGraph_to_driveBrowser"
-            app:destination="@id/nav_drive_browser" />
-        <action
-            android:id="@+id/action_storageGraph_to_localBrowser"
-            app:destination="@id/nav_local_browser" />
-    </fragment>
-
-    <!-- 7. Drive Accounts -->
-    <fragment
-        android:id="@+id/nav_drive_accounts"
-        android:name="com.cloudnest.app.DriveAccountsFragment"
-        android:label="Drive Accounts"
-        tools:layout="@layout/fragment_drive_accounts" />
-
-    <!-- 8. Help -->
-    <fragment
-        android:id="@+id/nav_help"
-        android:name="com.cloudnest.app.HelpFragment"
-        android:label="Help"
-        tools:layout="@layout/fragment_help" />
-
-    <!-- 9. Contact Us -->
-    <fragment
-        android:id="@+id/nav_contact"
-        android:name="com.cloudnest.app.ContactFragment"
-        android:label="Contact Us"
-        tools:layout="@layout/fragment_contact" />
-
-    <!-- 10. Settings -->
+    <!-- SHARED PATH: Profile, Mode Switching, and Network Status -->
     <fragment
         android:id="@+id/nav_settings"
-        android:name="com.cloudnest.app.SettingsFragment"
+        android:name="com.adnostr.app.SettingsFragment"
         android:label="Settings"
         tools:layout="@layout/fragment_settings" />
 
