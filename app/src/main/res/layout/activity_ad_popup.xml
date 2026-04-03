@@ -42,7 +42,7 @@
                     android:scaleType="centerCrop"
                     android:src="@android:drawable/ic_menu_gallery"
                     tools:srcCompat="@android:drawable/ic_menu_gallery" />
-                
+
                 <!-- Close Button Overlay -->
                 <ImageButton
                     android:id="@+id/btnCloseAd"
@@ -82,7 +82,7 @@
                     android:textSize="14sp" />
 
                 <!-- DYNAMIC ACTION BUTTONS CONTAINER -->
-                <!-- Only visible buttons will be shown via AdPopupActivity.java -->
+                <!-- FIXED: Uses FlexboxLayout with corrected attributes and icons -->
                 <com.google.android.flexbox.FlexboxLayout
                     android:id="@+id/flexActionButtons"
                     android:layout_width="match_parent"
@@ -126,7 +126,7 @@
                         android:text="Visit Web"
                         android:textColor="#FFFFFF"
                         android:visibility="gone"
-                        app:icon="@android:drawable/ic_menu_browser"
+                        app:icon="@android:drawable/ic_menu_info_details"
                         app:iconTint="#FFFFFF"
                         tools:visibility="visible" />
 
