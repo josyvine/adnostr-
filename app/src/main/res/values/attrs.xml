@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 
-      These attribute definitions are required to satisfy the resource linker 
-      when the template styles reference them in the local namespace.
-    -->
+    <!-- Standard Material Attributes -->
     <attr name="onPrimary" format="color" />
     <attr name="onSecondary" format="color" />
+
+    <!-- Template Theme Attributes (FIX FOR BUILD ERROR) -->
+    <attr name="appPrimaryColor" format="color" />
+    <attr name="appBackgroundColor" format="color" />
+    <color name="appBackgroundColor">#121212</color>
+    <attr name="appTextColor" format="color" />
+    <attr name="appHeaderTextColor" format="color" />
 </resources>
