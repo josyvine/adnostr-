@@ -3,6 +3,7 @@ package com.adnostr.app;
 import android.util.Log;
 
 import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.enums.ReadyState; // REQUIRED FIX: Added import for state checking
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
@@ -13,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Decentralized Network Manager.
  * UPDATED: Optimized connection lifecycle and verified broadcast messaging format 
  * for decentralized Nostr relays.
+ * FIXED: Resolved symbol error by using getReadyState() instead of isConnecting().
  */
 public class WebSocketClientManager {
 
@@ -21,7 +23,7 @@ public class WebSocketClientManager {
 
     // Thread-safe map of active relay connections (URL -> Client)
     private final Map<String, WebSocketClient> activeRelays = new ConcurrentHashMap<>();
-    
+
     // Callback to notify UI components of network changes
     private RelayStatusListener statusListener;
 
@@ -57,7 +59,8 @@ public class WebSocketClientManager {
     public void connectRelay(final String relayUrl) {
         if (activeRelays.containsKey(relayUrl)) {
             WebSocketClient existing = activeRelays.get(relayUrl);
-            if (existing != null && (existing.isOpen() || existing.isConnecting())) {
+            // FIXED: Replaced .isConnecting() with ReadyState check
+            if (existing != null && (existing.isOpen() || existing.getReadyState() == ReadyState.CONNECTING)) {
                 Log.d(TAG, "Relay session already active: " + relayUrl);
                 return;
             }
@@ -120,7 +123,7 @@ public class WebSocketClientManager {
 
         // Standard Nostr Broadcast Format: ["EVENT", {signed_event_json}]
         String nostrMessage = "[\"EVENT\"," + eventJson + "]";
-        
+
         int sentCount = 0;
         for (Map.Entry<String, WebSocketClient> entry : activeRelays.entrySet()) {
             WebSocketClient client = entry.getValue();
