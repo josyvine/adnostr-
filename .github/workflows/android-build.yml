@@ -1,4 +1,4 @@
-name: Build Android APK 
+name: Build AdNostr APK 
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Decode the Keystore file from GitHub Secrets
+      # Decode the Keystore file from your GitHub Secrets (ensure KEYSTORE_BASE64 is set)
       - name: Decode Keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
 
@@ -33,9 +33,9 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # Upload the signed RELEASE APK
+      # Upload the signed RELEASE APK as an artifact
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: CloudNest-Release.apk
+          name: AdNostr-Release.apk
           path: app/build/outputs/apk/release/app-release.apk
