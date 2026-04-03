@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:padding="20dp">
+
+    <!-- Header Icon to indicate a system error -->
+    <ImageView
+        android:id="@+id/ivErrorIcon"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginTop="24dp"
+        android:src="@android:drawable/ic_dialog_alert"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="#FF5252" />
+
+    <TextView
+        android:id="@+id/tvErrorHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="ADNOSTR: SYSTEM FAILURE"
+        android:textColor="#FF5252"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/ivErrorIcon" />
+
+    <TextView
+        android:id="@+id/tvErrorSubHeader"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:text="A Java exception occurred in the application. Please diagnose the log below to resolve the issue."
+        android:textColor="#B0B0B0"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvErrorHeader" />
+
+    <!-- Scrollable container for the detailed stack trace -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cvLogContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="24dp"
+        app:cardBackgroundColor="#1E1E1E"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="0dp"
+        app:layout_constraintBottom_toTopOf="@+id/btnCopyError"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvErrorSubHeader">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/tvDetailedErrorLog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="Loading stack trace..."
+                android:textColor="#E0E0E0"
+                android:textSize="12sp"
+                tools:text="java.lang.NullPointerException: Attempt to invoke virtual method..." />
+        </ScrollView>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Copy button to assist in sending logs to GitHub or developers -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCopyError"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="0dp"
+        android:layout_height="55dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="16dp"
+        android:text="COPY LOG"
+        android:textColor="#FFFFFF"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/btnCloseError"
+        app:layout_constraintStart_toStartOf="parent"
+        app:strokeColor="#404040" />
+
+    <!-- Close button to exit the error process -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCloseError"
+        android:layout_width="0dp"
+        android:layout_height="55dp"
+        android:layout_marginBottom="16dp"
+        android:backgroundTint="#FF5252"
+        android:text="CLOSE"
+        android:textColor="#FFFFFF"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/btnCopyError" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
