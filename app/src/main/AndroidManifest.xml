@@ -2,65 +2,77 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Network Permissions -->
+    <!-- Network permissions for Nostr WebSockets and IPFS -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
-    <!-- Storage Permissions -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+    <!-- Advertiser GPS Location for generating map links -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- Background Sync Permissions -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Background Execution & WorkManager for listening to Ad Relays -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Notifications for alerting Users about new Local Deals -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Allows the Ad Popup Card and Error Card to show over other apps -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
-        android:name=".CloudNestApplication"
+        android:name=".AdNostrApplication"
         android:allowBackup="true"
-        android:icon="@drawable/cloudnest"
+        android:icon="@drawable/adnostr"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/cloudnest"
+        android:roundIcon="@drawable/adnostr"
         android:supportsRtl="true"
-        android:theme="@style/Theme.CloudNest"
+        android:theme="@style/Theme.AdNostr"
         tools:targetApi="31">
 
+        <!-- Splash Screen: Silently generates Nostr Keys in background -->
         <activity
             android:name=".SplashActivity"
             android:exported="true"
-            android:theme="@style/Theme.CloudNest.NoActionBar">
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- The Fork: Asks user if they are an Advertiser or standard User -->
+        <activity
+            android:name=".RoleSelectionActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- Main App Interface: Hosts bottom navigation & fragments -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
-            android:theme="@style/Theme.CloudNest.NoActionBar"
-            android:windowSoftInputMode="adjustResize" />
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
 
-        <!-- Correctly registered FolderWatcherService for Background Monitoring -->
-        <service
-            android:name=".FolderWatcherService"
-            android:enabled="true"
+        <!-- The Ad Popup Overlay -->
+        <activity
+            android:name=".AdPopupActivity"
+            android:excludeFromRecents="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:launchMode="singleTop"
+            android:showOnLockScreen="true"
+            android:theme="@style/Theme.AdNostr.Transparent" />
 
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+        <!-- CRITICAL: The Global Error Display Activity -->
+        <!-- Running in a separate process so it survives the main app crash -->
+        <activity
+            android:name=".ErrorDisplayActivity"
+            android:process=":error_handler"
+            android:excludeFromRecents="true"
             android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
 
     </application>
 
