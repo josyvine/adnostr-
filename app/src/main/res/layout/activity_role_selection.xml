@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tvOnboardingHeader"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:gravity="center"
+        android:text="How do you want to use the app?"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="24dp"
+        android:fillViewport="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvOnboardingHeader">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- OPTION 1: USER CARD -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cvUserRole"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardBackgroundColor="#1E1E1E"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="#333333"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="👤 Continue as User"
+                        android:textColor="#FFFFFF"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:lineSpacingExtra="4dp"
+                        android:text="I want to receive amazing local deals, discounts, and ads based on my interests. Total privacy, no data tracking."
+                        android:textColor="#B0B0B0"
+                        android:textSize="14sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRegisterAsUser"
+                        android:layout_width="match_parent"
+                        android:layout_height="55dp"
+                        android:layout_marginTop="24dp"
+                        android:backgroundTint="#2196F3"
+                        android:text="REGISTER AS USER"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        app:cornerRadius="8dp" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- OPTION 2: ADVERTISER CARD -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cvAdvertiserRole"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="32dp"
+                app:cardBackgroundColor="#1E1E1E"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeColor="#333333"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📢 Continue as Advertiser"
+                        android:textColor="#FFFFFF"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:lineSpacingExtra="4dp"
+                        android:text="I am a business. I want to create rich ads and broadcast them globally or locally using the decentralized network."
+                        android:textColor="#B0B0B0"
+                        android:textSize="14sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRegisterAsAdvertiser"
+                        android:layout_width="match_parent"
+                        android:layout_height="55dp"
+                        android:layout_marginTop="24dp"
+                        android:backgroundTint="#4CAF50"
+                        android:text="REGISTER AS ADVERTISER"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        app:cornerRadius="8dp" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="You can switch roles later in Settings"
+                android:textColor="#666666"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
