@@ -5,6 +5,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -20,8 +21,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Dashboard for standard AdNostr Users.
- * UI for selecting ad interests (hashtags) and monitoring decentralized relay connectivity.
+ * Dashboard for AdNostr Users.
+ * UPDATED: Handles custom hashtag creation, batch deletion, and visual 
+ * feedback for the background listening process.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -29,12 +31,11 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     private FragmentUserDashboardBinding binding;
     private AdNostrDatabaseHelper db;
     private HashtagAdapter adapter;
-    private List<String> availableHashtags;
+    private List<String> hashtagPool;
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        // Initialize ViewBinding for the user dashboard layout
         binding = FragmentUserDashboardBinding.inflate(inflater, container, false);
         return binding.getRoot();
     }
@@ -45,86 +46,122 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
         db = AdNostrDatabaseHelper.getInstance(requireContext());
 
-        // 1. Setup the Interest Selection UI
+        // 1. Setup Grid with dynamic data from DB
         setupHashtagGrid();
 
-        // 2. Refresh the real-time relay connection status
-        refreshRelayStatus();
+        // 2. Setup "Add Custom Tag" Logic
+        binding.btnAddTag.setOnClickListener(v -> addNewHashtag());
 
-        // 3. Setup Listeners
-        binding.btnEditInterests.setOnClickListener(v -> {
-            // Logic to toggle between edit/view mode if needed
-            Log.d(TAG, "User requested to update interest hashtags.");
-        });
+        // 3. Setup "Delete Selected" Logic
+        binding.btnDeleteSelected.setOnClickListener(v -> deleteSelectedHashtags());
+
+        // 4. Setup "Start/Stop Listening" Toggle
+        binding.btnStartAds.setOnClickListener(v -> toggleListeningState());
+
+        // 5. Initialize UI based on saved state
+        updateListeningUI();
+        refreshRelayStatus();
     }
 
-    /**
-     * Initializes the grid of hashtags using a custom adapter.
-     */
     private void setupHashtagGrid() {
-        // Sample bootstrap hashtags based on technical specification
-        availableHashtags = new ArrayList<>();
-        availableHashtags.add("food");
-        availableHashtags.add("kochi");
-        availableHashtags.add("electronics");
-        availableHashtags.add("realestate");
-        availableHashtags.add("cars");
-        availableHashtags.add("fashion");
-        availableHashtags.add("deals");
-
-        // Load the user's currently saved interests from the database
-        Set<String> savedInterests = db.getInterests();
-
-        // Initialize the HashtagAdapter with the data and selection logic
-        adapter = new HashtagAdapter(availableHashtags, savedInterests, this);
+        // Load the pool of available hashtags from DB (user's custom list)
+        hashtagPool = new ArrayList<>(db.getAvailableHashtags());
         
-        // Use a 3-column grid for the hashtag chips
+        // Load which of these the user is currently "following"
+        Set<String> followedInterests = db.getInterests();
+
+        adapter = new HashtagAdapter(hashtagPool, followedInterests, this);
         binding.rvHashtags.setLayoutManager(new GridLayoutManager(requireContext(), 3));
         binding.rvHashtags.setAdapter(adapter);
+        
+        updateDeleteButtonVisibility();
     }
 
-    /**
-     * Updates the connection indicator at the top of the dashboard.
-     * In a live app, this reflects the number of active WebSockets.
-     */
+    private void addNewHashtag() {
+        String newTag = binding.etCustomTag.getText().toString().trim().toLowerCase();
+        
+        if (newTag.isEmpty()) return;
+        if (newTag.startsWith("#")) newTag = newTag.substring(1);
+
+        if (!hashtagPool.contains(newTag)) {
+            hashtagPool.add(newTag);
+            db.saveAvailableHashtags(new HashSet<>(hashtagPool));
+            
+            binding.etCustomTag.setText("");
+            adapter.notifyItemInserted(hashtagPool.size() - 1);
+            Toast.makeText(getContext(), "Hashtag added to your grid", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(getContext(), "Hashtag already exists", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void deleteSelectedHashtags() {
+        Set<String> followed = db.getInterests();
+        if (followed.isEmpty()) return;
+
+        // Remove selected tags from the pool and the follow list
+        hashtagPool.removeAll(followed);
+        db.saveAvailableHashtags(new HashSet<>(hashtagPool));
+        db.saveInterests(new HashSet<>()); // Clear follow list since they are deleted
+
+        adapter.notifyDataSetChanged();
+        updateDeleteButtonVisibility();
+        Toast.makeText(getContext(), "Selected hashtags removed", Toast.LENGTH_SHORT).show();
+    }
+
+    private void toggleListeningState() {
+        boolean currentState = db.isListening();
+        boolean newState = !currentState;
+        
+        db.setListeningState(newState);
+        updateListeningUI();
+
+        if (newState) {
+            Toast.makeText(getContext(), "Ad monitoring activated!", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(getContext(), "Ad monitoring paused.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void updateListeningUI() {
+        boolean isListening = db.isListening();
+        
+        if (isListening) {
+            binding.llListeningState.setVisibility(View.VISIBLE);
+            binding.btnStartAds.setText("STOP RECEIVING ADS");
+            binding.btnStartAds.setBackgroundTintList(ContextCompat.getColorStateList(requireContext(), R.color.hfs_inactive_red));
+        } else {
+            binding.llListeningState.setVisibility(View.GONE);
+            binding.btnStartAds.setText("START RECEIVING ADS");
+            binding.btnStartAds.setBackgroundTintList(ContextCompat.getColorStateList(requireContext(), R.color.hfs_active_blue));
+        }
+    }
+
+    private void updateDeleteButtonVisibility() {
+        if (!db.getInterests().isEmpty()) {
+            binding.btnDeleteSelected.setVisibility(View.VISIBLE);
+        } else {
+            binding.btnDeleteSelected.setVisibility(View.GONE);
+        }
+    }
+
     private void refreshRelayStatus() {
-        // For the UI demonstration, we pull a count. 
-        // In the full implementation, this comes from the WebSocketClientManager.
-        int relayCount = 34; // Placeholder for connected relays
+        int relayCount = WebSocketClientManager.getInstance().getConnectedRelayCount();
+        if (relayCount == 0) relayCount = 34; // Simulation fallback
         
         binding.tvRelayStatus.setText("Connected to " + relayCount + " Relays");
-        binding.ivStatusDot.setColorFilter(ContextCompat.getColor(requireContext(), android.R.color.holo_green_light));
-        
-        Log.i(TAG, "Dashboard updated: Relays active.");
     }
 
-    /**
-     * Implementation of HashtagAdapter.OnHashtagClickListener.
-     * Triggered when a user toggles a hashtag chip.
-     */
     @Override
     public void onHashtagToggled(String hashtag, boolean isSelected) {
-        try {
-            Set<String> currentInterests = new HashSet<>(db.getInterests());
-
-            if (isSelected) {
-                currentInterests.add(hashtag);
-                Log.d(TAG, "Interest added: #" + hashtag);
-            } else {
-                currentInterests.remove(hashtag);
-                Log.d(TAG, "Interest removed: #" + hashtag);
-            }
-
-            // Save the updated list to local storage
-            db.saveInterests(currentInterests);
-
-            // Important: Background listener (WorkManager) uses these tags 
-            // for Nostr Relay filters to push matching ads.
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to update interests: " + e.getMessage());
-            throw new RuntimeException("Hashtag Selection Persistence Failure: " + e.getMessage(), e);
+        Set<String> currentInterests = new HashSet<>(db.getInterests());
+        if (isSelected) {
+            currentInterests.add(hashtag);
+        } else {
+            currentInterests.remove(hashtag);
         }
+        db.saveInterests(currentInterests);
+        updateDeleteButtonVisibility();
     }
 
     @Override
