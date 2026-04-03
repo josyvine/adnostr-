@@ -55,8 +55,11 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // Flexbox Layout (REQUIRED FIX: Needed for Ad Popup Card alignment attributes)
+    // Flexbox Layout (Required for Ad Popup Card)
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
+    
+    // SwipeRefreshLayout (REQUIRED FIX: Needed for Marketplace list refresh)
+    implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
 
     // Navigation
     implementation 'androidx.navigation:navigation-fragment:2.7.7'
