@@ -103,25 +103,86 @@
                 android:textColor="#FFFFFF" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- TARGETING SECTION -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilTags"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        <!-- TARGETING SECTION WITH DISCOVERY -->
+        <LinearLayout
+            android:id="@+id/llTargetingContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="Target Hashtags (comma separated: food, kochi)"
-            android:textColorHint="#666666"
-            app:boxStrokeColor="#444444"
-            app:hintTextColor="#4CAF50"
+            android:orientation="horizontal"
             app:layout_constraintTop_toBottomOf="@+id/tilDesc">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etAdTags"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilTags"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Target Hashtags (food, kochi)"
+                android:textColorHint="#666666"
+                app:boxStrokeColor="#444444"
+                app:hintTextColor="#2196F3">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etAdTags"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- NEW: HASHTAG DISCOVERY SEARCH ICON -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDiscoverReach"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_marginStart="8dp"
+                android:backgroundTint="#2196F3"
+                android:padding="0dp"
+                app:cornerRadius="8dp"
+                app:icon="@android:drawable/ic_menu_search"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp" />
+        </LinearLayout>
+
+        <!-- NEW: REACH ANALYTICS CARD -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cvReachDiscovery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="#1E1E1E"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="0dp"
+            app:layout_constraintTop_toBottomOf="@+id/llTargetingContainer"
+            app:strokeColor="#2196F3"
+            app:strokeWidth="1dp"
+            tools:visibility="visible">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#FFFFFF" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:orientation="horizontal"
+                android:padding="12dp">
+                
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Global Hashtag Watchers:"
+                    android:textColor="#B0B0B0"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tvActiveWatchers"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Searching..."
+                    android:textColor="#2196F3"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- LINKS SECTION -->
         <com.google.android.material.textfield.TextInputLayout
@@ -129,12 +190,12 @@
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:hint="WhatsApp Number (e.g. 91999999999)"
             android:textColorHint="#666666"
             app:boxStrokeColor="#444444"
             app:hintTextColor="#4CAF50"
-            app:layout_constraintTop_toBottomOf="@+id/tilTags">
+            app:layout_constraintTop_toBottomOf="@+id/cvReachDiscovery">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etWhatsapp"
