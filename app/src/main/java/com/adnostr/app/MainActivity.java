@@ -1,15 +1,20 @@
 package com.adnostr.app;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
-import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.PeriodicWorkRequest;
@@ -18,16 +23,20 @@ import androidx.work.WorkManager;
 import com.adnostr.app.databinding.ActivityMainBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Main Interface Host for AdNostr.
  * Dynamically switches layouts between User Mode and Advertiser Mode.
- * Initializes background WorkManager to listen for decentralized ad broadcasts.
+ * UPDATED: Handles storage permissions for IPFS and stabilizes Settings navigation.
  */
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_Main";
+    private static final int PERMISSION_REQUEST_CODE = 1001;
+    
     private ActivityMainBinding binding;
     private AdNostrDatabaseHelper db;
     private NavController navController;
@@ -59,9 +68,38 @@ public class MainActivity extends AppCompatActivity {
             configureRoleBasedUI();
         }
 
-        // 4. Start the Background Nostr Listener (WorkManager)
-        // This ensures the app receives targeted ads even when not in the foreground.
+        // 4. Request necessary permissions for IPFS and Location
+        checkAndRequestPermissions();
+
+        // 5. Start the Background Nostr Listener (WorkManager)
         startBackgroundAdListener();
+    }
+
+    /**
+     * Ensures app has permissions to upload images and access location.
+     */
+    private void checkAndRequestPermissions() {
+        List<String> permissionsNeeded = new ArrayList<>();
+        
+        permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsNeeded.add(Manifest.permission.READ_MEDIA_IMAGES);
+            permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+        } else {
+            permissionsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+
+        List<String> listPermissionsAssign = new ArrayList<>();
+        for (String perm : permissionsNeeded) {
+            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+                listPermissionsAssign.add(perm);
+            }
+        }
+
+        if (!listPermissionsAssign.isEmpty()) {
+            ActivityCompat.requestPermissions(this, listPermissionsAssign.toArray(new String[0]), PERMISSION_REQUEST_CODE);
+        }
     }
 
     /**
@@ -74,46 +112,33 @@ public class MainActivity extends AppCompatActivity {
 
         Menu menu = binding.bottomNav.getMenu();
 
-        if (role.equals(RoleSelectionActivity.ROLE_USER)) {
-            // Path A: User UI
-            // Hide Advertiser-specific tabs if they exist in the shared menu
+        if (RoleSelectionActivity.ROLE_USER.equals(role)) {
             menu.findItem(R.id.nav_advertiser_dashboard).setVisible(false);
             menu.findItem(R.id.nav_create_ad).setVisible(false);
             menu.findItem(R.id.nav_relay_marketplace).setVisible(false);
-            
-            // Show User-specific tabs
             menu.findItem(R.id.nav_user_dashboard).setVisible(true);
+            menu.findItem(R.id.nav_settings).setVisible(true);
             
-            // Navigate to User Dashboard initially
             navController.navigate(R.id.nav_user_dashboard);
             
-        } else if (role.equals(RoleSelectionActivity.ROLE_ADVERTISER)) {
-            // Path B: Advertiser UI
-            // Hide User-specific tabs
+        } else if (RoleSelectionActivity.ROLE_ADVERTISER.equals(role)) {
             menu.findItem(R.id.nav_user_dashboard).setVisible(false);
-            
-            // Show Advertiser-specific tabs
             menu.findItem(R.id.nav_advertiser_dashboard).setVisible(true);
             menu.findItem(R.id.nav_create_ad).setVisible(true);
             menu.findItem(R.id.nav_relay_marketplace).setVisible(true);
+            menu.findItem(R.id.nav_settings).setVisible(true);
             
-            // Navigate to Advertiser Dashboard initially
             navController.navigate(R.id.nav_advertiser_dashboard);
         }
     }
 
-    /**
-     * Schedules a periodic WorkManager task to connect to Nostr Relays 
-     * and check for new kind:30001 events (Ads).
-     */
     private void startBackgroundAdListener() {
-        // We only start listening if the user is in "USER" mode
-        if (db.getUserRole().equals(RoleSelectionActivity.ROLE_USER)) {
+        if (RoleSelectionActivity.ROLE_USER.equals(db.getUserRole())) {
             Log.d(TAG, "Starting Background Nostr Relay Listener...");
             
             PeriodicWorkRequest adListenRequest = new PeriodicWorkRequest.Builder(
                     NostrListenerWorker.class, 
-                    15, TimeUnit.MINUTES) // Android minimum periodic interval
+                    15, TimeUnit.MINUTES)
                     .addTag("NOSTR_AD_LISTENER")
                     .build();
 
@@ -130,10 +155,21 @@ public class MainActivity extends AppCompatActivity {
         return navController.navigateUp() || super.onSupportNavigateUp();
     }
 
-    /**
-     * Handles switching roles from the Settings menu later.
-     */
     public void refreshRoleAndUI() {
         configureRoleBasedUI();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            boolean allGranted = true;
+            for (int res : grantResults) {
+                if (res != PackageManager.PERMISSION_GRANTED) allGranted = false;
+            }
+            if (!allGranted) {
+                Toast.makeText(this, "Permissions required for full functionality.", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
