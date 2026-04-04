@@ -120,6 +120,7 @@ public class CreateAdFragment extends Fragment {
 
     /**
      * FIXED: Calls the discovery engine to count REAL users on the network.
+     * UPDATED: Opens the console immediately to show the exact tags being parsed.
      */
     private void discoverHashtagReach() {
         String tagsInput = binding.etAdTags.getText().toString().trim();
@@ -138,6 +139,19 @@ public class CreateAdFragment extends Fragment {
             if (!clean.isEmpty()) tagsToSearch.add(clean);
         }
 
+        // Open the console immediately to log the query
+        StringBuilder discoveryLogs = new StringBuilder();
+        discoveryLogs.append("INITIATING REACH DISCOVERY...\n\n");
+        discoveryLogs.append("Tags formatted for Nostr search: ").append(tagsToSearch.toString()).append("\n");
+        discoveryLogs.append("Waiting for relay responses...\n");
+
+        RelayReportDialog dialog = RelayReportDialog.newInstance(
+                "DISCOVERY CONSOLE",
+                "Scanning decentralized network...",
+                discoveryLogs.toString()
+        );
+        dialog.showSafe(getChildFragmentManager(), "DISCOVERY_CONSOLE");
+
         // Call the real Discovery Helper logic
         // FIXED: Added requireContext() as required by the new helper signature
         ReachDiscoveryHelper.discoverGlobalReach(requireContext(), tagsToSearch, new ReachDiscoveryHelper.ReachCallback() {
@@ -147,6 +161,13 @@ public class CreateAdFragment extends Fragment {
                     requireActivity().runOnUiThread(() -> {
                         binding.tvActiveWatchers.setText(totalUsers + " Active Users Found");
                         Toast.makeText(getContext(), "Discovery Complete.", Toast.LENGTH_SHORT).show();
+
+                        // Update the open console
+                        RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
+                        if (existing != null) {
+                            discoveryLogs.append("\n[SUCCESS] Found ").append(totalUsers).append(" unique users matching tags.");
+                            existing.updateTechnicalLogs("Scan Complete", discoveryLogs.toString());
+                        }
                     });
                 }
             }
@@ -154,7 +175,16 @@ public class CreateAdFragment extends Fragment {
             @Override
             public void onDiscoveryError(String error) {
                 if (isAdded() && binding != null) {
-                    requireActivity().runOnUiThread(() -> binding.tvActiveWatchers.setText("Reach: 0 (Offline)"));
+                    requireActivity().runOnUiThread(() -> {
+                        binding.tvActiveWatchers.setText("Reach: 0 (Offline)");
+                        
+                        // Update the open console with the error
+                        RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
+                        if (existing != null) {
+                            discoveryLogs.append("\n[ERROR] ").append(error);
+                            existing.updateTechnicalLogs("Scan Failed", discoveryLogs.toString());
+                        }
+                    });
                 }
             }
         });
@@ -264,15 +294,22 @@ public class CreateAdFragment extends Fragment {
             // Refresh the popup when data starts coming in
             if (isAdded() && getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
-                    RelayReportDialog dialog = RelayReportDialog.newInstance(
-                            "AD BROADCAST CONSOLE",
-                            "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
-                            technicalLogs.toString()
-                    );
-
-                    // Show dialog if not already visible
-                    if (getFragmentManager().findFragmentByTag("AD_CONSOLE") == null) {
-                        dialog.show(getChildFragmentManager(), "AD_CONSOLE");
+                    // FIX: Retrieve the open dialog by tag and update it. 
+                    // If it doesn't exist, create and show it.
+                    RelayReportDialog existingDialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("AD_CONSOLE");
+                    
+                    if (existingDialog != null) {
+                        existingDialog.updateTechnicalLogs(
+                                "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
+                                technicalLogs.toString()
+                        );
+                    } else {
+                        RelayReportDialog dialog = RelayReportDialog.newInstance(
+                                "AD BROADCAST CONSOLE",
+                                "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
+                                technicalLogs.toString()
+                        );
+                        dialog.showSafe(getChildFragmentManager(), "AD_CONSOLE");
                     }
                 });
             }
