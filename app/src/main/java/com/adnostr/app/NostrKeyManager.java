@@ -17,11 +17,12 @@ import java.security.Security;
  * Cryptographic Utility for Nostr Identity.
  * Responsible for generating Secp256k1 keypairs compatible with the 
  * decentralized Nostr protocol (BIP-340 Schnorr signatures).
+ * UPDATED: Fixed BigInteger sign-prefix issue to ensure raw 32-byte keys.
  */
 public class NostrKeyManager {
 
     private static final String TAG = "AdNostr_KeyManager";
-    
+
     static {
         // Register BouncyCastle as a security provider for Elliptic Curve operations
         Security.removeProvider("BC");
@@ -50,19 +51,27 @@ public class NostrKeyManager {
 
             // 3. Derive the Public Key Point (P = k * G)
             ECPoint publicKeyPoint = params.getG().multiply(privateKeyInt).normalize();
-            
+
             // 4. Extract the X-coordinate (Nostr uses 32-byte x-only public keys)
             byte[] publicKeyBytes = publicKeyPoint.getAffineXCoord().getEncoded();
 
-            // 5. Convert keys to Hexadecimal strings for storage and relay transmission
-            String privateKeyHex = bytesToHex(privateKeyInt.toByteArray());
+            // 5. FIXED: Ensure raw 32-byte array (BigInteger.toByteArray often adds a sign byte 0x00)
+            byte[] rawPrivKey = privateKeyInt.toByteArray();
+            if (rawPrivKey.length == 33 && rawPrivKey[0] == 0) {
+                byte[] cleanPrivKey = new byte[32];
+                System.arraycopy(rawPrivKey, 1, cleanPrivKey, 0, 32);
+                rawPrivKey = cleanPrivKey;
+            }
+
+            // 6. Convert keys to Hexadecimal strings
+            String privateKeyHex = bytesToHex(rawPrivKey);
             String publicKeyHex = bytesToHex(publicKeyBytes);
 
-            // Ensure the private key is exactly 64 characters (32 bytes)
-            // Sometimes BigInteger.toByteArray() adds a sign byte or is shorter
+            // Ensure the strings are exactly 64 characters (32 bytes)
             privateKeyHex = normalizeHex(privateKeyHex, 64);
+            publicKeyHex = normalizeHex(publicKeyHex, 64);
 
-            Log.i(TAG, "Identity Generation Success.");
+            Log.i(TAG, "Identity Generation Success. PubKey: " + publicKeyHex);
             return new String[]{privateKeyHex, publicKeyHex};
 
         } catch (Exception e) {
