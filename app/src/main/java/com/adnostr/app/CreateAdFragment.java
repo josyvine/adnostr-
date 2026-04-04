@@ -30,11 +30,13 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Ad Creation Interface for Advertisers.
  * UPDATED: Fixed File Picker, Real Reach Discovery, and verified Broadcast sync.
  * FIXED: Changed Kind to 1 and implemented proper hashtag tag cleaning for Nostr compatibility.
+ * NEW: Replaced Toasts with a Detailed technical popup console.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -207,7 +209,6 @@ public class CreateAdFragment extends Fragment {
             event.put("kind", 1); // FIXED: Changed from 30001 to 1 for Ad Broadcast compliance
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            // Nostr events must have the content field as a stringified JSON
             event.put("content", content.toString());
 
             JSONArray tags = new JSONArray();
@@ -222,7 +223,14 @@ public class CreateAdFragment extends Fragment {
             }
             event.put("tags", tags);
 
-            broadcastToNetwork(event.toString());
+            // NEW: Sign the event cryptographically before sending
+            JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
+
+            if (signedEvent != null) {
+                broadcastToNetwork(signedEvent);
+            } else {
+                Toast.makeText(getContext(), "Signing Failed: Error in crypto keys", Toast.LENGTH_SHORT).show();
+            }
 
         } catch (Exception e) {
             Log.e(TAG, "Ad Preparation Error: " + e.getMessage());
@@ -230,10 +238,43 @@ public class CreateAdFragment extends Fragment {
         }
     }
 
-    private void broadcastToNetwork(String signedEventJson) {
-        WebSocketClientManager.getInstance().broadcastEvent(signedEventJson);
-        Toast.makeText(getContext(), "Ad Broadcasted Successfully!", Toast.LENGTH_LONG).show();
-        Navigation.findNavController(requireView()).navigateUp();
+    /**
+     * UPDATED: Replaced Toast with a technical console popup.
+     * Shows technical information for each relay during broadcast.
+     */
+    private void broadcastToNetwork(JSONObject signedEvent) {
+        Set<String> relayPool = db.getRelayPool();
+        StringBuilder technicalLogs = new StringBuilder();
+        technicalLogs.append("AD BROADCAST STATUS:\n\n");
+
+        final int totalNodes = relayPool.size();
+        final int[] successCount = {0};
+        final int[] finishedNodes = {0};
+
+        NostrPublisher.publishToPool(relayPool, signedEvent, (relayUrl, success, message) -> {
+            finishedNodes[0]++;
+            if (success) successCount[0]++;
+            
+            technicalLogs.append(success ? "[OK] " : "[FAIL] ")
+                         .append(relayUrl).append("\n")
+                         .append(" > ").append(message).append("\n\n");
+
+            // Refresh the popup when data starts coming in
+            if (isAdded() && getActivity() != null) {
+                getActivity().runOnUiThread(() -> {
+                    RelayReportDialog dialog = RelayReportDialog.newInstance(
+                            "AD BROADCAST CONSOLE",
+                            "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
+                            technicalLogs.toString()
+                    );
+                    
+                    // Show dialog if not already visible
+                    if (getFragmentManager().findFragmentByTag("AD_CONSOLE") == null) {
+                        dialog.show(getChildFragmentManager(), "AD_CONSOLE");
+                    }
+                });
+            }
+        });
     }
 
     @Override
