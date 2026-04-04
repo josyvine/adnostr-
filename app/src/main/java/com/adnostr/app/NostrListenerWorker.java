@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  * Background Ad Synchronizer.
  * UPDATED: Fixed relay message extraction and background lifecycle management 
  * to ensure ads are actually received and processed.
- * FIXED: Resolved JSONArray symbol error by using .put() instead of .add().
+ * FIXED: Implemented Kind 1 filtering and dynamic hashtag matching.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -68,14 +68,14 @@ public class NostrListenerWorker extends Worker {
         final CountDownLatch latch = new CountDownLatch(1);
 
         try {
-            // Build Filter: ["REQ", "sub_id", {"kinds": [30001], "#t": ["tag1", "tag2"]}]
+            // UPDATED: Filter for Kind 1 (Ad Broadcasts) to match the advertiser logic
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(30001));
+            filter.put("kinds", new JSONArray().put(1));
 
             JSONArray tags = new JSONArray();
             for (String tag : interests) {
-                // FIXED: JSONArray uses .put(), not .add()
-                tags.put(tag.toLowerCase());
+                // FIXED: Changed .add() to .put() and added .replace("#", "") for protocol matching
+                tags.put(tag.toLowerCase().replace("#", ""));
             }
             filter.put("#t", tags);
 
