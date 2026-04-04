@@ -24,7 +24,8 @@ import coil.request.ImageRequest;
 
 /**
  * The Ad Delivery Overlay.
- * UPDATED: Fixed JSON Array parsing crash and added robust content validation.
+ * UPDATED: Fixed parsing to match Kind 30001 Ad format spec.
+ * FIXED: Image key changed to singular "image" and links moved to content root.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -59,8 +60,9 @@ public class AdPopupActivity extends AppCompatActivity {
             parseAndPopulateAd(adJsonString);
         } catch (Exception e) {
             Log.e(TAG, "Failed to render Ad UI: " + e.getMessage());
-            // This rethrow will trigger the Global Error Popup for diagnosis
-            throw new RuntimeException("Ad Rendering Failure: " + e.getMessage(), e);
+            // Instead of crashing, we log the failure and close
+            Toast.makeText(this, "Ad format error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            finish();
         }
 
         // 5. Setup Close Button
@@ -68,13 +70,13 @@ public class AdPopupActivity extends AppCompatActivity {
     }
 
     /**
-     * Extracts fields from the kind:30001 event.
-     * FIXED: Now correctly handles standard Nostr Relay messages (JSON Arrays).
+     * Extracts fields from the Kind 30001 Ad event.
+     * UPDATED: Aligned with Advertiser Step 2 JSON format requirements.
      */
     private void parseAndPopulateAd(String jsonStr) throws Exception {
         JSONObject event;
 
-        // CRITICAL FIX: Check if the string is a JSONArray (Relay message) or JSONObject (Raw Event)
+        // 1. Parse Nostr Relay Wrapper
         if (jsonStr.trim().startsWith("[")) {
             JSONArray relayMsg = new JSONArray(jsonStr);
             // Nostr EVENT messages are: ["EVENT", "sub_id", {event_object}]
@@ -87,72 +89,73 @@ public class AdPopupActivity extends AppCompatActivity {
             event = new JSONObject(jsonStr);
         }
 
-        // Extract the nested 'content' string
+        // 2. Extract nested Ad 'content' string
         String contentRaw = event.optString("content", "");
         if (contentRaw.isEmpty()) throw new Exception("Ad event contains no content payload.");
-        
+
         JSONObject content = new JSONObject(contentRaw);
 
-        // Set Text Content
+        // 3. Set Text Content
         String title = content.optString("title", "Local Deal Found");
         String desc = content.optString("desc", "Check out this new deal near you.");
         binding.tvPopupTitle.setText(title);
         binding.tvPopupDesc.setText(desc);
 
-        // Handle Images (IPFS Gateway Loading)
-        JSONArray imageArray = content.optJSONArray("images");
-        if (imageArray != null && imageArray.length() > 0) {
-            String ipfsUri = imageArray.getString(0);
+        // 4. Handle Singular Image (IPFS Gateway Loading)
+        // FIXED: Now uses "image" string as per Step 2 spec
+        String ipfsUri = content.optString("image", "");
+        if (!ipfsUri.isEmpty()) {
             String gatewayUrl = ipfsUri.replace("ipfs://", "https://cloudflare-ipfs.com/ipfs/");
-            
+
             ImageRequest request = new ImageRequest.Builder(this)
                     .data(gatewayUrl)
                     .crossfade(true)
                     .target(binding.ivAdCover)
                     .build();
-            
+
             Coil.imageLoader(this).enqueue(request);
+        } else {
+            binding.ivAdCover.setVisibility(View.GONE);
         }
 
-        // Handle Dynamic Action Buttons
-        JSONObject links = content.optJSONObject("links");
-        if (links != null) {
-            setupActionButtons(links);
-        }
+        // 5. Handle Dynamic Action Buttons
+        // FIXED: cta and maps are now directly in the content root
+        setupActionButtons(content);
     }
 
-    private void setupActionButtons(JSONObject links) {
-        // WhatsApp Button
-        String whatsapp = links.optString("whatsapp", "");
-        if (!whatsapp.isEmpty()) {
+    private void setupActionButtons(JSONObject content) {
+        // WhatsApp Button (cta)
+        String ctaUrl = content.optString("cta", "");
+        if (!ctaUrl.isEmpty()) {
             binding.btnActionWhatsapp.setVisibility(View.VISIBLE);
-            binding.btnActionWhatsapp.setOnClickListener(v -> {
-                String url = "https://wa.me/" + whatsapp.replaceAll("[^\\d]", "");
-                openUrlIntent(url);
-            });
+            binding.btnActionWhatsapp.setOnClickListener(v -> openUrlIntent(ctaUrl));
         }
 
         // Google Maps Button
-        String maps = links.optString("maps", "");
-        if (!maps.isEmpty()) {
+        String mapsUrl = content.optString("maps", "");
+        if (!mapsUrl.isEmpty()) {
             binding.btnActionMap.setVisibility(View.VISIBLE);
-            binding.btnActionMap.setOnClickListener(v -> openUrlIntent(maps));
+            binding.btnActionMap.setOnClickListener(v -> openUrlIntent(mapsUrl));
         }
 
-        // Website Button
-        String website = links.optString("website", "");
+        // Website Button (Fallback if cta is a standard website)
+        String website = content.optString("website", "");
         if (!website.isEmpty()) {
             binding.btnActionWebsite.setVisibility(View.VISIBLE);
             binding.btnActionWebsite.setOnClickListener(v -> openUrlIntent(website));
         }
 
         // Call Now Button
-        String call = links.optString("call", "");
+        String call = content.optString("call", "");
         if (!call.isEmpty()) {
             binding.btnActionCall.setVisibility(View.VISIBLE);
             binding.btnActionCall.setOnClickListener(v -> {
-                Intent callIntent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + call));
-                startActivity(callIntent);
+                try {
+                    Intent callIntent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + call));
+                    startActivity(callIntent);
+                } catch (Exception e) {
+                    Toast.makeText(this, "Phone app missing.", Toast.LENGTH_SHORT).show();
+                }
             });
         }
     }
