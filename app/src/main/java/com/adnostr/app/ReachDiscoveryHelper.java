@@ -8,25 +8,30 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Discovery Engine for AdNostr Advertisers.
- * UPDATED: Replaced simulated random reach with real-time decentralized 
- * peer counting logic. Identifies unique pubkeys watching specific hashtags.
+ * UPDATED: Implements parallel multi-relay scanning to capture true global reach.
+ * Aggregates unique pubkeys across the decentralized network for accurate counting.
  */
 public class ReachDiscoveryHelper {
 
     private static final String TAG = "AdNostr_Discovery";
-    
-    // Major public relays to scan for global user interest metadata
+
+    // Strategic public relays for scanning global user activity
     private static final String[] DISCOVERY_RELAYS = {
             "wss://relay.damus.io",
             "wss://nos.lol",
-            "wss://relay.nostr.band"
+            "wss://relay.nostr.band",
+            "wss://relay.snort.social",
+            "wss://relay.primal.net"
     };
 
     public interface ReachCallback {
@@ -35,7 +40,7 @@ public class ReachDiscoveryHelper {
     }
 
     /**
-     * Scans the network for unique users associated with specific hashtags.
+     * Scans multiple decentralized relays simultaneously to find users watching specific tags.
      */
     public static void discoverGlobalReach(List<String> hashtags, ReachCallback callback) {
         if (hashtags == null || hashtags.isEmpty()) {
@@ -44,107 +49,102 @@ public class ReachDiscoveryHelper {
         }
 
         new Thread(() -> {
-            // Set to store unique public keys found to ensure accurate reach counting
-            final Set<String> uniqueUserPubkeys = new HashSet<>();
+            // Thread-safe set to store unique pubkeys found across all relays
+            final Set<String> uniqueUserPubkeys = Collections.synchronizedSet(new HashSet<>());
             
+            // Latch to wait for all relay scans to complete or timeout
+            final CountDownLatch latch = new CountDownLatch(DISCOVERY_RELAYS.length);
+
             try {
-                // Construct the Nostr Subscription Filter
-                // We search for users who have tagged their relay lists or ads with these hashtags
+                // 1. Construct the Search Filter
                 JSONObject filter = new JSONObject();
                 
-                // kind 10002 = Relay List Metadata (where users list interests)
-                // kind 30001 = Ad Metadata / Followed Hashtags in AdNostr
                 JSONArray kinds = new JSONArray();
-                kinds.put(10002);
-                kinds.put(30001);
+                kinds.put(0);     // Metadata (Bio/Interests)
+                kinds.put(10002); // Relay Lists (Standard interest location)
+                kinds.put(30001); // Specific AdNostr interest broadcasts
                 filter.put("kinds", kinds);
-                
+
                 JSONArray tags = new JSONArray();
                 for (String h : hashtags) {
                     tags.put(h.toLowerCase());
                 }
                 filter.put("#t", tags);
 
-                String subId = "discovery-" + UUID.randomUUID().toString().substring(0, 6);
+                String subId = "reach-" + UUID.randomUUID().toString().substring(0, 4);
                 String reqMessage = new JSONArray()
                         .put("REQ")
                         .put(subId)
                         .put(filter)
                         .toString();
 
-                // Connect to a primary bootstrap relay for the scan
-                WebSocketClient client = new WebSocketClient(new URI(DISCOVERY_RELAYS[0])) {
-                    @Override
-                    public void onOpen(ServerHandshake handshakedata) {
-                        Log.d(TAG, "Discovery scan started on: " + DISCOVERY_RELAYS[0]);
-                        send(reqMessage);
-                    }
+                // 2. Launch parallel connections to all discovery relays
+                for (String relayUrl : DISCOVERY_RELAYS) {
+                    connectAndScan(relayUrl, reqMessage, uniqueUserPubkeys, latch);
+                }
 
-                    @Override
-                    public void onMessage(String message) {
-                        try {
-                            if (!message.startsWith("[")) return;
-                            
-                            JSONArray resp = new JSONArray(message);
-                            String type = resp.getString(0);
+                // 3. Wait for network aggregation (Max 8 seconds)
+                boolean finished = latch.await(8, TimeUnit.SECONDS);
+                
+                Log.i(TAG, "Parallel Discovery finished. Success: " + finished + ". Total unique users found: " + uniqueUserPubkeys.size());
 
-                            if ("EVENT".equals(type)) {
-                                JSONObject event = resp.getJSONObject(2);
-                                // Add the pubkey to the Set. 
-                                // Duplicate pubkeys are automatically ignored by the Set.
-                                String pubkey = event.getString("pubkey");
-                                uniqueUserPubkeys.add(pubkey);
-                                Log.v(TAG, "User found for tag: " + pubkey);
-
-                            } else if ("EOSE".equals(type)) {
-                                // End Of Stored Events - Relay has finished sending historical matches
-                                Log.i(TAG, "Relay scan finished. Unique users: " + uniqueUserPubkeys.size());
-                                finalizeCount(uniqueUserPubkeys.size(), callback, this);
-                            }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error parsing discovery message: " + e.getMessage());
-                        }
-                    }
-
-                    @Override
-                    public void onClose(int code, String reason, boolean remote) {
-                        Log.d(TAG, "Discovery connection closed.");
-                    }
-
-                    @Override
-                    public void onError(Exception ex) {
-                        Log.e(TAG, "Discovery error: " + ex.getMessage());
-                        callback.onDiscoveryError(ex.getMessage());
-                    }
-                };
-
-                client.connect();
-
-                // Safety Timeout: 6 seconds. 
-                // If EOSE is not received, return the current count accumulated.
-                Thread.sleep(6000); 
-                if (client.isOpen()) {
-                    finalizeCount(uniqueUserPubkeys.size(), callback, client);
+                // 4. Return results to the Advertiser
+                if (callback != null) {
+                    callback.onReachCalculated(uniqueUserPubkeys.size());
                 }
 
             } catch (Exception e) {
-                Log.e(TAG, "Discovery thread failed: " + e.getMessage());
+                Log.e(TAG, "Discovery thread orchestration failed: " + e.getMessage());
                 callback.onDiscoveryError(e.getMessage());
             }
         }).start();
     }
 
-    /**
-     * Closes the connection and returns the real count to the UI.
-     */
-    private static void finalizeCount(int count, ReachCallback callback, WebSocketClient client) {
-        if (client != null && client.isOpen()) {
-            client.close();
-        }
-        
-        if (callback != null) {
-            // FIXED: Returns the REAL count. No more random numbers.
-            callback.onReachCalculated(count);
+    private static void connectAndScan(String relayUrl, String reqMessage, Set<String> results, CountDownLatch latch) {
+        try {
+            WebSocketClient client = new WebSocketClient(new URI(relayUrl)) {
+                @Override
+                public void onOpen(ServerHandshake handshakedata) {
+                    Log.d(TAG, "Scanning relay: " + relayUrl);
+                    send(reqMessage);
+                }
+
+                @Override
+                public void onMessage(String message) {
+                    try {
+                        if (!message.startsWith("[")) return;
+                        JSONArray resp = new JSONArray(message);
+                        String type = resp.getString(0);
+
+                        if ("EVENT".equals(type)) {
+                            JSONObject event = resp.getJSONObject(2);
+                            String pubkey = event.getString("pubkey");
+                            results.add(pubkey); // Thread-safe set ignores duplicates
+                        } else if ("EOSE".equals(type)) {
+                            // Relay finished its search
+                            close();
+                        }
+                    } catch (Exception e) {
+                        // Silent error per relay
+                    }
+                }
+
+                @Override
+                public void onClose(int code, String reason, boolean remote) {
+                    latch.countDown();
+                }
+
+                @Override
+                public void onError(Exception ex) {
+                    latch.countDown();
+                }
+            };
+            
+            client.setConnectionLostTimeout(10);
+            client.connect();
+
+        } catch (Exception e) {
+            latch.countDown();
         }
     }
 }
