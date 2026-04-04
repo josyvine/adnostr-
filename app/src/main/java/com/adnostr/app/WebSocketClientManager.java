@@ -64,9 +64,9 @@ public class WebSocketClientManager {
     private synchronized void addToLog(String message) {
         String time = timeFormat.format(new Date());
         liveLogs.insert(0, "[" + time + "] " + message + "\n\n");
-        // Maintain log memory efficiency
-        if (liveLogs.length() > 15000) {
-            liveLogs.setLength(10000);
+        // FIXED: Increased buffer size from 15k to 50k characters so full JSON logs aren't deleted before you can read them.
+        if (liveLogs.length() > 50000) {
+            liveLogs.setLength(40000);
         }
     }
 
@@ -122,9 +122,8 @@ public class WebSocketClientManager {
 
                 @Override
                 public void onMessage(String message) {
-                    // Log the first 300 characters of every incoming message to the console
-                    String preview = message.length() > 300 ? message.substring(0, 300) + "..." : message;
-                    addToLog("RECV from " + relayUrl + ":\n" + preview);
+                    // FIXED: Removed the 300 character truncation so you can see the full JSON array, tags, and signatures.
+                    addToLog("RECV from " + relayUrl + ":\n" + message);
 
                     if (statusListener != null) {
                         statusListener.onMessageReceived(relayUrl, message);
