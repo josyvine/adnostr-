@@ -26,6 +26,7 @@ import java.util.Set;
 /**
  * Dashboard for standard AdNostr Users.
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
+ * FIXED: Resolved state loss crash and added identity/protocol visibility.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -70,15 +71,24 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     /**
-     * UPDATED: Opens the Technical Report dialog to diagnose network/ad issues.
+     * UPDATED: Opens the Technical Report dialog safely.
+     * FIXED: Includes User Pubkey and Live JSON traffic from WebSocketManager.
      */
     private void showNetworkConsole() {
+        // Construct the detailed technical log
+        String fullLog = "USER IDENTITY (HEX):\n" + db.getPublicKey() + "\n\n" +
+                         "NETWORK EVENTS:\n" + technicalLogs.toString() + "\n" +
+                         "PROTOCOL TRAFFIC (LIVE):\n-------------------\n" +
+                         wsManager.getLiveLogs();
+
         RelayReportDialog dialog = RelayReportDialog.newInstance(
                 "AD MONITORING CONSOLE",
                 "Connected to " + wsManager.getConnectedRelayCount() + " decentralized nodes",
-                technicalLogs.length() > 0 ? technicalLogs.toString() : "Listening for events..."
+                fullLog
         );
-        dialog.show(getChildFragmentManager(), "USER_CONSOLE");
+
+        // FIXED: Using showSafe to prevent the IllegalStateException crash
+        dialog.showSafe(getChildFragmentManager(), "USER_CONSOLE");
     }
 
     private void toggleListeningState() {
@@ -105,10 +115,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
         try {
             JSONObject event = new JSONObject();
-            event.put("kind", 30001);
+            event.put("kind", 30001); // Kind 30001 for User Interests/Followed Tags
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            event.put("content", "");
+            event.put("content", ""); // Content can be empty for interest lists
 
             JSONArray tags = new JSONArray();
             for (String tag : followed) {
@@ -123,9 +133,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
-                technicalLogs.append("SIGNING SUCCESS: Interest List Prepared.\n");
+                technicalLogs.append("SIGNING SUCCESS: Interest List Signed.\n");
                 wsManager.broadcastEvent(signedEvent.toString());
-                technicalLogs.append("BROADCAST: Kind 30001 sent to all relays.\n\n");
+                technicalLogs.append("BROADCAST: Sent Kind 30001 to relays.\n\n");
             }
 
         } catch (Exception e) {
