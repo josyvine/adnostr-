@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
  * UPDATED: Optimized to search specifically for Kind 30001 (User Interest) events.
  * This ensures that the hashtag search returns real user counts based on published metadata.
  * FIXED: Implements Pool Alignment, Tag Sanitization, and Increased Parallelism.
+ * UPDATED: Added Relay NOTICE and CLOSED handling to debug "0 users found" issues.
  */
 public class ReachDiscoveryHelper {
 
@@ -84,8 +85,8 @@ public class ReachDiscoveryHelper {
                     connectAndScanRelay(relayUrl, reqMessage, uniqueUserPubkeys, latch);
                 }
 
-                // Wait for the network search to aggregate (8 seconds max)
-                boolean finished = latch.await(8, TimeUnit.SECONDS);
+                // Wait for the network search to aggregate (12 seconds max - increased for slow relays)
+                boolean finished = latch.await(12, TimeUnit.SECONDS);
 
                 Log.i(TAG, "Discovery Aggregate finished. Success: " + finished 
                         + ". Unique users found: " + uniqueUserPubkeys.size());
@@ -104,6 +105,7 @@ public class ReachDiscoveryHelper {
 
     /**
      * Internal worker to connect to a single relay and scrape matched events.
+     * UPDATED: Now parses NOTICE and CLOSED messages to identify signature rejection.
      */
     private static void connectAndScanRelay(String relayUrl, String reqMessage, Set<String> results, CountDownLatch latch) {
         try {
@@ -131,6 +133,18 @@ public class ReachDiscoveryHelper {
                         } else if ("EOSE".equals(type)) {
                             // Relay has finished scanning its database
                             close();
+                        } else if ("NOTICE".equals(type)) {
+                            // Relay is sending a warning (e.g., restricted access or invalid filters)
+                            String note = resp.optString(1, "");
+                            Log.w(TAG, "Relay NOTICE [" + relayUrl + "]: " + note);
+                            if (note.toLowerCase().contains("invalid") || note.toLowerCase().contains("signature")) {
+                                Log.e(TAG, "CRITICAL: Relay reporting signature issues during search.");
+                            }
+                        } else if ("CLOSED".equals(type)) {
+                            // Relay forcefully closed the subscription
+                            String reason = resp.optString(2, "No reason");
+                            Log.w(TAG, "Relay CLOSED sub [" + relayUrl + "]: " + reason);
+                            close();
                         }
                     } catch (Exception e) {
                         // Ignore individual event parsing errors
@@ -149,7 +163,8 @@ public class ReachDiscoveryHelper {
                 }
             };
 
-            client.setConnectionLostTimeout(10);
+            // Increased timeout to give slower global relays a chance to respond
+            client.setConnectionLostTimeout(15);
             client.connect();
 
         } catch (Exception e) {
