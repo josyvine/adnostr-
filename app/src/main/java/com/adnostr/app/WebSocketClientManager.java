@@ -18,7 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Decentralized Network Manager.
- * UPDATED: Added a "Live Log" feature to record all relay traffic for the technical console.
+ * UPDATED: Implements detailed technical logging of raw Nostr JSON traffic 
+ * to identify why ads or search reach may be failing.
  */
 public class WebSocketClientManager {
 
@@ -28,7 +29,7 @@ public class WebSocketClientManager {
     // Thread-safe map of active relay connections (URL -> Client)
     private final Map<String, WebSocketClient> activeRelays = new ConcurrentHashMap<>();
 
-    // NEW: Technical log for the monitoring console
+    // Technical live log for the detailed technical popup console
     private final StringBuilder liveLogs = new StringBuilder();
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
@@ -58,14 +59,14 @@ public class WebSocketClientManager {
     }
 
     /**
-     * Adds a timestamped entry to the technical live log.
+     * Records a timestamped technical event for the big detailed popup.
      */
     private synchronized void addToLog(String message) {
         String time = timeFormat.format(new Date());
-        liveLogs.insert(0, "[" + time + "] " + message + "\n");
-        // Keep logs at a reasonable length
-        if (liveLogs.length() > 10000) {
-            liveLogs.setLength(8000);
+        liveLogs.insert(0, "[" + time + "] " + message + "\n\n");
+        // Maintain log memory efficiency
+        if (liveLogs.length() > 15000) {
+            liveLogs.setLength(10000);
         }
     }
 
@@ -83,7 +84,7 @@ public class WebSocketClientManager {
     public void connectPool(Set<String> relayUrls) {
         if (relayUrls == null || relayUrls.isEmpty()) return;
 
-        addToLog("POOL: Initiating connection to " + relayUrls.size() + " relays.");
+        addToLog("NETWORK: Connecting to pool of " + relayUrls.size() + " relays.");
         for (String url : relayUrls) {
             connectRelay(url);
         }
@@ -108,10 +109,10 @@ public class WebSocketClientManager {
                 public void onOpen(ServerHandshake handshakedata) {
                     Log.i(TAG, "Relay Connection Established: " + relayUrl);
                     activeRelays.put(relayUrl, this);
-                    
+
                     addToLog("CONNECTED: " + relayUrl);
 
-                    // NEW: Automatically subscribe to matching ads upon connection
+                    // NEW: Subscribing to user interests and logging the action
                     subscribeToUserInterests(this, relayUrl);
 
                     if (statusListener != null) {
@@ -121,11 +122,10 @@ public class WebSocketClientManager {
 
                 @Override
                 public void onMessage(String message) {
-                    // Record incoming ad packets in the technical log
-                    if (message.contains("EVENT")) {
-                        addToLog("INCOMING from " + relayUrl + ": Ad Event Detected");
-                    }
-                    
+                    // Log the first 300 characters of every incoming message to the console
+                    String preview = message.length() > 300 ? message.substring(0, 300) + "..." : message;
+                    addToLog("RECV from " + relayUrl + ":\n" + preview);
+
                     if (statusListener != null) {
                         statusListener.onMessageReceived(relayUrl, message);
                     }
@@ -135,7 +135,7 @@ public class WebSocketClientManager {
                 public void onClose(int code, String reason, boolean remote) {
                     Log.w(TAG, "Relay Closed [" + relayUrl + "]: " + reason);
                     activeRelays.remove(relayUrl);
-                    addToLog("DISCONNECTED: " + relayUrl + " (" + reason + ")");
+                    addToLog("CLOSED: " + relayUrl + " (Reason: " + reason + ")");
                     if (statusListener != null) {
                         statusListener.onRelayDisconnected(relayUrl, reason);
                     }
@@ -162,53 +162,56 @@ public class WebSocketClientManager {
     }
 
     /**
-     * NEW: Generates a Nostr REQ (Subscription) based on the user's saved hashtags.
-     * This makes the relay push matching ads to the device.
+     * Subscribes the device to Kind 1 Ad events matching the User's hashtags.
+     * Technical logs record the raw REQ JSON.
      */
     private void subscribeToUserInterests(WebSocketClient client, String url) {
         try {
-            // Fetch interests from database helper
+            // Must pass context from somewhere or handle singleton correctly
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(null);
             Set<String> interests = db.getInterests();
+            String userPubkey = db.getPublicKey();
+
+            addToLog("IDENTITY: User Pubkey is " + userPubkey);
 
             if (interests.isEmpty()) {
-                addToLog("SUBSCRIPTION: No interests selected, listening for nothing on " + url);
+                addToLog("SUBSCRIPTION: Empty interest list for " + url);
                 return;
             }
 
-            // 1. Build Tag Array (removing # for protocol match)
+            // 1. Sanitize hashtags for Nostr protocol (remove #)
             JSONArray tagArray = new JSONArray();
             for (String tag : interests) {
                 tagArray.put(tag.toLowerCase().replace("#", ""));
             }
 
-            // 2. Create Nostr Filter
+            // 2. Build the Kind 1 Ad filter
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(1)); // Listen for Ad Broadcasts (Kind 1)
-            filter.put("#t", tagArray); // Filter by the user's hashtags
+            filter.put("kinds", new JSONArray().put(1));
+            filter.put("#t", tagArray);
 
-            // 3. Wrap in standard REQ format
+            // 3. Construct REQ command
             JSONArray req = new JSONArray();
             req.put("REQ");
-            req.put("ads_subscription_01");
+            req.put("adnostr_sub_v1");
             req.put(filter);
 
-            String reqString = req.toString();
-            client.send(reqString);
-            
-            addToLog("SUBSCRIBED on " + url + " for Kind 1 tags: " + tagArray.toString());
+            String rawJson = req.toString();
+            client.send(rawJson);
+
+            addToLog("SENT REQ to " + url + ":\n" + rawJson);
 
         } catch (Exception e) {
-            addToLog("SUBSCRIPTION ERROR: " + e.getMessage());
+            addToLog("SUB ERROR: " + e.getMessage());
         }
     }
 
     /**
-     * Broadcasts a signed Nostr event JSON to all active relays in the pool.
+     * Broadcasts a signed event and logs the full outgoing JSON payload.
      */
     public void broadcastEvent(String eventJson) {
         if (activeRelays.isEmpty()) {
-            addToLog("BROADCAST FAILED: No active relays connected.");
+            addToLog("BROADCAST FAILED: No active connections available.");
             return;
         }
 
@@ -222,14 +225,14 @@ public class WebSocketClientManager {
                 sentCount++;
             }
         }
-        addToLog("BROADCAST: Sent event to " + sentCount + " relays.");
+        addToLog("BROADCAST: Sent to " + sentCount + " relays.\nPAYLOAD: " + eventJson);
     }
 
     public void subscribe(String relayUrl, String subscriptionJson) {
         WebSocketClient client = activeRelays.get(relayUrl);
         if (client != null && client.isOpen()) {
             client.send(subscriptionJson);
-            addToLog("REQ SENT to " + relayUrl);
+            addToLog("MANUAL REQ to " + relayUrl + ":\n" + subscriptionJson);
         }
     }
 
@@ -237,7 +240,7 @@ public class WebSocketClientManager {
         WebSocketClient client = activeRelays.remove(relayUrl);
         if (client != null) {
             client.close();
-            addToLog("MANUAL CLOSE: " + relayUrl);
+            addToLog("MANUAL DISCONNECT: " + relayUrl);
         }
     }
 
@@ -246,7 +249,7 @@ public class WebSocketClientManager {
             disconnectRelay(url);
         }
         activeRelays.clear();
-        addToLog("SYSTEM: All connections terminated.");
+        addToLog("SYSTEM: All relay connections terminated.");
     }
 
     public int getConnectedRelayCount() {
