@@ -21,9 +21,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Dashboard for AdNostr Users.
- * UPDATED: Handles custom hashtag creation, batch deletion, and visual 
- * feedback for the background listening process.
+ * Dashboard for standard AdNostr Users.
+ * UPDATED: Restored 31+ relay connectivity by implementing the network pool 
+ * and adding live status listeners for the UI.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -32,6 +32,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     private AdNostrDatabaseHelper db;
     private HashtagAdapter adapter;
     private List<String> hashtagPool;
+    private WebSocketClientManager wsManager;
 
     @Nullable
     @Override
@@ -45,6 +46,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         super.onViewCreated(view, savedInstanceState);
 
         db = AdNostrDatabaseHelper.getInstance(requireContext());
+        wsManager = WebSocketClientManager.getInstance();
 
         // 1. Setup Grid with dynamic data from DB
         setupHashtagGrid();
@@ -58,35 +60,70 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         // 4. Setup "Start/Stop Listening" Toggle
         binding.btnStartAds.setOnClickListener(v -> toggleListeningState());
 
-        // 5. Initialize UI based on saved state
+        // 5. NEW: Initialize the Full Relay Pool
+        // This ensures the app connects to all 31+ bootstrap nodes defined in the DB helper
+        wsManager.connectPool(db.getRelayPool());
+
+        // 6. NEW: Setup Live Status Listener
+        // Updates the "Connected to X Relays" text dynamically as nodes come online
+        setupNetworkStatusListener();
+
+        // Initial UI refresh
         updateListeningUI();
         refreshRelayStatus();
     }
 
+    private void setupNetworkStatusListener() {
+        wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
+            @Override
+            public void onRelayConnected(String url) {
+                if (isAdded() && getActivity() != null) {
+                    getActivity().runOnUiThread(() -> refreshRelayStatus());
+                }
+            }
+
+            @Override
+            public void onRelayDisconnected(String url, String reason) {
+                if (isAdded() && getActivity() != null) {
+                    getActivity().runOnUiThread(() -> refreshRelayStatus());
+                }
+            }
+
+            @Override
+            public void onMessageReceived(String url, String message) {
+                // Background listener handles ad messages
+            }
+
+            @Override
+            public void onError(String url, Exception ex) {
+                if (isAdded() && getActivity() != null) {
+                    getActivity().runOnUiThread(() -> refreshRelayStatus());
+                }
+            }
+        });
+    }
+
     private void setupHashtagGrid() {
-        // Load the pool of available hashtags from DB (user's custom list)
         hashtagPool = new ArrayList<>(db.getAvailableHashtags());
-        
-        // Load which of these the user is currently "following"
         Set<String> followedInterests = db.getInterests();
 
         adapter = new HashtagAdapter(hashtagPool, followedInterests, this);
         binding.rvHashtags.setLayoutManager(new GridLayoutManager(requireContext(), 3));
         binding.rvHashtags.setAdapter(adapter);
-        
+
         updateDeleteButtonVisibility();
     }
 
     private void addNewHashtag() {
         String newTag = binding.etCustomTag.getText().toString().trim().toLowerCase();
-        
+
         if (newTag.isEmpty()) return;
         if (newTag.startsWith("#")) newTag = newTag.substring(1);
 
         if (!hashtagPool.contains(newTag)) {
             hashtagPool.add(newTag);
             db.saveAvailableHashtags(new HashSet<>(hashtagPool));
-            
+
             binding.etCustomTag.setText("");
             adapter.notifyItemInserted(hashtagPool.size() - 1);
             Toast.makeText(getContext(), "Hashtag added to your grid", Toast.LENGTH_SHORT).show();
@@ -99,10 +136,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         Set<String> followed = db.getInterests();
         if (followed.isEmpty()) return;
 
-        // Remove selected tags from the pool and the follow list
         hashtagPool.removeAll(followed);
         db.saveAvailableHashtags(new HashSet<>(hashtagPool));
-        db.saveInterests(new HashSet<>()); // Clear follow list since they are deleted
+        db.saveInterests(new HashSet<>());
 
         adapter.notifyDataSetChanged();
         updateDeleteButtonVisibility();
@@ -112,7 +148,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     private void toggleListeningState() {
         boolean currentState = db.isListening();
         boolean newState = !currentState;
-        
+
         db.setListeningState(newState);
         updateListeningUI();
 
@@ -125,7 +161,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     private void updateListeningUI() {
         boolean isListening = db.isListening();
-        
+
         if (isListening) {
             binding.llListeningState.setVisibility(View.VISIBLE);
             binding.btnStartAds.setText("STOP RECEIVING ADS");
@@ -146,9 +182,8 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     private void refreshRelayStatus() {
-        int relayCount = WebSocketClientManager.getInstance().getConnectedRelayCount();
-        if (relayCount == 0) relayCount = 34; // Simulation fallback
-        
+        if (binding == null) return;
+        int relayCount = wsManager.getConnectedRelayCount();
         binding.tvRelayStatus.setText("Connected to " + relayCount + " Relays");
     }
 
@@ -166,6 +201,8 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     @Override
     public void onDestroyView() {
+        // Clear listener to prevent memory leaks
+        wsManager.setStatusListener(null);
         super.onDestroyView();
         binding = null;
     }
