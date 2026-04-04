@@ -35,7 +35,7 @@ import java.util.Set;
 /**
  * Ad Creation Interface for Advertisers.
  * UPDATED: Fixed File Picker, Real Reach Discovery, and verified Broadcast sync.
- * FIXED: Changed Kind to 1 and implemented proper hashtag tag cleaning for Nostr compatibility.
+ * FIXED: Changed Kind to 30001 as per Ad Event specification.
  * NEW: Replaced Toasts with a Detailed technical popup console.
  */
 public class CreateAdFragment extends Fragment {
@@ -153,7 +153,6 @@ public class CreateAdFragment extends Fragment {
         dialog.showSafe(getChildFragmentManager(), "DISCOVERY_CONSOLE");
 
         // Call the real Discovery Helper logic
-        // FIXED: Added requireContext() as required by the new helper signature
         ReachDiscoveryHelper.discoverGlobalReach(requireContext(), tagsToSearch, new ReachDiscoveryHelper.ReachCallback() {
             @Override
             public void onReachCalculated(int totalUsers) {
@@ -177,7 +176,7 @@ public class CreateAdFragment extends Fragment {
                 if (isAdded() && binding != null) {
                     requireActivity().runOnUiThread(() -> {
                         binding.tvActiveWatchers.setText("Reach: 0 (Offline)");
-                        
+
                         // Update the open console with the error
                         RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
                         if (existing != null) {
@@ -214,6 +213,7 @@ public class CreateAdFragment extends Fragment {
         String title = binding.etAdTitle.getText().toString().trim();
         String desc = binding.etAdDescription.getText().toString().trim();
         String tagsInput = binding.etAdTags.getText().toString().trim();
+        String whatsapp = binding.etWhatsapp.getText().toString().trim();
 
         if (title.isEmpty() || desc.isEmpty() || tagsInput.isEmpty()) {
             Toast.makeText(getContext(), "Please provide all ad details", Toast.LENGTH_SHORT).show();
@@ -221,31 +221,34 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
+            // STEP 2 — Create Ad JSON as per requirements
             JSONObject content = new JSONObject();
             content.put("title", title);
             content.put("desc", desc);
+            
+            // image: Use the first CID string (e.g., ipfs://bafy...)
+            content.put("image", ipfsImageCIDs.isEmpty() ? "" : ipfsImageCIDs.get(0));
 
-            JSONArray images = new JSONArray();
-            for (String cid : ipfsImageCIDs) images.put(cid);
-            content.put("images", images);
-
-            JSONObject links = new JSONObject();
-            links.put("maps", capturedMapsUrl);
-            links.put("whatsapp", binding.etWhatsapp.getText().toString().trim());
-            content.put("links", links);
-
+            // cta: Format as WhatsApp URL
+            String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
+            content.put("cta", "https://wa.me/" + cleanPhone);
+            
+            // maps: Add captured GPS if available
+            content.put("maps", capturedMapsUrl);
+            
             content.put("expiry", "2026-05-01");
 
             JSONObject event = new JSONObject();
-            event.put("kind", 1); // FIXED: Changed from 30001 to 1 for Ad Broadcast compliance
+            event.put("kind", 30001); // UPDATED: Changed to kind 30001 for Ad Event specification
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
+            
             // Nostr events must have the content field as a stringified JSON
             event.put("content", content.toString());
 
             JSONArray tags = new JSONArray();
             for (String t : tagsInput.split(",")) {
-                String cleanTag = t.trim().toLowerCase().replace("#", ""); // FIXED: Tag cleaning
+                String cleanTag = t.trim().toLowerCase().replace("#", ""); 
                 if (cleanTag.isEmpty()) continue;
 
                 JSONArray tagPair = new JSONArray();
@@ -280,12 +283,10 @@ public class CreateAdFragment extends Fragment {
         technicalLogs.append("AD BROADCAST STATUS:\n\n");
 
         final int totalNodes = relayPool.size();
-        final int[] successCount = {0};
         final int[] finishedNodes = {0};
 
         NostrPublisher.publishToPool(relayPool, signedEvent, (relayUrl, success, message) -> {
             finishedNodes[0]++;
-            if (success) successCount[0]++;
 
             technicalLogs.append(success ? "[OK] " : "[FAIL] ")
                          .append(relayUrl).append("\n")
@@ -294,10 +295,8 @@ public class CreateAdFragment extends Fragment {
             // Refresh the popup when data starts coming in
             if (isAdded() && getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
-                    // FIX: Retrieve the open dialog by tag and update it. 
-                    // If it doesn't exist, create and show it.
                     RelayReportDialog existingDialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("AD_CONSOLE");
-                    
+
                     if (existingDialog != null) {
                         existingDialog.updateTechnicalLogs(
                                 "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
