@@ -139,7 +139,8 @@ public class CreateAdFragment extends Fragment {
         }
 
         // Call the real Discovery Helper logic
-        ReachDiscoveryHelper.discoverGlobalReach(tagsToSearch, new ReachDiscoveryHelper.ReachCallback() {
+        // FIXED: Added requireContext() as required by the new helper signature
+        ReachDiscoveryHelper.discoverGlobalReach(requireContext(), tagsToSearch, new ReachDiscoveryHelper.ReachCallback() {
             @Override
             public void onReachCalculated(int totalUsers) {
                 if (isAdded() && binding != null) {
@@ -209,6 +210,7 @@ public class CreateAdFragment extends Fragment {
             event.put("kind", 1); // FIXED: Changed from 30001 to 1 for Ad Broadcast compliance
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
+            // Nostr events must have the content field as a stringified JSON
             event.put("content", content.toString());
 
             JSONArray tags = new JSONArray();
@@ -254,7 +256,7 @@ public class CreateAdFragment extends Fragment {
         NostrPublisher.publishToPool(relayPool, signedEvent, (relayUrl, success, message) -> {
             finishedNodes[0]++;
             if (success) successCount[0]++;
-            
+
             technicalLogs.append(success ? "[OK] " : "[FAIL] ")
                          .append(relayUrl).append("\n")
                          .append(" > ").append(message).append("\n\n");
@@ -267,7 +269,7 @@ public class CreateAdFragment extends Fragment {
                             "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
                             technicalLogs.toString()
                     );
-                    
+
                     // Show dialog if not already visible
                     if (getFragmentManager().findFragmentByTag("AD_CONSOLE") == null) {
                         dialog.show(getChildFragmentManager(), "AD_CONSOLE");
