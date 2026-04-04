@@ -11,23 +11,31 @@ import java.net.URI;
 
 /**
  * Fire-and-Forget Event Broadcaster.
- * Handles the one-time transmission of signed Nostr events (Ads or User Interests)
- * to decentralized relays without interfering with the main UI WebSocket manager.
+ * UPDATED: Added technical reporting hooks to provide detailed broadcast 
+ * information for the Network Console popup.
  */
 public class NostrPublisher {
 
     private static final String TAG = "AdNostr_Publisher";
 
     /**
+     * Interface to capture relay-by-relay technical logs.
+     */
+    public interface PublishListener {
+        void onRelayReport(String relayUrl, boolean success, String message);
+    }
+
+    /**
      * Publishes a signed Nostr event to a specific relay.
      * 
      * @param relayUrl The wss:// address of the target relay.
      * @param signedEvent The JSONObject containing the signed Nostr event data.
+     * @param listener Callback to report success or failure details.
      */
-    public static void publishEvent(final String relayUrl, final JSONObject signedEvent) {
+    public static void publishEvent(final String relayUrl, final JSONObject signedEvent, final PublishListener listener) {
         new Thread(() -> {
             try {
-                Log.i(TAG, "Attempting to publish event to: " + relayUrl);
+                Log.i(TAG, "Initiating broadcast to: " + relayUrl);
                 URI uri = new URI(relayUrl);
 
                 WebSocketClient client = new WebSocketClient(uri) {
@@ -39,60 +47,71 @@ public class NostrPublisher {
                             message.put("EVENT");
                             message.put(signedEvent);
 
-                            // Send the data
-                            String jsonMessage = message.toString();
-                            send(jsonMessage);
-                            
-                            Log.d(TAG, "Event transmitted to " + relayUrl + ": " + jsonMessage);
+                            String jsonPayload = message.toString();
+                            send(jsonPayload);
 
-                            // For fire-and-forget, we close the connection immediately after sending
-                            // Small delay to ensure the OS buffers the outgoing packet
+                            Log.d(TAG, "Sent to " + relayUrl);
+                            
+                            if (listener != null) {
+                                listener.onRelayReport(relayUrl, true, "SENT: Event broadcasted successfully.");
+                            }
+
+                            // Wait for buffer to clear before closing
                             Thread.sleep(1000); 
                             close();
                         } catch (Exception e) {
-                            Log.e(TAG, "Broadcast failed during transmission: " + e.getMessage());
+                            if (listener != null) {
+                                listener.onRelayReport(relayUrl, false, "ERROR: Failed during transmission - " + e.getMessage());
+                            }
                         }
                     }
 
                     @Override
                     public void onMessage(String message) {
-                        // Relays sometimes respond with ["OK", event_id, true, ""]
-                        Log.d(TAG, "Relay Response from " + relayUrl + ": " + message);
+                        // Captures relay confirmation: ["OK", event_id, true, "msg"]
+                        Log.d(TAG, "Response from " + relayUrl + ": " + message);
+                        if (listener != null) {
+                            listener.onRelayReport(relayUrl, true, "ACK: " + message);
+                        }
                     }
 
                     @Override
                     public void onClose(int code, String reason, boolean remote) {
-                        Log.i(TAG, "Publisher connection closed for: " + relayUrl);
+                        Log.i(TAG, "Broadcast session closed: " + relayUrl);
                     }
 
                     @Override
                     public void onError(Exception ex) {
-                        Log.e(TAG, "Relay Error [" + relayUrl + "]: " + ex.getMessage());
+                        Log.e(TAG, "Relay unreachable [" + relayUrl + "]: " + ex.getMessage());
+                        if (listener != null) {
+                            listener.onRelayReport(relayUrl, false, "OFFLINE: Connection refused or timed out.");
+                        }
                     }
                 };
 
-                // Use a standard timeout for the connection phase
                 client.setConnectionLostTimeout(20);
-                
-                // connectBlocking ensures we are connected before the code proceeds 
-                // within this background thread.
-                client.connectBlocking();
+                // Non-blocking connect to keep the parallel pool moving fast
+                client.connect();
 
             } catch (Exception e) {
-                Log.e(TAG, "Critical failure during fire-and-forget publish: " + e.getMessage());
+                Log.e(TAG, "Critical broadcast failure: " + e.getMessage());
+                if (listener != null) {
+                    listener.onRelayReport(relayUrl, false, "CRITICAL: Protocol setup error.");
+                }
             }
         }).start();
     }
 
     /**
-     * Helper to broadcast a single event to a list of relays simultaneously.
+     * Broadcasts a single event to a pool of relays and collects real-time technical logs.
      * 
-     * @param relays Set or Array of wss:// relay URLs.
-     * @param signedEvent The event to be sent.
+     * @param relays List of relay URLs.
+     * @param signedEvent Fully signed JSON event.
+     * @param listener Callback for each relay's result.
      */
-    public static void publishToPool(Iterable<String> relays, JSONObject signedEvent) {
+    public static void publishToPool(Iterable<String> relays, JSONObject signedEvent, PublishListener listener) {
         for (String url : relays) {
-            publishEvent(url, signedEvent);
+            publishEvent(url, signedEvent, listener);
         }
     }
 }
