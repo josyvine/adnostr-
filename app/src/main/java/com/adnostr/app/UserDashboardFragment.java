@@ -25,7 +25,7 @@ import java.util.Set;
 
 /**
  * Dashboard for standard AdNostr Users.
- * UPDATED: Implements Kind 30001 broadcasting to make users searchable by advertisers.
+ * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -35,6 +35,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     private HashtagAdapter adapter;
     private List<String> hashtagPool;
     private WebSocketClientManager wsManager;
+
+    // Technical Log Accumulator for the Network Console
+    private final StringBuilder technicalLogs = new StringBuilder();
 
     @Nullable
     @Override
@@ -55,6 +58,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         binding.btnDeleteSelected.setOnClickListener(v -> deleteSelectedHashtags());
         binding.btnStartAds.setOnClickListener(v -> toggleListeningState());
 
+        // NEW: Allow user to open the Big Technical Pop-up by tapping the monitoring text
+        binding.llListeningState.setOnClickListener(v -> showNetworkConsole());
+
         // Connect to the full decentralized relay pool
         wsManager.connectPool(db.getRelayPool());
         setupNetworkStatusListener();
@@ -64,9 +70,17 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     /**
-     * UPDATED: When starting, we must publish user interests to relays 
-     * so that Advertisers can find us during their hashtag search.
+     * UPDATED: Opens the Technical Report dialog to diagnose network/ad issues.
      */
+    private void showNetworkConsole() {
+        RelayReportDialog dialog = RelayReportDialog.newInstance(
+                "AD MONITORING CONSOLE",
+                "Connected to " + wsManager.getConnectedRelayCount() + " decentralized nodes",
+                technicalLogs.length() > 0 ? technicalLogs.toString() : "Listening for events..."
+        );
+        dialog.show(getChildFragmentManager(), "USER_CONSOLE");
+    }
+
     private void toggleListeningState() {
         boolean currentState = db.isListening();
         boolean newState = !currentState;
@@ -83,7 +97,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     /**
-     * NEW: Broadcasts Kind 30001 (User Interests) to decentralized relays.
+     * UPDATED: Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
      */
     private void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
@@ -91,27 +105,32 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
         try {
             JSONObject event = new JSONObject();
-            event.put("kind", 30001); // Kind 30001 for User Interests/Followed Tags
+            event.put("kind", 30001);
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            event.put("content", ""); // Content can be empty for interest lists
+            event.put("content", "");
 
             JSONArray tags = new JSONArray();
             for (String tag : followed) {
                 JSONArray tagPair = new JSONArray();
                 tagPair.put("t");
-                tagPair.put(tag.toLowerCase());
+                tagPair.put(tag.toLowerCase().replace("#", ""));
                 tags.put(tagPair);
             }
             event.put("tags", tags);
 
-            // In full production, this JSON must be SIGNED with Private Key before broadcasting
-            // wsManager.broadcastEvent(event.toString());
-            Log.i(TAG, "Publishing user interest metadata to network: " + event.toString());
-            wsManager.broadcastEvent(event.toString());
+            // FIXED: Event must be SIGNED before relays will index it for the Advertiser search
+            JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
+
+            if (signedEvent != null) {
+                technicalLogs.append("SIGNING SUCCESS: Interest List Prepared.\n");
+                wsManager.broadcastEvent(signedEvent.toString());
+                technicalLogs.append("BROADCAST: Kind 30001 sent to all relays.\n\n");
+            }
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to broadcast interests: " + e.getMessage());
+            technicalLogs.append("CRYPTO ERROR: ").append(e.getMessage()).append("\n");
         }
     }
 
@@ -119,6 +138,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
             @Override
             public void onRelayConnected(String url) {
+                technicalLogs.append("[CONNECTED] ").append(url).append("\n");
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> refreshRelayStatus());
                 }
@@ -126,16 +146,23 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
             @Override
             public void onRelayDisconnected(String url, String reason) {
+                technicalLogs.append("[DISCONNECT] ").append(url).append(" (").append(reason).append(")\n");
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> refreshRelayStatus());
                 }
             }
 
             @Override
-            public void onMessageReceived(String url, String message) { }
+            public void onMessageReceived(String url, String message) {
+                // Record the metadata of incoming messages for the technical console
+                if (message.contains("EVENT")) {
+                    technicalLogs.append("[INCOMING] Ad packet detected from ").append(url).append("\n");
+                }
+            }
 
             @Override
             public void onError(String url, Exception ex) {
+                technicalLogs.append("[ERROR] ").append(url).append(": ").append(ex.getMessage()).append("\n");
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> refreshRelayStatus());
                 }
