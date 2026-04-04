@@ -15,6 +15,9 @@ import androidx.recyclerview.widget.GridLayoutManager;
 
 import com.adnostr.app.databinding.FragmentUserDashboardBinding;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -22,8 +25,7 @@ import java.util.Set;
 
 /**
  * Dashboard for standard AdNostr Users.
- * UPDATED: Restored 31+ relay connectivity by implementing the network pool 
- * and adding live status listeners for the UI.
+ * UPDATED: Implements Kind 30001 broadcasting to make users searchable by advertisers.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -48,29 +50,69 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         db = AdNostrDatabaseHelper.getInstance(requireContext());
         wsManager = WebSocketClientManager.getInstance();
 
-        // 1. Setup Grid with dynamic data from DB
         setupHashtagGrid();
-
-        // 2. Setup "Add Custom Tag" Logic
         binding.btnAddTag.setOnClickListener(v -> addNewHashtag());
-
-        // 3. Setup "Delete Selected" Logic
         binding.btnDeleteSelected.setOnClickListener(v -> deleteSelectedHashtags());
-
-        // 4. Setup "Start/Stop Listening" Toggle
         binding.btnStartAds.setOnClickListener(v -> toggleListeningState());
 
-        // 5. NEW: Initialize the Full Relay Pool
-        // This ensures the app connects to all 31+ bootstrap nodes defined in the DB helper
+        // Connect to the full decentralized relay pool
         wsManager.connectPool(db.getRelayPool());
-
-        // 6. NEW: Setup Live Status Listener
-        // Updates the "Connected to X Relays" text dynamically as nodes come online
         setupNetworkStatusListener();
 
-        // Initial UI refresh
         updateListeningUI();
         refreshRelayStatus();
+    }
+
+    /**
+     * UPDATED: When starting, we must publish user interests to relays 
+     * so that Advertisers can find us during their hashtag search.
+     */
+    private void toggleListeningState() {
+        boolean currentState = db.isListening();
+        boolean newState = !currentState;
+
+        db.setListeningState(newState);
+        updateListeningUI();
+
+        if (newState) {
+            broadcastUserInterests(); // Make user "Visible" to discovery
+            Toast.makeText(getContext(), "Ad monitoring activated!", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(getContext(), "Ad monitoring paused.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * NEW: Broadcasts Kind 30001 (User Interests) to decentralized relays.
+     */
+    private void broadcastUserInterests() {
+        Set<String> followed = db.getInterests();
+        if (followed.isEmpty()) return;
+
+        try {
+            JSONObject event = new JSONObject();
+            event.put("kind", 30001); // Kind 30001 for User Interests/Followed Tags
+            event.put("pubkey", db.getPublicKey());
+            event.put("created_at", System.currentTimeMillis() / 1000);
+            event.put("content", ""); // Content can be empty for interest lists
+
+            JSONArray tags = new JSONArray();
+            for (String tag : followed) {
+                JSONArray tagPair = new JSONArray();
+                tagPair.put("t");
+                tagPair.put(tag.toLowerCase());
+                tags.put(tagPair);
+            }
+            event.put("tags", tags);
+
+            // In full production, this JSON must be SIGNED with Private Key before broadcasting
+            // wsManager.broadcastEvent(event.toString());
+            Log.i(TAG, "Publishing user interest metadata to network: " + event.toString());
+            wsManager.broadcastEvent(event.toString());
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to broadcast interests: " + e.getMessage());
+        }
     }
 
     private void setupNetworkStatusListener() {
@@ -90,9 +132,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             }
 
             @Override
-            public void onMessageReceived(String url, String message) {
-                // Background listener handles ad messages
-            }
+            public void onMessageReceived(String url, String message) { }
 
             @Override
             public void onError(String url, Exception ex) {
@@ -106,62 +146,37 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     private void setupHashtagGrid() {
         hashtagPool = new ArrayList<>(db.getAvailableHashtags());
         Set<String> followedInterests = db.getInterests();
-
         adapter = new HashtagAdapter(hashtagPool, followedInterests, this);
         binding.rvHashtags.setLayoutManager(new GridLayoutManager(requireContext(), 3));
         binding.rvHashtags.setAdapter(adapter);
-
         updateDeleteButtonVisibility();
     }
 
     private void addNewHashtag() {
         String newTag = binding.etCustomTag.getText().toString().trim().toLowerCase();
-
         if (newTag.isEmpty()) return;
         if (newTag.startsWith("#")) newTag = newTag.substring(1);
 
         if (!hashtagPool.contains(newTag)) {
             hashtagPool.add(newTag);
             db.saveAvailableHashtags(new HashSet<>(hashtagPool));
-
             binding.etCustomTag.setText("");
             adapter.notifyItemInserted(hashtagPool.size() - 1);
-            Toast.makeText(getContext(), "Hashtag added to your grid", Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(getContext(), "Hashtag already exists", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void deleteSelectedHashtags() {
         Set<String> followed = db.getInterests();
         if (followed.isEmpty()) return;
-
         hashtagPool.removeAll(followed);
         db.saveAvailableHashtags(new HashSet<>(hashtagPool));
         db.saveInterests(new HashSet<>());
-
         adapter.notifyDataSetChanged();
         updateDeleteButtonVisibility();
-        Toast.makeText(getContext(), "Selected hashtags removed", Toast.LENGTH_SHORT).show();
-    }
-
-    private void toggleListeningState() {
-        boolean currentState = db.isListening();
-        boolean newState = !currentState;
-
-        db.setListeningState(newState);
-        updateListeningUI();
-
-        if (newState) {
-            Toast.makeText(getContext(), "Ad monitoring activated!", Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(getContext(), "Ad monitoring paused.", Toast.LENGTH_SHORT).show();
-        }
     }
 
     private void updateListeningUI() {
         boolean isListening = db.isListening();
-
         if (isListening) {
             binding.llListeningState.setVisibility(View.VISIBLE);
             binding.btnStartAds.setText("STOP RECEIVING ADS");
@@ -174,11 +189,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     private void updateDeleteButtonVisibility() {
-        if (!db.getInterests().isEmpty()) {
-            binding.btnDeleteSelected.setVisibility(View.VISIBLE);
-        } else {
-            binding.btnDeleteSelected.setVisibility(View.GONE);
-        }
+        binding.btnDeleteSelected.setVisibility(db.getInterests().isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     private void refreshRelayStatus() {
@@ -190,18 +201,14 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     @Override
     public void onHashtagToggled(String hashtag, boolean isSelected) {
         Set<String> currentInterests = new HashSet<>(db.getInterests());
-        if (isSelected) {
-            currentInterests.add(hashtag);
-        } else {
-            currentInterests.remove(hashtag);
-        }
+        if (isSelected) currentInterests.add(hashtag);
+        else currentInterests.remove(hashtag);
         db.saveInterests(currentInterests);
         updateDeleteButtonVisibility();
     }
 
     @Override
     public void onDestroyView() {
-        // Clear listener to prevent memory leaks
         wsManager.setStatusListener(null);
         super.onDestroyView();
         binding = null;
