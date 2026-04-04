@@ -1,6 +1,8 @@
 package com.adnostr.app;
 
 import android.app.Dialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -9,6 +11,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -87,6 +90,19 @@ public class RelayReportDialog extends DialogFragment {
             binding.tvConsoleLog.setText("No relay events recorded yet.");
         }
 
+        // Setup Copy to Clipboard Action
+        binding.btnCopyLogs.setOnClickListener(v -> {
+            String textToCopy = binding.tvConsoleLog.getText().toString();
+            if (!textToCopy.isEmpty()) {
+                ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip = ClipData.newPlainText("AdNostr Logs", textToCopy);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(clip);
+                    Toast.makeText(getContext(), "Logs copied to clipboard", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
         // Setup Close Action
         binding.btnCloseReport.setOnClickListener(v -> dismiss());
     }
@@ -128,7 +144,6 @@ public class RelayReportDialog extends DialogFragment {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            // setLayout removed from here - moved to onStart()
         }
         return dialog;
     }
