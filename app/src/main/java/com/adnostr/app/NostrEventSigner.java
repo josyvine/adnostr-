@@ -17,6 +17,7 @@ import java.util.Arrays;
  * Cryptographic Signer for Nostr Events.
  * Handles the creation of unique Event IDs (SHA-256) and 
  * generates REAL BIP-340 Schnorr signatures using the user's private key.
+ * FIXED: Implemented Tagged Hashing (BIP-340/challenge) to pass strict relay verification.
  */
 public class NostrEventSigner {
 
@@ -73,6 +74,7 @@ public class NostrEventSigner {
 
     /**
      * Generates a 64-byte BIP-340 compliant Schnorr signature.
+     * UPDATED: Uses Tagged Hashing for 'BIP340/challenge' as required by NIP-01.
      */
     private static String generateSignature(String privateKeyHex, String eventIdHex) {
         try {
@@ -93,12 +95,14 @@ public class NostrEventSigner {
 
             byte[] pubKeyX = normalize32(P.getAffineXCoord().getEncoded());
 
-            // 2. Deterministic Nonce generation (Simplified BIP340)
+            // 2. Deterministic Nonce generation (BIP340 style)
             byte[] dBytes = normalize32(d.toByteArray());
             byte[] kInput = new byte[32 + 32];
             System.arraycopy(dBytes, 0, kInput, 0, 32);
             System.arraycopy(msg, 0, kInput, 32, 32);
-            byte[] kHash = sha256(kInput);
+            
+            // BIP340 Nonce Tagged Hash
+            byte[] kHash = taggedHash("BIP340/nonce", kInput);
             BigInteger k0 = new BigInteger(1, kHash).mod(n);
 
             if (k0.equals(BigInteger.ZERO)) throw new RuntimeException("Invalid Nonce");
@@ -112,15 +116,13 @@ public class NostrEventSigner {
 
             byte[] rX = normalize32(R.getAffineXCoord().getEncoded());
 
-            // 4. Compute Challenge e = TaggedHash("BIP340/challenge", R_x || P_x || msg)
-            // For production, "BIP340/challenge" tagged hashing is preferred.
-            // Using standard concatenation hash to ensure basic relay compatibility first.
+            // 4. FIXED: Compute Challenge e = TaggedHash("BIP340/challenge", R_x || P_x || msg)
             byte[] eInput = new byte[32 + 32 + 32];
             System.arraycopy(rX, 0, eInput, 0, 32);
             System.arraycopy(pubKeyX, 0, eInput, 32, 32);
             System.arraycopy(msg, 0, eInput, 64, 32);
-            
-            byte[] eHash = sha256(eInput);
+
+            byte[] eHash = taggedHash("BIP340/challenge", eInput);
             BigInteger e = new BigInteger(1, eHash).mod(n);
 
             // 5. Compute s = (k + ed) mod n
@@ -140,9 +142,19 @@ public class NostrEventSigner {
         }
     }
 
-    private static byte[] sha256(byte[] input) throws Exception {
+    /**
+     * BIP-340 Tagged Hash: sha256(sha256(tag) || sha256(tag) || data)
+     */
+    private static byte[] taggedHash(String tag, byte[] data) throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
-        return md.digest(input);
+        byte[] tagHash = md.digest(tag.getBytes(StandardCharsets.UTF_8));
+        
+        byte[] combined = new byte[tagHash.length * 2 + data.length];
+        System.arraycopy(tagHash, 0, combined, 0, tagHash.length);
+        System.arraycopy(tagHash, 0, combined, tagHash.length, tagHash.length);
+        System.arraycopy(data, 0, combined, tagHash.length * 2, data.length);
+        
+        return md.digest(combined);
     }
 
     private static byte[] normalize32(byte[] data) {
