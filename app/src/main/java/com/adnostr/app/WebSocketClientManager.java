@@ -14,13 +14,14 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Decentralized Network Manager.
  * UPDATED: Implements detailed technical logging of raw Nostr JSON traffic 
  * to identify why ads or search reach may be failing.
- * FIXED: Subscription logic now waits for active interests and listening state.
+ * FIXED: Subscription logic now uses dynamic IDs to prevent relay rejection.
  */
 public class WebSocketClientManager {
 
@@ -171,22 +172,20 @@ public class WebSocketClientManager {
 
     /**
      * Subscribes the device to Kind 30001 Ad events matching the User's hashtags.
-     * UPDATED: Now verifies listening state and interest count before sending REQ.
+     * FIXED: Uses a dynamic UUID subID to prevent relay duplicate rejection.
      */
     public void subscribeToUserInterests(WebSocketClient client, String url) {
         if (client == null || !client.isOpen()) return;
 
         try {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(appContext);
-            
-            // FIX: If the user hasn't clicked "Start Receiving Ads," don't send REQ yet
+
             if (!db.isListening()) {
                 addToLog("SUBSCRIPTION: Monitoring is OFF. Waiting for user to Start Ads.");
                 return;
             }
 
             Set<String> interests = db.getInterests();
-            String userPubkey = db.getPublicKey();
 
             if (interests.isEmpty()) {
                 addToLog("SUBSCRIPTION: Empty interest list for " + url + ". No tags to watch.");
@@ -199,21 +198,23 @@ public class WebSocketClientManager {
                 tagArray.put(tag.toLowerCase().replace("#", ""));
             }
 
-            // 2. Build the Kind 30001 Ad filter (Matching Advertiser format)
+            // 2. Build the Kind 30001 Ad filter
             JSONObject filter = new JSONObject();
             filter.put("kinds", new JSONArray().put(30001));
             filter.put("#t", tagArray);
 
-            // 3. Construct REQ command
+            // 3. FIXED: Construct REQ with a unique Subscription ID
+            String subId = "ad-" + UUID.randomUUID().toString().substring(0, 8);
+            
             JSONArray req = new JSONArray();
             req.put("REQ");
-            req.put("adnostr_sub_v1");
+            req.put(subId);
             req.put(filter);
 
             String rawJson = req.toString();
             client.send(rawJson);
 
-            addToLog("SENT REQ to " + url + ":\n" + rawJson);
+            addToLog("SENT REQ (" + subId + ") to " + url + ":\n" + rawJson);
 
         } catch (Exception e) {
             addToLog("SUB ERROR: " + e.getMessage());
