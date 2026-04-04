@@ -31,8 +31,20 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tvReportHeader" />
 
+    <!-- Copy Button (Added in top right) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCopyLogs"
+        style="@style/Widget.MaterialComponents.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="COPY ALL"
+        android:textColor="#4CAF50"
+        android:textSize="12sp"
+        app:layout_constraintBottom_toBottomOf="@+id/tvNetworkSummary"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- Detailed Scrollable Log Area -->
-    <!-- layout_height="0dp" will now work because onStart() forces the window to be full screen -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cvLogContainer"
         android:layout_width="0dp"
