@@ -4,6 +4,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -17,6 +18,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URI;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -44,6 +48,22 @@ public class NostrListenerWorker extends Worker {
         super(context, workerParams);
         this.context = context;
         this.db = AdNostrDatabaseHelper.getInstance(context);
+    }
+
+    /**
+     * NEW: Helper to store background errors so they can be viewed in the UI later.
+     */
+    private void logBackgroundError(String message) {
+        SharedPreferences prefs = context.getSharedPreferences("adnostr_secure_prefs", Context.MODE_PRIVATE);
+        String currentLogs = prefs.getString("background_error_logs", "");
+        String time = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
+        String newLog = "[" + time + "] " + message + "\n" + currentLogs;
+        
+        // Keep only the last ~5000 characters to prevent memory bloat
+        if (newLog.length() > 5000) {
+            newLog = newLog.substring(0, 5000);
+        }
+        prefs.edit().putString("background_error_logs", newLog).apply();
     }
 
     @NonNull
@@ -91,6 +111,7 @@ public class NostrListenerWorker extends Worker {
 
         } catch (Exception e) {
             Log.e(TAG, "Sync process failed: " + e.getMessage());
+            logBackgroundError("Worker Setup Failed: " + e.getMessage());
             return Result.retry();
         }
     }
@@ -119,12 +140,14 @@ public class NostrListenerWorker extends Worker {
                 @Override
                 public void onError(Exception ex) {
                     Log.e(TAG, "WebSocket error: " + ex.getMessage());
+                    logBackgroundError("WebSocket Error (" + relayUrl + "): " + ex.getMessage());
                     latch.countDown();
                 }
             };
             client.connect();
         } catch (Exception e) {
             Log.e(TAG, "Relay connection failed: " + e.getMessage());
+            logBackgroundError("Connection Failed (" + relayUrl + "): " + e.getMessage());
             latch.countDown();
         }
     }
@@ -152,6 +175,8 @@ public class NostrListenerWorker extends Worker {
 
         } catch (Exception e) {
             Log.e(TAG, "Error parsing incoming ad relay packet: " + e.getMessage());
+            // FIXED: We now record the exact JSON parsing error so you can debug the payload format.
+            logBackgroundError("JSON Parse Error: " + e.getMessage() + "\nPayload: " + rawMessage);
         }
     }
 
