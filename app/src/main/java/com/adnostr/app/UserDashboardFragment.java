@@ -27,7 +27,8 @@ import java.util.Set;
 /**
  * Dashboard for standard AdNostr Users.
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
- * FIXED: Crash resolved by filtering for Kind 30001 only before launching Popup.
+ * FIXED: Toggle now triggers immediate relay resubscription and Ad Popup handling.
+ * UPDATED: broadcastUserInterests now clears logs to show fresh relay responses.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -124,10 +125,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         if (newState) {
             // 1. Broadcast presence so Advertisers can find this user
             broadcastUserInterests(); 
-            
+
             // 2. Force all active relay connections to send a "REQ" for ads immediately
             wsManager.resubscribeAll();
-            
+
             Toast.makeText(getContext(), "Ad monitoring activated!", Toast.LENGTH_SHORT).show();
         } else {
             Toast.makeText(getContext(), "Ad monitoring paused.", Toast.LENGTH_SHORT).show();
@@ -136,10 +137,15 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     /**
      * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
+     * UPDATED: Clears technicalLogs before broadcasting to isolate relay responses.
      */
     private void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
         if (followed.isEmpty()) return;
+
+        // FIXED: Clear the console logs before broadcasting so you only see the result of THIS action
+        technicalLogs.setLength(0);
+        wsManager.clearLogs();
 
         try {
             JSONObject event = new JSONObject();
@@ -157,7 +163,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             }
             event.put("tags", tags);
 
-            // Sign the event
+            // Sign the event (Ensure NostrEventSigner TaggedHash fix is applied)
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
@@ -165,6 +171,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 wsManager.broadcastEvent(signedEvent.toString());
                 technicalLogs.append("BROADCAST: Sent Kind 30001 to relays.\n");
                 technicalLogs.append("PAYLOAD: ").append(signedEvent.toString()).append("\n\n");
+                technicalLogs.append("WAITING FOR RELAY VERIFICATION...\n\n");
                 updateOpenConsole();
             }
 
@@ -201,7 +208,16 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
             @Override
             public void onMessageReceived(String url, String message) {
-                // FIXED: Check for Kind 30001 Ad Events ONLY to prevent crash from Kind 1 posts
+                // Handle relay confirmation messages for verification
+                if (message.contains("OK") && message.contains("true")) {
+                    technicalLogs.append("[VERIFIED] Relay accepted your identity: ").append(url).append("\n");
+                    updateOpenConsole();
+                } else if (message.contains("OK") && message.contains("false")) {
+                    technicalLogs.append("[REJECTED] Relay rejected your signature: ").append(url).append("\n");
+                    updateOpenConsole();
+                }
+
+                // Handle incoming Ad Events and launch the Popup Activity
                 try {
                     if (message.startsWith("[")) {
                         JSONArray msgArray = new JSONArray(message);
@@ -222,8 +238,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                     startActivity(intent);
                                 }
                             } else {
-                                // Background traffic (Kind 1 etc) - record only, do not launch activity
-                                technicalLogs.append("[TRAFFIC] Ignoring Kind ").append(kind).append(" from ").append(url).append("\n");
+                                // Background traffic (Kind 1 etc) - log silently
                                 updateOpenConsole();
                             }
                         }
