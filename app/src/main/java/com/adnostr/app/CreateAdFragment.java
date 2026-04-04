@@ -34,6 +34,7 @@ import java.util.List;
 /**
  * Ad Creation Interface for Advertisers.
  * UPDATED: Fixed File Picker, Real Reach Discovery, and verified Broadcast sync.
+ * FIXED: Changed Kind to 1 and implemented proper hashtag tag cleaning for Nostr compatibility.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -44,14 +45,14 @@ public class CreateAdFragment extends Fragment {
 
     private String capturedMapsUrl = "";
     private final List<String> ipfsImageCIDs = new ArrayList<>();
-    
+
     // Launcher to handle the real system file/image picker
     private ActivityResultLauncher<Intent> imagePickerLauncher;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
         // Initialize the Image Picker result handler
         imagePickerLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -110,7 +111,7 @@ public class CreateAdFragment extends Fragment {
         // For now, we simulate the CID generation from the real selected file
         String simulatedCid = "bafybeihash" + System.currentTimeMillis();
         ipfsImageCIDs.add("ipfs://" + simulatedCid);
-        
+
         binding.tvImageCount.setText(ipfsImageCIDs.size() + " Images Attached");
         Toast.makeText(getContext(), "Image Selected & Processed for IPFS", Toast.LENGTH_SHORT).show();
     }
@@ -131,8 +132,7 @@ public class CreateAdFragment extends Fragment {
         // Parse tags to list
         List<String> tagsToSearch = new ArrayList<>();
         for (String s : tagsInput.split(",")) {
-            String clean = s.trim().toLowerCase();
-            if (clean.startsWith("#")) clean = clean.substring(1);
+            String clean = s.trim().toLowerCase().replace("#", ""); // FIXED: More robust hashtag cleaning
             if (!clean.isEmpty()) tagsToSearch.add(clean);
         }
 
@@ -191,7 +191,7 @@ public class CreateAdFragment extends Fragment {
             JSONObject content = new JSONObject();
             content.put("title", title);
             content.put("desc", desc);
-            
+
             JSONArray images = new JSONArray();
             for (String cid : ipfsImageCIDs) images.put(cid);
             content.put("images", images);
@@ -200,11 +200,11 @@ public class CreateAdFragment extends Fragment {
             links.put("maps", capturedMapsUrl);
             links.put("whatsapp", binding.etWhatsapp.getText().toString().trim());
             content.put("links", links);
-            
+
             content.put("expiry", "2026-05-01");
 
             JSONObject event = new JSONObject();
-            event.put("kind", 30001);
+            event.put("kind", 1); // FIXED: Changed from 30001 to 1 for Ad Broadcast compliance
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
             // Nostr events must have the content field as a stringified JSON
@@ -212,10 +212,9 @@ public class CreateAdFragment extends Fragment {
 
             JSONArray tags = new JSONArray();
             for (String t : tagsInput.split(",")) {
-                String cleanTag = t.trim().toLowerCase();
-                if (cleanTag.startsWith("#")) cleanTag = cleanTag.substring(1);
+                String cleanTag = t.trim().toLowerCase().replace("#", ""); // FIXED: Tag cleaning
                 if (cleanTag.isEmpty()) continue;
-                
+
                 JSONArray tagPair = new JSONArray();
                 tagPair.put("t");
                 tagPair.put(cleanTag);
