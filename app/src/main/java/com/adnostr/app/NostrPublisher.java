@@ -51,13 +51,15 @@ public class NostrPublisher {
                             send(jsonPayload);
 
                             Log.d(TAG, "Sent to " + relayUrl);
-                            
+
+                            // NEW: Report the exact JSON and Pubkey to the console for technical identification
                             if (listener != null) {
-                                listener.onRelayReport(relayUrl, true, "SENT: Event broadcasted successfully.");
+                                String reportMsg = "PAYLOAD SENT:\n" + signedEvent.toString(2);
+                                listener.onRelayReport(relayUrl, true, reportMsg);
                             }
 
-                            // Wait for buffer to clear before closing
-                            Thread.sleep(1000); 
+                            // Wait for buffer to clear and to allow onMessage (ACK) to trigger
+                            Thread.sleep(2000); 
                             close();
                         } catch (Exception e) {
                             if (listener != null) {
@@ -71,7 +73,8 @@ public class NostrPublisher {
                         // Captures relay confirmation: ["OK", event_id, true, "msg"]
                         Log.d(TAG, "Response from " + relayUrl + ": " + message);
                         if (listener != null) {
-                            listener.onRelayReport(relayUrl, true, "ACK: " + message);
+                            // NEW: Identifies the raw relay acknowledgement for debugging
+                            listener.onRelayReport(relayUrl, true, "RELAY_ACK: " + message);
                         }
                     }
 
@@ -90,7 +93,7 @@ public class NostrPublisher {
                 };
 
                 client.setConnectionLostTimeout(20);
-                // Non-blocking connect to keep the parallel pool moving fast
+                // connect() is used to trigger onOpen where the detailed report is generated
                 client.connect();
 
             } catch (Exception e) {
