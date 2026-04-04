@@ -13,6 +13,8 @@ import android.view.Window;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.DialogFragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentTransaction;
 
 import com.adnostr.app.databinding.DialogRelayReportBinding;
 
@@ -20,6 +22,7 @@ import com.adnostr.app.databinding.DialogRelayReportBinding;
  * Technical Network Console Popup.
  * Provides detailed visibility into Nostr Relay events, broadcast successes, 
  * and background monitoring logs to identify why ads or searches may be failing.
+ * FIXED: Resolved IllegalStateException crash and added live log update support.
  */
 public class RelayReportDialog extends DialogFragment {
 
@@ -39,6 +42,17 @@ public class RelayReportDialog extends DialogFragment {
         args.putString("LOGS", detailedLogs);
         frag.setArguments(args);
         return frag;
+    }
+
+    /**
+     * NEW: Safe execution of the popup to prevent the "onSaveInstanceState" crash.
+     */
+    public void showSafe(FragmentManager manager, String tag) {
+        if (manager == null || manager.isDestroyed() || manager.isStateSaved()) return;
+        
+        FragmentTransaction ft = manager.beginTransaction();
+        ft.add(this, tag);
+        ft.commitAllowingStateLoss();
     }
 
     @Override
@@ -78,6 +92,17 @@ public class RelayReportDialog extends DialogFragment {
     }
 
     /**
+     * NEW: Public method to update logs while the dialog is visible.
+     * Use this to show incoming JSON data in real-time.
+     */
+    public void updateTechnicalLogs(String newSummary, String newLogs) {
+        if (binding != null) {
+            binding.tvNetworkSummary.setText(newSummary);
+            binding.tvConsoleLog.setText(newLogs);
+        }
+    }
+
+    /**
      * Styles the dialog to be full-screen with a dark transparent background.
      */
     @NonNull
@@ -87,7 +112,6 @@ public class RelayReportDialog extends DialogFragment {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            // Ensure it covers most of the screen for detailed technical reading
             dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         }
         return dialog;
