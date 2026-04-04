@@ -49,7 +49,7 @@ public class RelayReportDialog extends DialogFragment {
      */
     public void showSafe(FragmentManager manager, String tag) {
         if (manager == null || manager.isDestroyed() || manager.isStateSaved()) return;
-        
+
         FragmentTransaction ft = manager.beginTransaction();
         ft.add(this, tag);
         ft.commitAllowingStateLoss();
@@ -92,6 +92,22 @@ public class RelayReportDialog extends DialogFragment {
     }
 
     /**
+     * FIX: This method forces the dialog to fill the entire screen.
+     * It must be in onStart() because onCreateDialog() is too early for window sizing.
+     */
+    @Override
+    public void onStart() {
+        super.onStart();
+        Dialog dialog = getDialog();
+        if (dialog != null) {
+            Window window = dialog.getWindow();
+            if (window != null) {
+                window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            }
+        }
+    }
+
+    /**
      * NEW: Public method to update logs while the dialog is visible.
      * Use this to show incoming JSON data in real-time.
      */
@@ -103,7 +119,7 @@ public class RelayReportDialog extends DialogFragment {
     }
 
     /**
-     * Styles the dialog to be full-screen with a dark transparent background.
+     * Styles the dialog with a dark transparent background.
      */
     @NonNull
     @Override
@@ -112,7 +128,7 @@ public class RelayReportDialog extends DialogFragment {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            // setLayout removed from here - moved to onStart()
         }
         return dialog;
     }
