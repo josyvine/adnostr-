@@ -91,6 +91,28 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         dialog.showSafe(getChildFragmentManager(), "USER_CONSOLE");
     }
 
+    /**
+     * NEW HELPER: Dynamically pushes new data to the console if it is currently open on screen.
+     */
+    private void updateOpenConsole() {
+        if (isAdded() && getActivity() != null) {
+            getActivity().runOnUiThread(() -> {
+                RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("USER_CONSOLE");
+                if (existing != null) {
+                    String fullLog = "USER IDENTITY (HEX):\n" + db.getPublicKey() + "\n\n" +
+                                     "NETWORK EVENTS:\n" + technicalLogs.toString() + "\n" +
+                                     "PROTOCOL TRAFFIC (LIVE):\n-------------------\n" +
+                                     wsManager.getLiveLogs();
+                    
+                    existing.updateTechnicalLogs(
+                            "Connected to " + wsManager.getConnectedRelayCount() + " decentralized nodes", 
+                            fullLog
+                    );
+                }
+            });
+        }
+    }
+
     private void toggleListeningState() {
         boolean currentState = db.isListening();
         boolean newState = !currentState;
@@ -135,12 +157,15 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             if (signedEvent != null) {
                 technicalLogs.append("SIGNING SUCCESS: Interest List Signed.\n");
                 wsManager.broadcastEvent(signedEvent.toString());
-                technicalLogs.append("BROADCAST: Sent Kind 30001 to relays.\n\n");
+                technicalLogs.append("BROADCAST: Sent Kind 30001 to relays.\n");
+                technicalLogs.append("PAYLOAD: ").append(signedEvent.toString()).append("\n\n");
+                updateOpenConsole(); // Push to live UI
             }
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to broadcast interests: " + e.getMessage());
             technicalLogs.append("CRYPTO ERROR: ").append(e.getMessage()).append("\n");
+            updateOpenConsole(); // Push to live UI
         }
     }
 
@@ -150,7 +175,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             public void onRelayConnected(String url) {
                 technicalLogs.append("[CONNECTED] ").append(url).append("\n");
                 if (isAdded() && getActivity() != null) {
-                    getActivity().runOnUiThread(() -> refreshRelayStatus());
+                    getActivity().runOnUiThread(() -> {
+                        refreshRelayStatus();
+                        updateOpenConsole(); // Push to live UI
+                    });
                 }
             }
 
@@ -158,7 +186,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             public void onRelayDisconnected(String url, String reason) {
                 technicalLogs.append("[DISCONNECT] ").append(url).append(" (").append(reason).append(")\n");
                 if (isAdded() && getActivity() != null) {
-                    getActivity().runOnUiThread(() -> refreshRelayStatus());
+                    getActivity().runOnUiThread(() -> {
+                        refreshRelayStatus();
+                        updateOpenConsole(); // Push to live UI
+                    });
                 }
             }
 
@@ -168,13 +199,17 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 if (message.contains("EVENT")) {
                     technicalLogs.append("[INCOMING] Ad packet detected from ").append(url).append("\n");
                 }
+                updateOpenConsole(); // Push to live UI
             }
 
             @Override
             public void onError(String url, Exception ex) {
                 technicalLogs.append("[ERROR] ").append(url).append(": ").append(ex.getMessage()).append("\n");
                 if (isAdded() && getActivity() != null) {
-                    getActivity().runOnUiThread(() -> refreshRelayStatus());
+                    getActivity().runOnUiThread(() -> {
+                        refreshRelayStatus();
+                        updateOpenConsole(); // Push to live UI
+                    });
                 }
             }
         });
