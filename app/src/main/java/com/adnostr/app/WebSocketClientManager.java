@@ -20,11 +20,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * Decentralized Network Manager.
  * UPDATED: Implements detailed technical logging of raw Nostr JSON traffic 
  * to identify why ads or search reach may be failing.
+ * FIXED: Subscription logic now waits for active interests and listening state.
  */
 public class WebSocketClientManager {
 
     private static final String TAG = "AdNostr_WSManager";
     private static WebSocketClientManager instance;
+    private Context appContext;
 
     // Thread-safe map of active relay connections (URL -> Client)
     private final Map<String, WebSocketClient> activeRelays = new ConcurrentHashMap<>();
@@ -54,6 +56,13 @@ public class WebSocketClientManager {
         return instance;
     }
 
+    /**
+     * Initialization with context to ensure database helper works correctly.
+     */
+    public void init(Context context) {
+        this.appContext = context.getApplicationContext();
+    }
+
     public void setStatusListener(RelayStatusListener listener) {
         this.statusListener = listener;
     }
@@ -64,7 +73,6 @@ public class WebSocketClientManager {
     private synchronized void addToLog(String message) {
         String time = timeFormat.format(new Date());
         liveLogs.insert(0, "[" + time + "] " + message + "\n\n");
-        // FIXED: Increased buffer size from 15k to 50k characters so full JSON logs aren't deleted before you can read them.
         if (liveLogs.length() > 50000) {
             liveLogs.setLength(40000);
         }
@@ -99,6 +107,8 @@ public class WebSocketClientManager {
         if (activeRelays.containsKey(relayUrl)) {
             WebSocketClient existing = activeRelays.get(relayUrl);
             if (existing != null && !existing.isClosed()) {
+                // Connection exists; try to subscribe if listening
+                subscribeToUserInterests(existing, relayUrl);
                 return;
             }
         }
@@ -112,7 +122,7 @@ public class WebSocketClientManager {
 
                     addToLog("CONNECTED: " + relayUrl);
 
-                    // NEW: Subscribing to user interests and logging the action
+                    // Subscribe to user interests on connection open
                     subscribeToUserInterests(this, relayUrl);
 
                     if (statusListener != null) {
@@ -122,7 +132,6 @@ public class WebSocketClientManager {
 
                 @Override
                 public void onMessage(String message) {
-                    // FIXED: Removed the 300 character truncation so you can see the full JSON array, tags, and signatures.
                     addToLog("RECV from " + relayUrl + ":\n" + message);
 
                     if (statusListener != null) {
@@ -161,32 +170,38 @@ public class WebSocketClientManager {
     }
 
     /**
-     * Subscribes the device to Kind 1 Ad events matching the User's hashtags.
-     * Technical logs record the raw REQ JSON.
+     * Subscribes the device to Kind 30001 Ad events matching the User's hashtags.
+     * UPDATED: Now verifies listening state and interest count before sending REQ.
      */
-    private void subscribeToUserInterests(WebSocketClient client, String url) {
+    public void subscribeToUserInterests(WebSocketClient client, String url) {
+        if (client == null || !client.isOpen()) return;
+
         try {
-            // Must pass context from somewhere or handle singleton correctly
-            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(null);
-            Set<String> interests = db.getInterests();
-            String userPubkey = db.getPublicKey();
-
-            addToLog("IDENTITY: User Pubkey is " + userPubkey);
-
-            if (interests.isEmpty()) {
-                addToLog("SUBSCRIPTION: Empty interest list for " + url);
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(appContext);
+            
+            // FIX: If the user hasn't clicked "Start Receiving Ads," don't send REQ yet
+            if (!db.isListening()) {
+                addToLog("SUBSCRIPTION: Monitoring is OFF. Waiting for user to Start Ads.");
                 return;
             }
 
-            // 1. Sanitize hashtags for Nostr protocol (remove #)
+            Set<String> interests = db.getInterests();
+            String userPubkey = db.getPublicKey();
+
+            if (interests.isEmpty()) {
+                addToLog("SUBSCRIPTION: Empty interest list for " + url + ". No tags to watch.");
+                return;
+            }
+
+            // 1. Sanitize hashtags for Nostr protocol
             JSONArray tagArray = new JSONArray();
             for (String tag : interests) {
                 tagArray.put(tag.toLowerCase().replace("#", ""));
             }
 
-            // 2. Build the Kind 1 Ad filter
+            // 2. Build the Kind 30001 Ad filter (Matching Advertiser format)
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(1));
+            filter.put("kinds", new JSONArray().put(30001));
             filter.put("#t", tagArray);
 
             // 3. Construct REQ command
@@ -202,6 +217,16 @@ public class WebSocketClientManager {
 
         } catch (Exception e) {
             addToLog("SUB ERROR: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Broadcasts subscription REQ to all currently connected relays.
+     */
+    public void resubscribeAll() {
+        addToLog("SYSTEM: Resubscribing all relays to current interest list...");
+        for (Map.Entry<String, WebSocketClient> entry : activeRelays.entrySet()) {
+            subscribeToUserInterests(entry.getValue(), entry.getKey());
         }
     }
 
