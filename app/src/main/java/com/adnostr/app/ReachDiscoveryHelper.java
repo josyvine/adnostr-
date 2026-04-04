@@ -1,5 +1,6 @@
 package com.adnostr.app;
 
+import android.content.Context;
 import android.util.Log;
 
 import org.java_websocket.client.WebSocketClient;
@@ -20,19 +21,11 @@ import java.util.concurrent.TimeUnit;
  * Discovery Engine for AdNostr Advertisers.
  * UPDATED: Optimized to search specifically for Kind 30001 (User Interest) events.
  * This ensures that the hashtag search returns real user counts based on published metadata.
+ * FIXED: Implements Pool Alignment, Tag Sanitization, and Increased Parallelism.
  */
 public class ReachDiscoveryHelper {
 
     private static final String TAG = "AdNostr_Discovery";
-
-    // Global relays used to aggregate user reach data
-    private static final String[] DISCOVERY_RELAYS = {
-            "wss://relay.damus.io",
-            "wss://nos.lol",
-            "wss://relay.nostr.band",
-            "wss://relay.snort.social",
-            "wss://relay.primal.net"
-    };
 
     public interface ReachCallback {
         void onReachCalculated(int totalUsers);
@@ -43,36 +36,41 @@ public class ReachDiscoveryHelper {
      * Scans the network for unique users who have published Kind 30001 
      * events matching the targeted hashtags.
      * 
+     * @param context Required to fetch the full 31+ relay pool from Database.
      * @param hashtags List of hashtags provided by the advertiser.
      * @param callback Interface to return the final count to the UI.
      */
-    public static void discoverGlobalReach(List<String> hashtags, ReachCallback callback) {
+    public static void discoverGlobalReach(Context context, List<String> hashtags, ReachCallback callback) {
         if (hashtags == null || hashtags.isEmpty()) {
-            callback.onDiscoveryError("No hashtags provided");
+            if (callback != null) callback.onDiscoveryError("No hashtags provided");
             return;
         }
+
+        // 1. POOL ALIGNMENT: Fetch the full pool from the database helper
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+        Set<String> relayPool = db.getRelayPool();
 
         new Thread(() -> {
             // Thread-safe set to store unique pubkeys found across the pool
             final Set<String> uniqueUserPubkeys = Collections.synchronizedSet(new HashSet<>());
-            
-            // Wait for all relay connections to finish their task or timeout
-            final CountDownLatch latch = new CountDownLatch(DISCOVERY_RELAYS.length);
+
+            // 3. INCREASED PARALLELISM: Scale latch to wait for the entire relay pool
+            final CountDownLatch latch = new CountDownLatch(relayPool.size());
 
             try {
-                // 1. Construct the Nostr Search Filter
-                // We specifically look for Kind 30001 where users list their watched hashtags
+                // Construct the Nostr Search Filter
                 JSONObject filter = new JSONObject();
-                
+
                 JSONArray kinds = new JSONArray();
                 kinds.put(30001); // User Interest List
                 filter.put("kinds", kinds);
 
                 JSONArray tags = new JSONArray();
                 for (String h : hashtags) {
-                    tags.put(h.toLowerCase());
+                    // 2. TAG SANITIZATION: Strip '#' to ensure search matches clean protocol tags
+                    tags.put(h.toLowerCase().replace("#", ""));
                 }
-                filter.put("#t", tags); // Filter relays by hashtag tags
+                filter.put("#t", tags); 
 
                 String subId = "reach-" + UUID.randomUUID().toString().substring(0, 4);
                 String reqMessage = new JSONArray()
@@ -81,26 +79,25 @@ public class ReachDiscoveryHelper {
                         .put(filter)
                         .toString();
 
-                // 2. Query all Discovery Relays in parallel
-                for (String relayUrl : DISCOVERY_RELAYS) {
+                // Launch parallel scans across the entire database relay pool
+                for (String relayUrl : relayPool) {
                     connectAndScanRelay(relayUrl, reqMessage, uniqueUserPubkeys, latch);
                 }
 
-                // 3. Wait for the network search to aggregate (8 seconds max)
+                // Wait for the network search to aggregate (8 seconds max)
                 boolean finished = latch.await(8, TimeUnit.SECONDS);
-                
+
                 Log.i(TAG, "Discovery Aggregate finished. Success: " + finished 
                         + ". Unique users found: " + uniqueUserPubkeys.size());
 
                 // 4. Return results to the Advertiser UI
                 if (callback != null) {
-                    // This returns the REAL count of unique pubkeys found on the network
                     callback.onReachCalculated(uniqueUserPubkeys.size());
                 }
 
             } catch (Exception e) {
                 Log.e(TAG, "Discovery orchestration failed: " + e.getMessage());
-                callback.onDiscoveryError(e.getMessage());
+                if (callback != null) callback.onDiscoveryError(e.getMessage());
             }
         }).start();
     }
@@ -121,7 +118,7 @@ public class ReachDiscoveryHelper {
                 public void onMessage(String message) {
                     try {
                         if (!message.startsWith("[")) return;
-                        
+
                         JSONArray resp = new JSONArray(message);
                         String type = resp.getString(0);
 
@@ -130,7 +127,7 @@ public class ReachDiscoveryHelper {
                             // Aggregate the unique identity (Pubkey)
                             String pubkey = event.getString("pubkey");
                             results.add(pubkey); 
-                            
+
                         } else if ("EOSE".equals(type)) {
                             // Relay has finished scanning its database
                             close();
@@ -151,7 +148,7 @@ public class ReachDiscoveryHelper {
                     latch.countDown();
                 }
             };
-            
+
             client.setConnectionLostTimeout(10);
             client.connect();
 
