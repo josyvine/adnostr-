@@ -32,6 +32,7 @@
         app:layout_constraintTop_toBottomOf="@+id/tvReportHeader" />
 
     <!-- Detailed Scrollable Log Area -->
+    <!-- layout_height="0dp" will now work because onStart() forces the window to be full screen -->
     <androidx.cardview.widget.CardView
         android:id="@+id/cvLogContainer"
         android:layout_width="0dp"
