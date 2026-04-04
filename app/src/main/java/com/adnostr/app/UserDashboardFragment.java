@@ -27,7 +27,7 @@ import java.util.Set;
 /**
  * Dashboard for standard AdNostr Users.
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
- * FIXED: Toggle now triggers immediate relay resubscription and Ad Popup handling.
+ * FIXED: Crash resolved by filtering for Kind 30001 only before launching Popup.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -125,7 +125,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             // 1. Broadcast presence so Advertisers can find this user
             broadcastUserInterests(); 
             
-            // 2. FIXED: Force all active relay connections to send a "REQ" for ads immediately
+            // 2. Force all active relay connections to send a "REQ" for ads immediately
             wsManager.resubscribeAll();
             
             Toast.makeText(getContext(), "Ad monitoring activated!", Toast.LENGTH_SHORT).show();
@@ -157,7 +157,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             }
             event.put("tags", tags);
 
-            // Sign the event (ensure NostrEventSigner fix has been applied)
+            // Sign the event
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
@@ -201,22 +201,35 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
             @Override
             public void onMessageReceived(String url, String message) {
-                // FIXED: Handle incoming Ad Events and launch the Popup Activity
+                // FIXED: Check for Kind 30001 Ad Events ONLY to prevent crash from Kind 1 posts
                 try {
-                    if (message.contains("EVENT")) {
-                        technicalLogs.append("[INCOMING] Ad detected from ").append(url).append("\n");
-                        updateOpenConsole();
-                        
-                        if (db.isListening()) {
-                            // Launch the Full-Screen Ad Overlay
-                            Intent intent = new Intent(requireContext(), AdPopupActivity.class);
-                            intent.putExtra("AD_PAYLOAD_JSON", message);
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            startActivity(intent);
+                    if (message.startsWith("[")) {
+                        JSONArray msgArray = new JSONArray(message);
+                        if ("EVENT".equals(msgArray.getString(0))) {
+                            JSONObject event = msgArray.getJSONObject(2);
+                            int kind = event.optInt("kind", -1);
+
+                            // Only proceed if it is a verified Ad Event (Kind 30001)
+                            if (kind == 30001) {
+                                technicalLogs.append("[AD DETECTED] Valid Kind 30001 from ").append(url).append("\n");
+                                updateOpenConsole();
+
+                                if (db.isListening()) {
+                                    // Launch the Full-Screen Ad Overlay
+                                    Intent intent = new Intent(requireContext(), AdPopupActivity.class);
+                                    intent.putExtra("AD_PAYLOAD_JSON", message);
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    startActivity(intent);
+                                }
+                            } else {
+                                // Background traffic (Kind 1 etc) - record only, do not launch activity
+                                technicalLogs.append("[TRAFFIC] Ignoring Kind ").append(kind).append(" from ").append(url).append("\n");
+                                updateOpenConsole();
+                            }
                         }
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Ad launch failed: " + e.getMessage());
+                    Log.e(TAG, "Ad processing failed: " + e.getMessage());
                 }
             }
 
