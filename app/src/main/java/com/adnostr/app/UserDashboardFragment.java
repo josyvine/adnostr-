@@ -1,5 +1,6 @@
 package com.adnostr.app;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -26,7 +27,7 @@ import java.util.Set;
 /**
  * Dashboard for standard AdNostr Users.
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
- * FIXED: Resolved state loss crash and added identity/protocol visibility.
+ * FIXED: Toggle now triggers immediate relay resubscription and Ad Popup handling.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -54,12 +55,15 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         db = AdNostrDatabaseHelper.getInstance(requireContext());
         wsManager = WebSocketClientManager.getInstance();
 
+        // Ensure WebSocket Manager is initialized with context for DB access
+        wsManager.init(requireContext());
+
         setupHashtagGrid();
         binding.btnAddTag.setOnClickListener(v -> addNewHashtag());
         binding.btnDeleteSelected.setOnClickListener(v -> deleteSelectedHashtags());
         binding.btnStartAds.setOnClickListener(v -> toggleListeningState());
 
-        // NEW: Allow user to open the Big Technical Pop-up by tapping the monitoring text
+        // Allow user to open the Big Technical Pop-up by tapping the monitoring text
         binding.llListeningState.setOnClickListener(v -> showNetworkConsole());
 
         // Connect to the full decentralized relay pool
@@ -71,11 +75,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     /**
-     * UPDATED: Opens the Technical Report dialog safely.
-     * FIXED: Includes User Pubkey and Live JSON traffic from WebSocketManager.
+     * Opens the Technical Report dialog safely.
      */
     private void showNetworkConsole() {
-        // Construct the detailed technical log
         String fullLog = "USER IDENTITY (HEX):\n" + db.getPublicKey() + "\n\n" +
                          "NETWORK EVENTS:\n" + technicalLogs.toString() + "\n" +
                          "PROTOCOL TRAFFIC (LIVE):\n-------------------\n" +
@@ -87,12 +89,11 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 fullLog
         );
 
-        // FIXED: Using showSafe to prevent the IllegalStateException crash
         dialog.showSafe(getChildFragmentManager(), "USER_CONSOLE");
     }
 
     /**
-     * NEW HELPER: Dynamically pushes new data to the console if it is currently open on screen.
+     * Dynamically pushes new data to the console if it is currently open on screen.
      */
     private void updateOpenConsole() {
         if (isAdded() && getActivity() != null) {
@@ -103,7 +104,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                      "NETWORK EVENTS:\n" + technicalLogs.toString() + "\n" +
                                      "PROTOCOL TRAFFIC (LIVE):\n-------------------\n" +
                                      wsManager.getLiveLogs();
-                    
+
                     existing.updateTechnicalLogs(
                             "Connected to " + wsManager.getConnectedRelayCount() + " decentralized nodes", 
                             fullLog
@@ -121,7 +122,12 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         updateListeningUI();
 
         if (newState) {
-            broadcastUserInterests(); // Make user "Visible" to discovery
+            // 1. Broadcast presence so Advertisers can find this user
+            broadcastUserInterests(); 
+            
+            // 2. FIXED: Force all active relay connections to send a "REQ" for ads immediately
+            wsManager.resubscribeAll();
+            
             Toast.makeText(getContext(), "Ad monitoring activated!", Toast.LENGTH_SHORT).show();
         } else {
             Toast.makeText(getContext(), "Ad monitoring paused.", Toast.LENGTH_SHORT).show();
@@ -129,7 +135,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     /**
-     * UPDATED: Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
+     * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
      */
     private void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
@@ -137,10 +143,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
         try {
             JSONObject event = new JSONObject();
-            event.put("kind", 30001); // Kind 30001 for User Interests/Followed Tags
+            event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            event.put("content", ""); // Content can be empty for interest lists
+            event.put("content", ""); 
 
             JSONArray tags = new JSONArray();
             for (String tag : followed) {
@@ -151,7 +157,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             }
             event.put("tags", tags);
 
-            // FIXED: Event must be SIGNED before relays will index it for the Advertiser search
+            // Sign the event (ensure NostrEventSigner fix has been applied)
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
@@ -159,13 +165,13 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 wsManager.broadcastEvent(signedEvent.toString());
                 technicalLogs.append("BROADCAST: Sent Kind 30001 to relays.\n");
                 technicalLogs.append("PAYLOAD: ").append(signedEvent.toString()).append("\n\n");
-                updateOpenConsole(); // Push to live UI
+                updateOpenConsole();
             }
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to broadcast interests: " + e.getMessage());
             technicalLogs.append("CRYPTO ERROR: ").append(e.getMessage()).append("\n");
-            updateOpenConsole(); // Push to live UI
+            updateOpenConsole();
         }
     }
 
@@ -177,7 +183,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         refreshRelayStatus();
-                        updateOpenConsole(); // Push to live UI
+                        updateOpenConsole();
                     });
                 }
             }
@@ -188,18 +194,30 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         refreshRelayStatus();
-                        updateOpenConsole(); // Push to live UI
+                        updateOpenConsole();
                     });
                 }
             }
 
             @Override
             public void onMessageReceived(String url, String message) {
-                // Record the metadata of incoming messages for the technical console
-                if (message.contains("EVENT")) {
-                    technicalLogs.append("[INCOMING] Ad packet detected from ").append(url).append("\n");
+                // FIXED: Handle incoming Ad Events and launch the Popup Activity
+                try {
+                    if (message.contains("EVENT")) {
+                        technicalLogs.append("[INCOMING] Ad detected from ").append(url).append("\n");
+                        updateOpenConsole();
+                        
+                        if (db.isListening()) {
+                            // Launch the Full-Screen Ad Overlay
+                            Intent intent = new Intent(requireContext(), AdPopupActivity.class);
+                            intent.putExtra("AD_PAYLOAD_JSON", message);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Ad launch failed: " + e.getMessage());
                 }
-                updateOpenConsole(); // Push to live UI
             }
 
             @Override
@@ -208,7 +226,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         refreshRelayStatus();
-                        updateOpenConsole(); // Push to live UI
+                        updateOpenConsole();
                     });
                 }
             }
