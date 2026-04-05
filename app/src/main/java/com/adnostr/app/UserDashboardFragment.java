@@ -173,19 +173,19 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("tags", tags);
 
             technicalLogs.append("INITIATING CRYPTO SIGNING...\n");
-            
+
             // Sign the event
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
                 technicalLogs.append("SIGNING SUCCESS: Interest List Signed.\n");
-                
+
                 // NEW: SIGNING DEBUG - Print raw mathematical bytes to console
                 technicalLogs.append("-----------------------------\n");
                 technicalLogs.append("SIGNING DIAGNOSTICS (BIP-340):\n");
                 technicalLogs.append("ID (Hash): ").append(signedEvent.getString("id")).append("\n");
                 technicalLogs.append("SIG (R+s): ").append(signedEvent.getString("sig")).append("\n");
-                
+
                 // Pulling diagnostic math from static fields in Signer
                 technicalLogs.append("Y-PARITY: ").append(NostrEventSigner.lastParity).append("\n");
                 technicalLogs.append("NONCE (k): ").append(NostrEventSigner.lastK).append("\n");
@@ -250,26 +250,38 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
                             // Only proceed if it is a verified Ad Event (Kind 30001)
                             if (kind == 30001) {
-                                
+
                                 // CRITICAL FIX: Prevent protocol collision. 
-                                // Make sure this is an AD, not an empty User Interest list.
+                                // Make sure this is an AD, not an empty User Interest list or a list from another app.
                                 String contentStr = event.optString("content", "");
-                                if (contentStr.isEmpty()) {
-                                    return; // Silently ignore empty events
+                                if (contentStr.isEmpty() || !contentStr.contains("\"title\"")) {
+                                    return; // Silently ignore events that are not AdNostr Ads
                                 }
 
-                                // Double check the 'd' tag just in case to verify it is an Ad
+                                // Double check the 'd' tag to ensure it's an AdNostr broadcast
+                                boolean isAdNostrBroadcast = false;
                                 JSONArray tags = event.optJSONArray("tags");
                                 if (tags != null) {
                                     for (int i = 0; i < tags.length(); i++) {
                                         JSONArray tagPair = tags.optJSONArray(i);
                                         if (tagPair != null && tagPair.length() >= 2) {
-                                            if ("d".equals(tagPair.optString(0)) && "adnostr_interests".equals(tagPair.optString(1))) {
-                                                return; // Silently ignore user interest lists
+                                            String tagName = tagPair.optString(0);
+                                            String tagValue = tagPair.optString(1);
+                                            
+                                            if ("d".equals(tagName)) {
+                                                if (tagValue.startsWith("adnostr_ad_")) {
+                                                    isAdNostrBroadcast = true;
+                                                    break;
+                                                } else if ("adnostr_interests".equals(tagValue)) {
+                                                    return; // Ignore interest lists
+                                                }
                                             }
                                         }
                                     }
                                 }
+                                
+                                // If the validation fails, do not open the popup
+                                if (!isAdNostrBroadcast) return;
 
                                 technicalLogs.append("[AD DETECTED] Valid Kind 30001 Ad from ").append(url).append("\n");
                                 updateOpenConsole();
