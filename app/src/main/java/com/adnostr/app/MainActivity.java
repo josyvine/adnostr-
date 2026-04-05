@@ -1,9 +1,12 @@
 package com.adnostr.app;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -31,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Main Interface Host for AdNostr.
  * UPDATED: Fixed Settings navigation glitch and added full hardware permission handling.
+ * FIXED: Added Overlay Permission (SYSTEM_ALERT_WINDOW) check to allow Ads to pop up from background.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -68,7 +72,7 @@ public class MainActivity extends AppCompatActivity {
             configureRoleBasedUI();
         }
 
-        // 4. Request Permissions for GPS (Maps) and Storage (IPFS)
+        // 4. Request Permissions for GPS (Maps), Storage (IPFS), and Background Overlays
         checkAndRequestAppPermissions();
 
         // 5. Start Ad Listener
@@ -77,8 +81,19 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Logic to handle Location, Storage, and Notification permissions.
+     * UPDATED: Guided the user to enable "Display over other apps" for Ad delivery.
      */
     private void checkAndRequestAppPermissions() {
+        // FIXED: Request SYSTEM_ALERT_WINDOW to bypass background activity launch restrictions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Enable 'Display over other apps' to receive Ads instantly.", Toast.LENGTH_LONG).show();
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            }
+        }
+
         List<String> permissions = new ArrayList<>();
         
         // Location is needed for Advertiser Maps
