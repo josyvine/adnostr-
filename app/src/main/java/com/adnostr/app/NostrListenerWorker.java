@@ -30,7 +30,8 @@ import java.util.concurrent.TimeUnit;
  * Background Ad Synchronizer.
  * UPDATED: Fixed relay message extraction and background lifecycle management 
  * to ensure ads are actually received and processed.
- * FIXED: Implemented Kind 1 filtering and dynamic hashtag matching.
+ * FIXED: Implemented Kind 30001 filtering and dynamic hashtag matching.
+ * FIXED: Added content peeking to ignore empty interest lists in background.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -88,13 +89,13 @@ public class NostrListenerWorker extends Worker {
         final CountDownLatch latch = new CountDownLatch(1);
 
         try {
-            // UPDATED: Filter for Kind 1 (Ad Broadcasts) to match the advertiser logic
+            // FIXED: Change filter to Kind 30001 to match Advertiser Ad events
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(1));
+            filter.put("kinds", new JSONArray().put(30001));
 
             JSONArray tags = new JSONArray();
             for (String tag : interests) {
-                // FIXED: Changed .add() to .put() and added .replace("#", "") for protocol matching
+                // FIXED: Protocol matching tag sanitization
                 tags.put(tag.toLowerCase().replace("#", ""));
             }
             filter.put("#t", tags);
@@ -164,7 +165,13 @@ public class NostrListenerWorker extends Worker {
 
             // Extract event object from the 3rd index of the Nostr message array
             JSONObject event = msgArray.getJSONObject(2);
-            String contentStr = event.getString("content");
+            
+            // CRITICAL FIX: Peek at the content string before attempting to parse as Ad JSON
+            String contentStr = event.optString("content", "");
+            if (contentStr.isEmpty()) {
+                return; // Silently ignore empty User Interest list events
+            }
+
             JSONObject content = new JSONObject(contentStr);
 
             String title = content.optString("title", "Local Deal Found");
@@ -175,7 +182,6 @@ public class NostrListenerWorker extends Worker {
 
         } catch (Exception e) {
             Log.e(TAG, "Error parsing incoming ad relay packet: " + e.getMessage());
-            // FIXED: We now record the exact JSON parsing error so you can debug the payload format.
             logBackgroundError("JSON Parse Error: " + e.getMessage() + "\nPayload: " + rawMessage);
         }
     }
