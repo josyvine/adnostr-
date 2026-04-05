@@ -29,6 +29,7 @@ import java.util.Set;
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * UPDATED: broadcastUserInterests now prints "Signing Debug" (k, e, parity) for verification.
+ * FIXED: Added strict checks to ignore empty User Interest lists and only trigger on real Ads.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -248,7 +249,28 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
                             // Only proceed if it is a verified Ad Event (Kind 30001)
                             if (kind == 30001) {
-                                technicalLogs.append("[AD DETECTED] Valid Kind 30001 from ").append(url).append("\n");
+                                
+                                // CRITICAL FIX: Prevent protocol collision. 
+                                // Make sure this is an AD, not an empty User Interest list.
+                                String contentStr = event.optString("content", "");
+                                if (contentStr.isEmpty()) {
+                                    return; // Silently ignore empty events
+                                }
+
+                                // Double check the 'd' tag just in case
+                                JSONArray tags = event.optJSONArray("tags");
+                                if (tags != null) {
+                                    for (int i = 0; i < tags.length(); i++) {
+                                        JSONArray tagPair = tags.optJSONArray(i);
+                                        if (tagPair != null && tagPair.length() >= 2) {
+                                            if ("d".equals(tagPair.optString(0)) && "adnostr_interests".equals(tagPair.optString(1))) {
+                                                return; // Silently ignore user interest lists
+                                            }
+                                        }
+                                    }
+                                }
+
+                                technicalLogs.append("[AD DETECTED] Valid Kind 30001 Ad from ").append(url).append("\n");
                                 updateOpenConsole();
 
                                 if (db.isListening()) {
