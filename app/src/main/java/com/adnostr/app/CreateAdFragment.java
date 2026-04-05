@@ -36,7 +36,7 @@ import java.util.Set;
  * Ad Creation Interface for Advertisers.
  * UPDATED: Fixed File Picker, Real Reach Discovery, and verified Broadcast sync.
  * FIXED: Changed Kind to 30001 as per Ad Event specification.
- * NEW: Replaced Toasts with a Detailed technical popup console.
+ * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -221,32 +221,40 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
-            // STEP 2 — Create Ad JSON as per requirements
+            // Create Ad JSON as per requirements
             JSONObject content = new JSONObject();
             content.put("title", title);
             content.put("desc", desc);
-            
-            // image: Use the first CID string (e.g., ipfs://bafy...)
+
+            // image: Use the first CID string
             content.put("image", ipfsImageCIDs.isEmpty() ? "" : ipfsImageCIDs.get(0));
 
             // cta: Format as WhatsApp URL
             String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
             content.put("cta", "https://wa.me/" + cleanPhone);
-            
+
             // maps: Add captured GPS if available
             content.put("maps", capturedMapsUrl);
-            
+
             content.put("expiry", "2026-05-01");
 
             JSONObject event = new JSONObject();
-            event.put("kind", 30001); // UPDATED: Changed to kind 30001 for Ad Event specification
+            event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            
+
             // Nostr events must have the content field as a stringified JSON
             event.put("content", content.toString());
 
             JSONArray tags = new JSONArray();
+
+            // FIXED: Mandatory 'd' tag for Parameterized Replaceable Events (Kind 30001)
+            // This ensures relays correctly index the ad for hashtag discovery.
+            JSONArray dTag = new JSONArray();
+            dTag.put("d");
+            dTag.put("adnostr_ad_" + System.currentTimeMillis());
+            tags.put(dTag);
+
             for (String t : tagsInput.split(",")) {
                 String cleanTag = t.trim().toLowerCase().replace("#", ""); 
                 if (cleanTag.isEmpty()) continue;
@@ -258,7 +266,7 @@ public class CreateAdFragment extends Fragment {
             }
             event.put("tags", tags);
 
-            // NEW: Sign the event cryptographically before sending
+            // Sign the event cryptographically before sending
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
@@ -274,8 +282,7 @@ public class CreateAdFragment extends Fragment {
     }
 
     /**
-     * UPDATED: Replaced Toast with a technical console popup.
-     * Shows technical information for each relay during broadcast.
+     * Technical console popup shows technical information for each relay during broadcast.
      */
     private void broadcastToNetwork(JSONObject signedEvent) {
         Set<String> relayPool = db.getRelayPool();
