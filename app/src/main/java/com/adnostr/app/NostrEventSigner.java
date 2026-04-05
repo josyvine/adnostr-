@@ -17,7 +17,7 @@ import java.util.Arrays;
  * Cryptographic Signer for Nostr Events.
  * Handles the creation of unique Event IDs (SHA-256) and 
  * generates REAL BIP-340 Schnorr signatures using the user's private key.
- * FIXED: Canonical serialization (whitespace removal) and math diagnostics.
+ * FIXED: Manual Tag Serialization to prevent hidden whitespace rejection.
  */
 public class NostrEventSigner {
 
@@ -56,24 +56,20 @@ public class NostrEventSigner {
     /**
      * Serializes the Nostr event for hashing as per BIP-340 / NIP-01.
      * Format: [0, pubkey, created_at, kind, tags, content]
-     * FIXED: Explicitly removes whitespace and escaped slashes to match Relay hashing.
+     * FIXED: Manually builds the string to ensure ZERO whitespace and correct escaping.
      */
     private static String calculateEventId(JSONObject event) throws Exception {
-        // Build the serialization array manually to ensure strict protocol order
         StringBuilder sb = new StringBuilder();
         sb.append("[0,\"");
         sb.append(event.getString("pubkey")).append("\",");
         sb.append(event.getLong("created_at")).append(",");
         sb.append(event.getInt("kind")).append(",");
         
-        // FIXED: Remove all spaces from tags string to ensure canonical format
-        String tagsSerialized = event.getJSONArray("tags").toString()
-                .replace(" ", "")
-                .replace("\\/", "/");
-        sb.append(tagsSerialized);
+        // FIXED: Use manual serialization for tags to avoid library-injected spaces
+        sb.append(manualSerializeTags(event.getJSONArray("tags")));
         
         sb.append(",\"");
-        // Serialize Content (Escape only necessary characters)
+        // Serialize Content (Escape only necessary characters as per NIP-01)
         String content = event.getString("content")
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -84,8 +80,8 @@ public class NostrEventSigner {
 
         String serialized = sb.toString();
         
-        // Log the exact string being hashed for comparison
-        Log.i(TAG, "HASHING STRING: " + serialized);
+        // Log the exact string being hashed for verification
+        Log.i(TAG, "HASHING CANONICAL STRING: " + serialized);
 
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(serialized.getBytes(StandardCharsets.UTF_8));
@@ -94,8 +90,28 @@ public class NostrEventSigner {
     }
 
     /**
+     * Builds a JSON array string with absolutely no spaces.
+     * Example: [["d","id"],["t","tag"]]
+     */
+    private static String manualSerializeTags(JSONArray tags) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        for (int i = 0; i < tags.length(); i++) {
+            JSONArray inner = tags.getJSONArray(i);
+            sb.append("[");
+            for (int j = 0; j < inner.length(); j++) {
+                sb.append("\"").append(inner.getString(j)).append("\"");
+                if (j < inner.length() - 1) sb.append(",");
+            }
+            sb.append("]");
+            if (i < tags.length() - 1) sb.append(",");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    /**
      * Generates a 64-byte BIP-340 compliant Schnorr signature.
-     * UPDATED: Stores k and e values for technical console diagnostics.
      */
     private static String generateSignature(String privateKeyHex, String eventIdHex) {
         try {
@@ -108,9 +124,11 @@ public class NostrEventSigner {
             ECPoint G = params.getG();
             ECPoint P = G.multiply(d0).normalize();
             
+            // BIP-340 Parity check: negate d if P.y is odd
             BigInteger d = P.getAffineYCoord().toBigInteger().testBit(0) ? n.subtract(d0) : d0;
             byte[] pubKeyX = normalize32(P.getAffineXCoord().getEncoded());
 
+            // Nonce generation: k = tagged_hash("BIP340/nonce", d || msg)
             byte[] dBytes = normalize32(d.toByteArray());
             byte[] kInput = new byte[32 + 32];
             System.arraycopy(dBytes, 0, kInput, 0, 32);
@@ -121,9 +139,12 @@ public class NostrEventSigner {
             if (k0.equals(BigInteger.ZERO)) throw new RuntimeException("Invalid Nonce");
 
             ECPoint R = G.multiply(k0).normalize();
+            
+            // Nonce Parity check: negate k if R.y is odd
             BigInteger k = R.getAffineYCoord().toBigInteger().testBit(0) ? n.subtract(k0) : k0;
             byte[] rX = normalize32(R.getAffineXCoord().getEncoded());
 
+            // Challenge: e = tagged_hash("BIP340/challenge", R_x || P_x || msg)
             byte[] eInput = new byte[32 + 32 + 32];
             System.arraycopy(rX, 0, eInput, 0, 32);
             System.arraycopy(pubKeyX, 0, eInput, 32, 32);
@@ -132,10 +153,11 @@ public class NostrEventSigner {
             byte[] eHash = taggedHash("BIP340/challenge", eInput);
             BigInteger e = new BigInteger(1, eHash).mod(n);
 
-            // Store diagnostics for the UI console
+            // Store math diagnostics for the Technical Console UI
             lastK = NostrKeyManager.bytesToHex(normalize32(k.toByteArray()));
             lastE = NostrKeyManager.bytesToHex(normalize32(e.toByteArray()));
 
+            // s = k + e*d
             BigInteger s = k.add(e.multiply(d)).mod(n);
 
             byte[] sig = new byte[64];
