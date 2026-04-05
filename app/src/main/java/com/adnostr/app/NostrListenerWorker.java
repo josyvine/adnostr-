@@ -89,13 +89,13 @@ public class NostrListenerWorker extends Worker {
         final CountDownLatch latch = new CountDownLatch(1);
 
         try {
-            // FIXED: Change filter to Kind 30001 to match Advertiser Ad events
+            // FIXED: Change filter to Kind 30001 to match the advertiser logic (was 1)
             JSONObject filter = new JSONObject();
             filter.put("kinds", new JSONArray().put(30001));
 
             JSONArray tags = new JSONArray();
             for (String tag : interests) {
-                // FIXED: Protocol matching tag sanitization
+                // FIXED: Changed .add() to .put() and added .replace("#", "") for protocol matching
                 tags.put(tag.toLowerCase().replace("#", ""));
             }
             filter.put("#t", tags);
@@ -167,9 +167,10 @@ public class NostrListenerWorker extends Worker {
             JSONObject event = msgArray.getJSONObject(2);
             
             // CRITICAL FIX: Peek at the content string before attempting to parse as Ad JSON
+            // This prevents background crashes when receiving empty User Interest List events.
             String contentStr = event.optString("content", "");
             if (contentStr.isEmpty()) {
-                return; // Silently ignore empty User Interest list events
+                return; // Silently ignore events that contain no Ad payload
             }
 
             JSONObject content = new JSONObject(contentStr);
@@ -182,6 +183,7 @@ public class NostrListenerWorker extends Worker {
 
         } catch (Exception e) {
             Log.e(TAG, "Error parsing incoming ad relay packet: " + e.getMessage());
+            // FIXED: We now record the exact JSON parsing error so you can debug the payload format.
             logBackgroundError("JSON Parse Error: " + e.getMessage() + "\nPayload: " + rawMessage);
         }
     }
