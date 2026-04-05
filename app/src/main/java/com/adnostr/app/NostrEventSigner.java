@@ -26,6 +26,7 @@ public class NostrEventSigner {
     // Public fields for technical console diagnostics
     public static String lastK = "N/A";
     public static String lastE = "N/A";
+    public static String lastParity = "N/A"; // ADDED: To expose Y-parity status
 
     /**
      * Prepares, hashes, and signs a Nostr event.
@@ -69,9 +70,11 @@ public class NostrEventSigner {
         sb.append(manualSerializeTags(event.getJSONArray("tags")));
         
         sb.append(",\"");
-        // FIXED: Do not manually escape quotes/slashes here. 
-        // The 'content' string must be used exactly as it will be sent in the JSON payload.
-        sb.append(event.getString("content"));
+        
+        // FIXED: Ensure forward slashes are NOT escaped as per instructions
+        String contentRaw = event.getString("content").replace("\\/", "/");
+        sb.append(contentRaw);
+        
         sb.append("\"]");
 
         String serialized = sb.toString();
@@ -120,8 +123,12 @@ public class NostrEventSigner {
             ECPoint G = params.getG();
             ECPoint P = G.multiply(d0).normalize();
             
+            // Capture Parity diagnostic
+            boolean isYOdd = P.getAffineYCoord().toBigInteger().testBit(0);
+            lastParity = isYOdd ? "Odd (Negated)" : "Even (Valid)";
+
             // BIP-340: Negate d if P.y is odd
-            BigInteger d = P.getAffineYCoord().toBigInteger().testBit(0) ? n.subtract(d0) : d0;
+            BigInteger d = isYOdd ? n.subtract(d0) : d0;
             byte[] pubKeyX = normalize32(P.getAffineXCoord().getEncoded());
 
             // Nonce generation
@@ -147,6 +154,7 @@ public class NostrEventSigner {
             byte[] eHash = taggedHash("BIP340/challenge", eInput);
             BigInteger e = new BigInteger(1, eHash).mod(n);
 
+            // Store diagnostics for the UI
             lastK = NostrKeyManager.bytesToHex(normalize32(k.toByteArray()));
             lastE = NostrKeyManager.bytesToHex(normalize32(e.toByteArray()));
 
