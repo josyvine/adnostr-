@@ -17,7 +17,7 @@ import java.util.Arrays;
  * Cryptographic Signer for Nostr Events.
  * Handles the creation of unique Event IDs (SHA-256) and 
  * generates REAL BIP-340 Schnorr signatures using the user's private key.
- * FIXED: Implemented strict BIP-340 Tagged Hashing to pass relay verification.
+ * FIXED: Canonical serialization and strict BIP-340 math to pass relay verification.
  */
 public class NostrEventSigner {
 
@@ -50,20 +50,35 @@ public class NostrEventSigner {
     }
 
     /**
-     * Serializes the Nostr event for hashing as per BIP-340.
+     * Serializes the Nostr event for hashing as per BIP-340 / NIP-01.
      * Format: [0, pubkey, created_at, kind, tags, content]
+     * FIXED: Explicitly builds the JSON string to ensure canonical formatting.
      */
     private static String calculateEventId(JSONObject event) throws Exception {
-        JSONArray jsonArray = new JSONArray();
-        jsonArray.put(0);
-        jsonArray.put(event.getString("pubkey"));
-        jsonArray.put(event.getLong("created_at"));
-        jsonArray.put(event.getInt("kind"));
-        jsonArray.put(event.getJSONArray("tags"));
-        jsonArray.put(event.getString("content"));
+        // Build the serialization array manually to ensure strict protocol order
+        StringBuilder sb = new StringBuilder();
+        sb.append("[0,\"");
+        sb.append(event.getString("pubkey")).append("\",");
+        sb.append(event.getLong("created_at")).append(",");
+        sb.append(event.getInt("kind")).append(",");
+        
+        // Serialize Tags canonically (No spaces, no escaped slashes)
+        sb.append(event.getJSONArray("tags").toString().replace("\\/", "/"));
+        
+        sb.append(",\"");
+        // Serialize Content (Escape only necessary characters as per NIP-01)
+        String content = event.getString("content")
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+        sb.append(content).append("\"]");
 
-        // Nostr protocol requires canonical JSON with NO escaped forward slashes for hashing.
-        String serialized = jsonArray.toString().replace("\\/", "/");
+        String serialized = sb.toString();
+        
+        // FORCE DIAGNOSIS: Print the exact string being hashed to identify mismatches
+        Log.i(TAG, "SERIALIZED STRING FOR HASHING: " + serialized);
 
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(serialized.getBytes(StandardCharsets.UTF_8));
@@ -73,14 +88,14 @@ public class NostrEventSigner {
 
     /**
      * Generates a 64-byte BIP-340 compliant Schnorr signature.
-     * FIXED: Strict implementation of BIP-340 challenge and nonce math.
+     * FIXED: Implemented strict parity checks and deterministic nonce math.
      */
     private static String generateSignature(String privateKeyHex, String eventIdHex) {
         try {
             X9ECParameters params = CustomNamedCurves.getByName("secp256k1");
             BigInteger n = params.getN();
             
-            // d0 is the raw private key
+            // Raw Private Key
             BigInteger d0 = new BigInteger(1, NostrKeyManager.hexToBytes(privateKeyHex));
             byte[] msg = NostrKeyManager.hexToBytes(eventIdHex);
 
@@ -88,7 +103,7 @@ public class NostrEventSigner {
             ECPoint G = params.getG();
             ECPoint P = G.multiply(d0).normalize();
             
-            // Nostr requirement: if P.y is odd, negate d
+            // BIP-340: If P.y is odd, negate the secret key d
             BigInteger d = P.getAffineYCoord().toBigInteger().testBit(0) ? n.subtract(d0) : d0;
             byte[] pubKeyX = normalize32(P.getAffineXCoord().getEncoded());
 
@@ -102,10 +117,10 @@ public class NostrEventSigner {
             BigInteger k0 = new BigInteger(1, kHash).mod(n);
             if (k0.equals(BigInteger.ZERO)) throw new RuntimeException("Invalid Nonce");
 
-            // 3. Compute R = kG
+            // 3. Compute point R = kG
             ECPoint R = G.multiply(k0).normalize();
             
-            // If R.y is odd, negate k
+            // BIP-340: If R.y is odd, negate k
             BigInteger k = R.getAffineYCoord().toBigInteger().testBit(0) ? n.subtract(k0) : k0;
             byte[] rX = normalize32(R.getAffineXCoord().getEncoded());
 
@@ -121,7 +136,7 @@ public class NostrEventSigner {
             // 5. Compute s = (k + e*d) mod n
             BigInteger s = k.add(e.multiply(d)).mod(n);
 
-            // 6. Signature is R_x || s
+            // 6. Signature is R_x || s (64 bytes)
             byte[] sig = new byte[64];
             System.arraycopy(rX, 0, sig, 0, 32);
             byte[] sBytes = normalize32(s.toByteArray());
@@ -137,7 +152,6 @@ public class NostrEventSigner {
 
     /**
      * BIP-340 Tagged Hash: sha256(sha256(tag) || sha256(tag) || data)
-     * This is required for relays to verify the signature.
      */
     private static byte[] taggedHash(String tag, byte[] data) throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
