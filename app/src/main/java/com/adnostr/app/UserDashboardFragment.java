@@ -30,6 +30,7 @@ import java.util.Set;
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * UPDATED: broadcastUserInterests now prints "Signing Debug" (k, e, parity) for verification.
  * FIXED: Added strict checks to ignore empty User Interest lists and only trigger on real Ads.
+ * FIXED: Enforced UI Thread execution for AdPopup launch to bypass background activity restrictions.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -257,7 +258,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                     return; // Silently ignore empty events
                                 }
 
-                                // Double check the 'd' tag just in case
+                                // Double check the 'd' tag just in case to verify it is an Ad
                                 JSONArray tags = event.optJSONArray("tags");
                                 if (tags != null) {
                                     for (int i = 0; i < tags.length(); i++) {
@@ -273,12 +274,15 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                 technicalLogs.append("[AD DETECTED] Valid Kind 30001 Ad from ").append(url).append("\n");
                                 updateOpenConsole();
 
-                                if (db.isListening()) {
-                                    // Launch the Full-Screen Ad Overlay
-                                    Intent intent = new Intent(requireContext(), AdPopupActivity.class);
-                                    intent.putExtra("AD_PAYLOAD_JSON", message);
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                    startActivity(intent);
+                                if (db.isListening() && isAdded() && getActivity() != null) {
+                                    // FIXED: Enforce UI Thread execution for the Activity launch.
+                                    // This prevents the OS from blocking the foreground transition.
+                                    getActivity().runOnUiThread(() -> {
+                                        Intent intent = new Intent(requireContext(), AdPopupActivity.class);
+                                        intent.putExtra("AD_PAYLOAD_JSON", message);
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                        startActivity(intent);
+                                    });
                                 }
                             } else {
                                 // Background traffic (Kind 1 etc) - update console metadata only
