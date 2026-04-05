@@ -17,7 +17,7 @@ import java.security.Security;
  * Cryptographic Utility for Nostr Identity.
  * Responsible for generating Secp256k1 keypairs compatible with the 
  * decentralized Nostr protocol (BIP-340 Schnorr signatures).
- * UPDATED: Fixed BigInteger sign-prefix issue to ensure raw 32-byte keys.
+ * UPDATED: Strictly enforced 32-byte (64 char) hex padding to prevent signature drift.
  */
 public class NostrKeyManager {
 
@@ -53,21 +53,33 @@ public class NostrKeyManager {
             ECPoint publicKeyPoint = params.getG().multiply(privateKeyInt).normalize();
 
             // 4. Extract the X-coordinate (Nostr uses 32-byte x-only public keys)
+            // FIXED: Ensure we extract exactly 32 bytes for the coordinate
             byte[] publicKeyBytes = publicKeyPoint.getAffineXCoord().getEncoded();
+            if (publicKeyBytes.length > 32) {
+                byte[] tmp = new byte[32];
+                System.arraycopy(publicKeyBytes, publicKeyBytes.length - 32, tmp, 0, 32);
+                publicKeyBytes = tmp;
+            }
 
-            // 5. FIXED: Ensure raw 32-byte array (BigInteger.toByteArray often adds a sign byte 0x00)
+            // 5. Ensure raw 32-byte private key array (Handling sign-byte 0x00)
             byte[] rawPrivKey = privateKeyInt.toByteArray();
             if (rawPrivKey.length == 33 && rawPrivKey[0] == 0) {
                 byte[] cleanPrivKey = new byte[32];
                 System.arraycopy(rawPrivKey, 1, cleanPrivKey, 0, 32);
                 rawPrivKey = cleanPrivKey;
+            } else if (rawPrivKey.length < 32) {
+                // Pad if BigInteger produces a shorter array due to leading zeros
+                byte[] paddedPrivKey = new byte[32];
+                System.arraycopy(rawPrivKey, 0, paddedPrivKey, 32 - rawPrivKey.length, rawPrivKey.length);
+                rawPrivKey = paddedPrivKey;
             }
 
             // 6. Convert keys to Hexadecimal strings
             String privateKeyHex = bytesToHex(rawPrivKey);
             String publicKeyHex = bytesToHex(publicKeyBytes);
 
-            // Ensure the strings are exactly 64 characters (32 bytes)
+            // 7. STRICT NORMALIZATION: Ensure strings are exactly 64 characters
+            // This prevents "id" and "sig" mismatches caused by leading zero truncation
             privateKeyHex = normalizeHex(privateKeyHex, 64);
             publicKeyHex = normalizeHex(publicKeyHex, 64);
 
@@ -101,6 +113,7 @@ public class NostrKeyManager {
      * Converts a byte array to a Hexadecimal string.
      */
     public static String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "";
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) {
             sb.append(String.format("%02x", b));
@@ -112,6 +125,7 @@ public class NostrKeyManager {
      * Converts a Hexadecimal string to a byte array.
      */
     public static byte[] hexToBytes(String hex) {
+        if (hex == null || hex.isEmpty()) return new byte[0];
         int len = hex.length();
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
