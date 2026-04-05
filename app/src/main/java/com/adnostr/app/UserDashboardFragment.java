@@ -27,7 +27,7 @@ import java.util.Set;
 /**
  * Dashboard for standard AdNostr Users.
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
- * FIXED: Toggle now triggers immediate relay resubscription and Ad Popup handling.
+ * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * UPDATED: broadcastUserInterests now clears logs to show fresh relay responses.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
@@ -137,13 +137,13 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     /**
      * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
-     * UPDATED: Clears technicalLogs before broadcasting to isolate relay responses.
+     * UPDATED: Clears technicalLogs before broadcasting and adds mandatory 'd' tag.
      */
     private void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
         if (followed.isEmpty()) return;
 
-        // FIXED: Clear the console logs before broadcasting so you only see the result of THIS action
+        // Clear the console logs before broadcasting so you only see the result of THIS action
         technicalLogs.setLength(0);
         wsManager.clearLogs();
 
@@ -155,6 +155,14 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("content", ""); 
 
             JSONArray tags = new JSONArray();
+            
+            // FIXED: Mandatory 'd' tag for Parameterized Replaceable Events (Kind 30001)
+            // This ensures relays correctly index and replace your interest list.
+            JSONArray dTag = new JSONArray();
+            dTag.put("d");
+            dTag.put("adnostr_interests");
+            tags.put(dTag);
+
             for (String tag : followed) {
                 JSONArray tagPair = new JSONArray();
                 tagPair.put("t");
@@ -163,7 +171,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             }
             event.put("tags", tags);
 
-            // Sign the event (Ensure NostrEventSigner TaggedHash fix is applied)
+            // Sign the event
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
@@ -238,7 +246,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                     startActivity(intent);
                                 }
                             } else {
-                                // Background traffic (Kind 1 etc) - log silently
+                                // Background traffic (Kind 1 etc) - update console metadata only
                                 updateOpenConsole();
                             }
                         }
