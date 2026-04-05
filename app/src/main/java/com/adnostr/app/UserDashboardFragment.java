@@ -28,7 +28,7 @@ import java.util.Set;
  * Dashboard for standard AdNostr Users.
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
- * UPDATED: broadcastUserInterests now prints "Signing Debug" (k and e bytes) for verification.
+ * UPDATED: broadcastUserInterests now prints "Signing Debug" (k, e, parity) for verification.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -137,7 +137,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     /**
      * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
-     * UPDATED: Clears technicalLogs and prints mathematical signing diagnostics (k, e).
+     * UPDATED: Clears technicalLogs and prints mathematical signing diagnostics (k, e, parity).
      */
     private void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
@@ -185,6 +185,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 technicalLogs.append("SIG (R+s): ").append(signedEvent.getString("sig")).append("\n");
                 
                 // Pulling diagnostic math from static fields in Signer
+                technicalLogs.append("Y-PARITY: ").append(NostrEventSigner.lastParity).append("\n");
                 technicalLogs.append("NONCE (k): ").append(NostrEventSigner.lastK).append("\n");
                 technicalLogs.append("CHALLENGE (e): ").append(NostrEventSigner.lastE).append("\n");
                 technicalLogs.append("-----------------------------\n\n");
