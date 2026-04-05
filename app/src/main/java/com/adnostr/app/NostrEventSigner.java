@@ -65,20 +65,20 @@ public class NostrEventSigner {
         sb.append(event.getString("pubkey")).append("\",");
         sb.append(event.getLong("created_at")).append(",");
         sb.append(event.getInt("kind")).append(",");
-        
+
         // FIXED: Tag serialization must have zero spaces
         sb.append(manualSerializeTags(event.getJSONArray("tags")));
-        
+
         sb.append(",\"");
-        
+
         // FIXED: Ensure forward slashes are NOT escaped as per instructions
         String contentRaw = event.getString("content").replace("\\/", "/");
         sb.append(contentRaw);
-        
+
         sb.append("\"]");
 
         String serialized = sb.toString();
-        
+
         // This log is now crucial to verify that the string looks like this:
         // [0,"pubkey",timestamp,30001,[["d","id"],["t","tag"]],"content_string"]
         Log.i(TAG, "CANONICAL SERIALIZATION: " + serialized);
@@ -116,13 +116,13 @@ public class NostrEventSigner {
         try {
             X9ECParameters params = CustomNamedCurves.getByName("secp256k1");
             BigInteger n = params.getN();
-            
+
             BigInteger d0 = new BigInteger(1, NostrKeyManager.hexToBytes(privateKeyHex));
             byte[] msg = NostrKeyManager.hexToBytes(eventIdHex);
 
             ECPoint G = params.getG();
             ECPoint P = G.multiply(d0).normalize();
-            
+
             // Capture Parity diagnostic
             boolean isYOdd = P.getAffineYCoord().toBigInteger().testBit(0);
             lastParity = isYOdd ? "Odd (Negated)" : "Even (Valid)";
@@ -131,13 +131,15 @@ public class NostrEventSigner {
             BigInteger d = isYOdd ? n.subtract(d0) : d0;
             byte[] pubKeyX = normalize32(P.getAffineXCoord().getEncoded());
 
-            // Nonce generation
+            // CRITICAL FIX: Nonce generation strictly requires 96 bytes: Private Key (d) + Public Key X (Px) + Message (m)
             byte[] dBytes = normalize32(d.toByteArray());
-            byte[] kInput = new byte[32 + 32];
+            byte[] kInput = new byte[32 + 32 + 32];
             System.arraycopy(dBytes, 0, kInput, 0, 32);
-            System.arraycopy(msg, 0, kInput, 32, 32);
-            
-            byte[] kHash = taggedHash("BIP340/nonce", kInput);
+            System.arraycopy(pubKeyX, 0, kInput, 32, 32);
+            System.arraycopy(msg, 0, kInput, 64, 32);
+
+            // CRITICAL FIX: Must be "BIP0340", not "BIP340"
+            byte[] kHash = taggedHash("BIP0340/nonce", kInput);
             BigInteger k0 = new BigInteger(1, kHash).mod(n);
             if (k0.equals(BigInteger.ZERO)) throw new RuntimeException("Invalid Nonce");
 
@@ -151,7 +153,8 @@ public class NostrEventSigner {
             System.arraycopy(pubKeyX, 0, eInput, 32, 32);
             System.arraycopy(msg, 0, eInput, 64, 32);
 
-            byte[] eHash = taggedHash("BIP340/challenge", eInput);
+            // CRITICAL FIX: Must be "BIP0340", not "BIP340"
+            byte[] eHash = taggedHash("BIP0340/challenge", eInput);
             BigInteger e = new BigInteger(1, eHash).mod(n);
 
             // Store diagnostics for the UI
