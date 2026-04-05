@@ -5,22 +5,32 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#99000000"
-    android:padding="24dp">
+    android:background="#E6000000"
+    tools:context=".AdPopupActivity">
 
-    <!-- THE AD CARD CONTAINER -->
+    <!-- SEMI-TRANSPARENT CLICKABLE BACKGROUND (Closes ad if tapped outside) -->
+    <View
+        android:id="@+id/viewBackgroundOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:focusable="true" />
+
+    <!-- MAIN AD CARD -->
     <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cvAdPopup"
+        android:id="@+id/cvAdContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        app:cardBackgroundColor="#1E1E1E"
-        app:cardCornerRadius="24dp"
-        app:cardElevation="12dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        app:cardBackgroundColor="#1A1A1A"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="20dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:strokeColor="#333333"
+        app:strokeColor="#33FFFFFF"
         app:strokeWidth="1dp">
 
         <LinearLayout
@@ -28,122 +38,168 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- AD IMAGE COVER (IPFS Loaded via Coil) -->
-            <com.google.android.material.card.MaterialCardView
+            <!-- IMAGE SLIDER AREA -->
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="220dp"
-                app:cardCornerRadius="0dp"
-                app:cardElevation="0dp">
+                android:layout_height="280dp">
 
+                <!-- FIXED: ViewPager2 for "Slide to left or right" image viewing -->
+                <androidx.viewpager2.widget.ViewPager2
+                    android:id="@+id/vpAdImages"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#000000" />
+
+                <!-- Fallback single image view if ViewPager adapter isn't used -->
                 <ImageView
                     android:id="@+id/ivAdCover"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:scaleType="centerCrop"
-                    android:src="@android:drawable/ic_menu_gallery"
-                    tools:srcCompat="@android:drawable/ic_menu_gallery" />
+                    android:visibility="gone"
+                    tools:src="@android:drawable/ic_menu_gallery" />
 
-                <!-- Close Button Overlay -->
-                <ImageButton
+                <!-- Close Button (Top Right) -->
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCloseAd"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
                     android:layout_gravity="end|top"
-                    android:layout_margin="12dp"
-                    android:background="@drawable/bg_circle_dark"
-                    android:src="@android:drawable/ic_menu_close_clear_cancel"
-                    app:tint="#FFFFFF" />
-            </com.google.android.material.card.MaterialCardView>
+                    android:layout_margin="16dp"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="#AA000000"
+                    app:cornerRadius="20dp"
+                    app:icon="@android:drawable/ic_menu_close_clear_cancel"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconTint="#FFFFFF" />
 
-            <!-- AD TEXT CONTENT -->
-            <LinearLayout
+                <!-- Page Indicator (Dots for the slider) -->
+                <com.google.android.material.tabs.TabLayout
+                    android:id="@+id/tabDots"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:background="@android:color/transparent"
+                    app:tabBackground="@drawable/selector_dot"
+                    app:tabGravity="center"
+                    app:tabIndicatorHeight="0dp"
+                    app:tabMaxWidth="12dp"
+                    app:tabRippleColor="@null" />
+
+            </FrameLayout>
+
+            <!-- CONTENT AREA -->
+            <androidx.core.widget.NestedScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
+                android:maxHeight="300dp">
 
-                <TextView
-                    android:id="@+id/tvPopupTitle"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif-black"
-                    android:text="Ad Title Loading..."
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp" />
+                    android:orientation="vertical"
+                    android:padding="24dp">
 
-                <TextView
-                    android:id="@+id/tvPopupDesc"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="4dp"
-                    android:text="Loading ad details from decentralized network..."
-                    android:textColor="#B0B0B0"
-                    android:textSize="14sp" />
-
-                <!-- DYNAMIC ACTION BUTTONS CONTAINER -->
-                <!-- FIXED: Uses FlexboxLayout with corrected attributes and icons -->
-                <com.google.android.flexbox.FlexboxLayout
-                    android:id="@+id/flexActionButtons"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    app:flexWrap="wrap"
-                    app:justifyContent="flex_start">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnActionWhatsapp"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:layout_width="wrap_content"
+                    <TextView
+                        android:id="@+id/tvPopupTitle"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="8dp"
-                        android:text="WhatsApp"
-                        android:textColor="#4CAF50"
-                        android:visibility="gone"
-                        app:icon="@android:drawable/ic_menu_send"
-                        app:iconTint="#4CAF50"
-                        tools:visibility="visible" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnActionMap"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="8dp"
-                        android:text="Open Map"
-                        android:textColor="#2196F3"
-                        android:visibility="gone"
-                        app:icon="@android:drawable/ic_dialog_map"
-                        app:iconTint="#2196F3"
-                        tools:visibility="visible" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnActionWebsite"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="8dp"
-                        android:text="Visit Web"
+                        android:fontFamily="sans-serif-black"
                         android:textColor="#FFFFFF"
-                        android:visibility="gone"
-                        app:icon="@android:drawable/ic_menu_info_details"
-                        app:iconTint="#FFFFFF"
-                        tools:visibility="visible" />
+                        android:textSize="22sp"
+                        tools:text="Limited Time Coffee Deal" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnActionCall"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:layout_width="wrap_content"
+                    <TextView
+                        android:id="@+id/tvPopupDesc"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Call Now"
-                        android:textColor="#FF9800"
-                        android:visibility="gone"
-                        app:icon="@android:drawable/ic_menu_call"
-                        app:iconTint="#FF9800"
-                        tools:visibility="visible" />
+                        android:layout_marginTop="12dp"
+                        android:lineSpacingExtra="5dp"
+                        android:textColor="#CCCCCC"
+                        android:textSize="15sp"
+                        tools:text="Get 50% off all lattes this weekend at Kochi Central Mall. Valid until Sunday evening!" />
 
-                </com.google.android.flexbox.FlexboxLayout>
-            </LinearLayout>
+                    <!-- PROFESSIONAL ACTION BUTTONS -->
+                    <com.google.android.flexbox.FlexboxLayout
+                        android:id="@+id/flexActionButtons"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="24dp"
+                        app:flexWrap="wrap"
+                        app:justifyContent="flex_start">
+
+                        <!-- WhatsApp Action -->
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnActionWhatsapp"
+                            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_marginBottom="8dp"
+                            android:text="WhatsApp"
+                            android:textAllCaps="false"
+                            android:textColor="#FFFFFF"
+                            android:visibility="gone"
+                            app:backgroundTint="#25D366"
+                            app:cornerRadius="12dp"
+                            app:icon="@android:drawable/stat_sys_speakerphone"
+                            tools:visibility="visible" />
+
+                        <!-- Map Action -->
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnActionMap"
+                            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_marginBottom="8dp"
+                            android:text="Get Directions"
+                            android:textAllCaps="false"
+                            android:visibility="gone"
+                            app:backgroundTint="#4285F4"
+                            app:cornerRadius="12dp"
+                            app:icon="@android:drawable/ic_dialog_map"
+                            tools:visibility="visible" />
+
+                        <!-- Website Action -->
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnActionWebsite"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_marginBottom="8dp"
+                            android:text="View Details"
+                            android:textAllCaps="false"
+                            android:textColor="#FFFFFF"
+                            android:visibility="gone"
+                            app:cornerRadius="12dp"
+                            app:strokeColor="#FFFFFF"
+                            tools:visibility="visible" />
+
+                        <!-- Call Action -->
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnActionCall"
+                            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="8dp"
+                            android:text="Call"
+                            android:textAllCaps="false"
+                            android:visibility="gone"
+                            app:backgroundTint="#FF9800"
+                            app:cornerRadius="12dp"
+                            app:icon="@android:drawable/ic_menu_call"
+                            tools:visibility="visible" />
+
+                    </com.google.android.flexbox.FlexboxLayout>
+
+                </LinearLayout>
+            </androidx.core.widget.NestedScrollView>
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
