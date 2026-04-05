@@ -17,7 +17,7 @@ import java.security.Security;
  * Cryptographic Utility for Nostr Identity.
  * Responsible for generating Secp256k1 keypairs compatible with the 
  * decentralized Nostr protocol (BIP-340 Schnorr signatures).
- * UPDATED: Strictly enforced 32-byte (64 char) hex padding to prevent signature drift.
+ * FIXED: Implemented Y-coordinate parity check to ensure valid BIP-340 keys.
  */
 public class NostrKeyManager {
 
@@ -39,21 +39,28 @@ public class NostrKeyManager {
         try {
             // 1. Setup the Secp256k1 Curve parameters
             X9ECParameters params = CustomNamedCurves.getByName("secp256k1");
-            ECDomainParameters domainParams = new ECDomainParameters(
-                    params.getCurve(), params.getG(), params.getN(), params.getH());
+            BigInteger n = params.getN();
 
             // 2. Generate a cryptographically secure 32-byte random number (The Private Key)
             SecureRandom secureRandom = new SecureRandom();
             BigInteger privateKeyInt;
             do {
                 privateKeyInt = new BigInteger(256, secureRandom);
-            } while (privateKeyInt.compareTo(params.getN()) >= 0 || privateKeyInt.equals(BigInteger.ZERO));
+            } while (privateKeyInt.compareTo(n) >= 0 || privateKeyInt.equals(BigInteger.ZERO));
 
             // 3. Derive the Public Key Point (P = k * G)
             ECPoint publicKeyPoint = params.getG().multiply(privateKeyInt).normalize();
 
-            // 4. Extract the X-coordinate (Nostr uses 32-byte x-only public keys)
-            // FIXED: Ensure we extract exactly 32 bytes for the coordinate
+            // 4. FIXED: BIP-340 / Nostr Requirement
+            // Check if the Y-coordinate is ODD. If it is, we must negate the private key.
+            // This ensures we always use the 'Even' coordinate version of the identity.
+            if (publicKeyPoint.getAffineYCoord().toBigInteger().testBit(0)) {
+                privateKeyInt = n.subtract(privateKeyInt);
+                // Recalculate point (optional for X, but ensures point consistency)
+                publicKeyPoint = params.getG().multiply(privateKeyInt).normalize();
+            }
+
+            // 5. Extract the X-coordinate (Nostr uses 32-byte x-only public keys)
             byte[] publicKeyBytes = publicKeyPoint.getAffineXCoord().getEncoded();
             if (publicKeyBytes.length > 32) {
                 byte[] tmp = new byte[32];
@@ -61,25 +68,23 @@ public class NostrKeyManager {
                 publicKeyBytes = tmp;
             }
 
-            // 5. Ensure raw 32-byte private key array (Handling sign-byte 0x00)
+            // 6. Ensure raw 32-byte private key array (Handling sign-byte 0x00)
             byte[] rawPrivKey = privateKeyInt.toByteArray();
             if (rawPrivKey.length == 33 && rawPrivKey[0] == 0) {
                 byte[] cleanPrivKey = new byte[32];
                 System.arraycopy(rawPrivKey, 1, cleanPrivKey, 0, 32);
                 rawPrivKey = cleanPrivKey;
             } else if (rawPrivKey.length < 32) {
-                // Pad if BigInteger produces a shorter array due to leading zeros
                 byte[] paddedPrivKey = new byte[32];
                 System.arraycopy(rawPrivKey, 0, paddedPrivKey, 32 - rawPrivKey.length, rawPrivKey.length);
                 rawPrivKey = paddedPrivKey;
             }
 
-            // 6. Convert keys to Hexadecimal strings
+            // 7. Convert keys to Hexadecimal strings
             String privateKeyHex = bytesToHex(rawPrivKey);
             String publicKeyHex = bytesToHex(publicKeyBytes);
 
-            // 7. STRICT NORMALIZATION: Ensure strings are exactly 64 characters
-            // This prevents "id" and "sig" mismatches caused by leading zero truncation
+            // 8. STRICT NORMALIZATION: Ensure strings are exactly 64 characters
             privateKeyHex = normalizeHex(privateKeyHex, 64);
             publicKeyHex = normalizeHex(publicKeyHex, 64);
 
@@ -96,6 +101,7 @@ public class NostrKeyManager {
      * Utility to ensure the Hex string is of exact required length (padding if necessary).
      */
     private static String normalizeHex(String hex, int length) {
+        if (hex == null) return "";
         if (hex.length() > length) {
             return hex.substring(hex.length() - length);
         } else if (hex.length() < length) {
@@ -126,6 +132,9 @@ public class NostrKeyManager {
      */
     public static byte[] hexToBytes(String hex) {
         if (hex == null || hex.isEmpty()) return new byte[0];
+        // Ensure even length for hex decoding
+        if (hex.length() % 2 != 0) hex = "0" + hex;
+        
         int len = hex.length();
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
