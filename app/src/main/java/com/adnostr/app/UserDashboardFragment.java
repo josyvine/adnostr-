@@ -28,7 +28,7 @@ import java.util.Set;
  * Dashboard for standard AdNostr Users.
  * UPDATED: Implements Kind 30001 signed broadcasting and technical console logging.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
- * UPDATED: broadcastUserInterests now clears logs to show fresh relay responses.
+ * UPDATED: broadcastUserInterests now prints "Signing Debug" (k and e bytes) for verification.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -137,7 +137,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     /**
      * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
-     * UPDATED: Clears technicalLogs before broadcasting and adds mandatory 'd' tag.
+     * UPDATED: Clears technicalLogs and prints mathematical signing diagnostics (k, e).
      */
     private void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
@@ -155,9 +155,8 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("content", ""); 
 
             JSONArray tags = new JSONArray();
-            
-            // FIXED: Mandatory 'd' tag for Parameterized Replaceable Events (Kind 30001)
-            // This ensures relays correctly index and replace your interest list.
+
+            // Mandatory 'd' tag for Parameterized Replaceable Events (Kind 30001)
             JSONArray dTag = new JSONArray();
             dTag.put("d");
             dTag.put("adnostr_interests");
@@ -171,14 +170,27 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             }
             event.put("tags", tags);
 
+            technicalLogs.append("INITIATING CRYPTO SIGNING...\n");
+            
             // Sign the event
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
                 technicalLogs.append("SIGNING SUCCESS: Interest List Signed.\n");
+                
+                // NEW: SIGNING DEBUG - Print raw mathematical bytes to console
+                technicalLogs.append("-----------------------------\n");
+                technicalLogs.append("SIGNING DIAGNOSTICS (BIP-340):\n");
+                technicalLogs.append("ID (Hash): ").append(signedEvent.getString("id")).append("\n");
+                technicalLogs.append("SIG (R+s): ").append(signedEvent.getString("sig")).append("\n");
+                
+                // Pulling diagnostic math from static fields in Signer
+                technicalLogs.append("NONCE (k): ").append(NostrEventSigner.lastK).append("\n");
+                technicalLogs.append("CHALLENGE (e): ").append(NostrEventSigner.lastE).append("\n");
+                technicalLogs.append("-----------------------------\n\n");
+
                 wsManager.broadcastEvent(signedEvent.toString());
                 technicalLogs.append("BROADCAST: Sent Kind 30001 to relays.\n");
-                technicalLogs.append("PAYLOAD: ").append(signedEvent.toString()).append("\n\n");
                 technicalLogs.append("WAITING FOR RELAY VERIFICATION...\n\n");
                 updateOpenConsole();
             }
