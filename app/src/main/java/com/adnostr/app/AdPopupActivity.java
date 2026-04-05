@@ -4,13 +4,18 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.Toast;
+import android.widget.ImageView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.adnostr.app.databinding.ActivityAdPopupBinding;
+import com.google.android.material.tabs.TabLayoutMediator;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -21,14 +26,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import coil.Coil;
-import coil.ImageLoader;
 import coil.request.ImageRequest;
 
 /**
- * The Ad Delivery Overlay.
- * UPDATED: Fixed parsing to match Kind 30001 Ad format spec.
- * FIXED: Image key changed to singular "image" and links moved to content root.
- * FIXED: Removed generic Toast error. Now pipes raw Java Exception stack traces directly to the ErrorDisplayActivity.
+ * Professional Ad Delivery Overlay.
+ * FIXED: Implemented ViewPager2 Adapter for "Slide to left or right" image viewing.
+ * FIXED: Supports both single image (String) and multiple images (JSONArray) in Ad content.
+ * FIXED: Removed generic Toast. Pipes raw Java stack traces to ErrorDisplayActivity.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -39,161 +43,164 @@ public class AdPopupActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 1. Transparent Overlay Flags
+        // 1. Full-Screen Overlay Flags
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
                 | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
                 | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
                 | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // 2. Initialize ViewBinding
         binding = ActivityAdPopupBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // 3. Extract Ad Data from the incoming Intent
         String adJsonString = getIntent().getStringExtra("AD_PAYLOAD_JSON");
 
         if (adJsonString == null || adJsonString.isEmpty()) {
-            Log.e(TAG, "AdPopup launched without payload. Closing.");
             finish();
             return;
         }
 
-        // 4. Parse and Display the Ad
         try {
             parseAndPopulateAd(adJsonString);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to render Ad UI: " + e.getMessage());
-            
-            // CRITICAL FIX: Extract the raw Java Stack Trace for the ErrorDisplayActivity
+            // CRITICAL: Extract raw Java exception for the diagnostic screen
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
             e.printStackTrace(pw);
             String rawStackTrace = sw.toString();
 
-            // Pass the raw error directly to your custom Error UI instead of showing a generic Toast
-            // This allows you to identify exactly why the parser failed on a specific relay payload.
             Intent errorIntent = new Intent(this, ErrorDisplayActivity.class);
-            errorIntent.putExtra("ERROR_DETAILS", "AdPopup Render Failure:\n\nPayload:\n" + adJsonString + "\n\nRaw Exception:\n" + rawStackTrace);
+            errorIntent.putExtra("ERROR_DETAILS", "Ad Rendering Failure:\n\nPayload:\n" + adJsonString + "\n\nRaw Java Error:\n" + rawStackTrace);
             errorIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(errorIntent);
-
             finish();
         }
 
-        // 5. Setup Close Button
         binding.btnCloseAd.setOnClickListener(v -> finish());
+        binding.viewBackgroundOverlay.setOnClickListener(v -> finish());
     }
 
-    /**
-     * Extracts fields from the Kind 30001 Ad event.
-     * UPDATED: Aligned with Advertiser Step 2 JSON format requirements.
-     */
     private void parseAndPopulateAd(String jsonStr) throws Exception {
         JSONObject event;
-
-        // 1. Parse Nostr Relay Wrapper
         if (jsonStr.trim().startsWith("[")) {
             JSONArray relayMsg = new JSONArray(jsonStr);
-            // Nostr EVENT messages are: ["EVENT", "sub_id", {event_object}]
-            if (relayMsg.length() >= 3 && "EVENT".equals(relayMsg.getString(0))) {
-                event = relayMsg.getJSONObject(2);
-            } else {
-                throw new Exception("Malformed Nostr relay message array.");
-            }
+            event = relayMsg.getJSONObject(2);
         } else {
             event = new JSONObject(jsonStr);
         }
 
-        // 2. Extract nested Ad 'content' string
         String contentRaw = event.optString("content", "");
-        if (contentRaw.isEmpty()) throw new Exception("Ad event contains no content payload (Empty String).");
+        if (contentRaw.isEmpty()) throw new Exception("Ad content field is empty.");
 
-        // The 'content' in Kind 30001 is a stringified JSON object
         JSONObject content = new JSONObject(contentRaw);
 
-        // 3. Set Text Content
+        // Populate Text
         String title = content.optString("title", "");
-        String desc = content.optString("desc", "");
-
-        // If title is missing, the Ad is invalid for display. Throwing triggers the Error screen.
-        if (title.isEmpty()) throw new Exception("Ad payload is missing the required 'title' field.");
-
+        if (title.isEmpty()) throw new Exception("Required field 'title' is missing.");
         binding.tvPopupTitle.setText(title);
-        binding.tvPopupDesc.setText(desc);
+        binding.tvPopupDesc.setText(content.optString("desc", "No description provided."));
 
-        // 4. Handle Image (IPFS Gateway Loading)
-        // FIXED: Uses "image" key and ensures visibility is handled correctly.
-        String ipfsUri = content.optString("image", "");
-        if (!ipfsUri.isEmpty()) {
-            String gatewayUrl = ipfsUri.replace("ipfs://", "https://cloudflare-ipfs.com/ipfs/");
-
-            ImageRequest request = new ImageRequest.Builder(this)
-                    .data(gatewayUrl)
-                    .crossfade(true)
-                    .target(binding.ivAdCover)
-                    .build();
-
-            Coil.imageLoader(this).enqueue(request);
-            binding.ivAdCover.setVisibility(View.VISIBLE);
-        } else {
-            binding.ivAdCover.setVisibility(View.GONE);
+        // FIXED: Handle Image Slider (Supports String or Array)
+        List<String> imageUrls = new ArrayList<>();
+        Object imageObj = content.opt("image");
+        
+        if (imageObj instanceof JSONArray) {
+            JSONArray arr = (JSONArray) imageObj;
+            for (int i = 0; i < arr.length(); i++) {
+                imageUrls.add(arr.getString(i));
+            }
+        } else if (imageObj instanceof String && !((String) imageObj).isEmpty()) {
+            imageUrls.add((String) imageObj);
         }
 
-        // 5. Handle Dynamic Action Buttons
-        // FIXED: cta and maps are now directly in the content root
+        if (!imageUrls.isEmpty()) {
+            setupImageSlider(imageUrls);
+        } else {
+            binding.vpAdImages.setVisibility(View.GONE);
+        }
+
         setupActionButtons(content);
     }
 
+    private void setupImageSlider(List<String> urls) {
+        ImageSliderAdapter adapter = new ImageSliderAdapter(urls);
+        binding.vpAdImages.setAdapter(adapter);
+
+        // Connect the dots (Page Indicator)
+        new TabLayoutMediator(binding.tabDots, binding.vpAdImages, (tab, position) -> {}).attach();
+    }
+
     private void setupActionButtons(JSONObject content) {
-        // WhatsApp Button (cta)
-        String ctaUrl = content.optString("cta", "");
-        if (!ctaUrl.isEmpty()) {
+        // WhatsApp (cta)
+        String cta = content.optString("cta", "");
+        if (!cta.isEmpty()) {
             binding.btnActionWhatsapp.setVisibility(View.VISIBLE);
-            binding.btnActionWhatsapp.setOnClickListener(v -> openUrlIntent(ctaUrl));
+            binding.btnActionWhatsapp.setOnClickListener(v -> openUrl(cta));
         }
 
-        // Google Maps Button
-        String mapsUrl = content.optString("maps", "");
-        if (!mapsUrl.isEmpty()) {
+        // Google Maps (maps)
+        String maps = content.optString("maps", "");
+        if (!maps.isEmpty()) {
             binding.btnActionMap.setVisibility(View.VISIBLE);
-            binding.btnActionMap.setOnClickListener(v -> openUrlIntent(mapsUrl));
+            binding.btnActionMap.setOnClickListener(v -> openUrl(maps));
         }
 
-        // Website Button (Fallback if cta is a standard website)
-        String website = content.optString("website", "");
-        if (!website.isEmpty()) {
+        // External Link (website)
+        String web = content.optString("website", "");
+        if (!web.isEmpty()) {
             binding.btnActionWebsite.setVisibility(View.VISIBLE);
-            binding.btnActionWebsite.setOnClickListener(v -> openUrlIntent(website));
+            binding.btnActionWebsite.setOnClickListener(v -> openUrl(web));
         }
 
-        // Call Now Button
+        // Phone (call)
         String call = content.optString("call", "");
         if (!call.isEmpty()) {
             binding.btnActionCall.setVisibility(View.VISIBLE);
             binding.btnActionCall.setOnClickListener(v -> {
-                try {
-                    Intent callIntent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + call));
-                    startActivity(callIntent);
-                } catch (Exception e) {
-                    Toast.makeText(this, "Phone app missing.", Toast.LENGTH_SHORT).show();
-                }
+                startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + call)));
             });
         }
     }
 
-    private void openUrlIntent(String url) {
+    private void openUrl(String url) {
         try {
-            Intent i = new Intent(Intent.ACTION_VIEW);
-            i.setData(Uri.parse(url));
-            startActivity(i);
-        } catch (Exception e) {
-            Toast.makeText(this, "Could not open link. App may be missing.", Toast.LENGTH_SHORT).show();
-        }
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception ignored) {}
     }
 
-    @Override
-    public void onBackPressed() {
-        super.onBackPressed();
-        finish();
+    /**
+     * Internal Adapter for the Image ViewPager slider.
+     */
+    private class ImageSliderAdapter extends RecyclerView.Adapter<ImageSliderAdapter.ViewHolder> {
+        private final List<String> images;
+
+        ImageSliderAdapter(List<String> images) { this.images = images; }
+
+        @NonNull
+        @Override
+        public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            ImageView imageView = new ImageView(parent.getContext());
+            imageView.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            return new ViewHolder(imageView);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+            String url = images.get(position).replace("ipfs://", "https://cloudflare-ipfs.com/ipfs/");
+            ImageRequest request = new ImageRequest.Builder(AdPopupActivity.this)
+                    .data(url)
+                    .crossfade(true)
+                    .target((ImageView) holder.itemView)
+                    .build();
+            Coil.imageLoader(AdPopupActivity.this).enqueue(request);
+        }
+
+        @Override
+        public int getItemCount() { return images.size(); }
+
+        class ViewHolder extends RecyclerView.ViewHolder {
+            ViewHolder(@NonNull View itemView) { super(itemView); }
+        }
     }
 }
