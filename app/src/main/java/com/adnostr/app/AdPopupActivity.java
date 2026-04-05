@@ -15,6 +15,8 @@ import com.adnostr.app.databinding.ActivityAdPopupBinding;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,6 +28,7 @@ import coil.request.ImageRequest;
  * The Ad Delivery Overlay.
  * UPDATED: Fixed parsing to match Kind 30001 Ad format spec.
  * FIXED: Image key changed to singular "image" and links moved to content root.
+ * FIXED: Removed generic Toast error. Now pipes raw Java Exception stack traces directly to the ErrorDisplayActivity.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -60,8 +63,19 @@ public class AdPopupActivity extends AppCompatActivity {
             parseAndPopulateAd(adJsonString);
         } catch (Exception e) {
             Log.e(TAG, "Failed to render Ad UI: " + e.getMessage());
-            // Instead of crashing, we log the failure and close
-            Toast.makeText(this, "Ad format error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            
+            // CRITICAL FIX: Extract the raw Java Stack Trace
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            e.printStackTrace(pw);
+            String rawStackTrace = sw.toString();
+
+            // Pass the raw error directly to your custom Error UI instead of showing a Toast
+            Intent errorIntent = new Intent(this, ErrorDisplayActivity.class);
+            errorIntent.putExtra("ERROR_DETAILS", "AdPopup Parse Failure:\n\nPayload:\n" + adJsonString + "\n\nRaw Exception:\n" + rawStackTrace);
+            errorIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(errorIntent);
+
             finish();
         }
 
