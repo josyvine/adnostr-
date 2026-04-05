@@ -64,15 +64,16 @@ public class AdPopupActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Failed to render Ad UI: " + e.getMessage());
             
-            // CRITICAL FIX: Extract the raw Java Stack Trace
+            // CRITICAL FIX: Extract the raw Java Stack Trace for the ErrorDisplayActivity
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
             e.printStackTrace(pw);
             String rawStackTrace = sw.toString();
 
-            // Pass the raw error directly to your custom Error UI instead of showing a Toast
+            // Pass the raw error directly to your custom Error UI instead of showing a generic Toast
+            // This allows you to identify exactly why the parser failed on a specific relay payload.
             Intent errorIntent = new Intent(this, ErrorDisplayActivity.class);
-            errorIntent.putExtra("ERROR_DETAILS", "AdPopup Parse Failure:\n\nPayload:\n" + adJsonString + "\n\nRaw Exception:\n" + rawStackTrace);
+            errorIntent.putExtra("ERROR_DETAILS", "AdPopup Render Failure:\n\nPayload:\n" + adJsonString + "\n\nRaw Exception:\n" + rawStackTrace);
             errorIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(errorIntent);
 
@@ -105,18 +106,23 @@ public class AdPopupActivity extends AppCompatActivity {
 
         // 2. Extract nested Ad 'content' string
         String contentRaw = event.optString("content", "");
-        if (contentRaw.isEmpty()) throw new Exception("Ad event contains no content payload.");
+        if (contentRaw.isEmpty()) throw new Exception("Ad event contains no content payload (Empty String).");
 
+        // The 'content' in Kind 30001 is a stringified JSON object
         JSONObject content = new JSONObject(contentRaw);
 
         // 3. Set Text Content
-        String title = content.optString("title", "Local Deal Found");
-        String desc = content.optString("desc", "Check out this new deal near you.");
+        String title = content.optString("title", "");
+        String desc = content.optString("desc", "");
+
+        // If title is missing, the Ad is invalid for display. Throwing triggers the Error screen.
+        if (title.isEmpty()) throw new Exception("Ad payload is missing the required 'title' field.");
+
         binding.tvPopupTitle.setText(title);
         binding.tvPopupDesc.setText(desc);
 
-        // 4. Handle Singular Image (IPFS Gateway Loading)
-        // FIXED: Now uses "image" string as per Step 2 spec
+        // 4. Handle Image (IPFS Gateway Loading)
+        // FIXED: Uses "image" key and ensures visibility is handled correctly.
         String ipfsUri = content.optString("image", "");
         if (!ipfsUri.isEmpty()) {
             String gatewayUrl = ipfsUri.replace("ipfs://", "https://cloudflare-ipfs.com/ipfs/");
@@ -128,6 +134,7 @@ public class AdPopupActivity extends AppCompatActivity {
                     .build();
 
             Coil.imageLoader(this).enqueue(request);
+            binding.ivAdCover.setVisibility(View.VISIBLE);
         } else {
             binding.ivAdCover.setVisibility(View.GONE);
         }
