@@ -27,6 +27,9 @@ import androidx.work.WorkManager;
 import com.adnostr.app.databinding.ActivityMainBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +38,7 @@ import java.util.concurrent.TimeUnit;
  * Main Interface Host for AdNostr.
  * UPDATED: Fixed Settings navigation glitch and added full hardware permission handling.
  * FIXED: Added Overlay Permission (SYSTEM_ALERT_WINDOW) check to allow Ads to pop up from background.
+ * FIXED: Implemented Global Ad Listener to ensure Ads pop up even when switching between User and Advertiser roles.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -44,6 +48,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityMainBinding binding;
     private AdNostrDatabaseHelper db;
     private NavController navController;
+    private WebSocketClientManager wsManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +59,8 @@ public class MainActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         db = AdNostrDatabaseHelper.getInstance(this);
+        wsManager = WebSocketClientManager.getInstance();
+        wsManager.init(this);
 
         // 2. Setup the Toolbar
         setSupportActionBar(binding.toolbar);
@@ -75,16 +82,18 @@ public class MainActivity extends AppCompatActivity {
         // 4. Request Permissions for GPS (Maps), Storage (IPFS), and Background Overlays
         checkAndRequestAppPermissions();
 
-        // 5. Start Ad Listener
+        // 5. Start Background Sync Service
         startBackgroundAdListener();
+
+        // 6. FIXED: Setup Global Ad Monitoring Listener
+        // This keeps the ad listener alive even if the UserDashboardFragment is destroyed
+        setupGlobalAdListener();
     }
 
     /**
      * Logic to handle Location, Storage, and Notification permissions.
-     * UPDATED: Guided the user to enable "Display over other apps" for Ad delivery.
      */
     private void checkAndRequestAppPermissions() {
-        // FIXED: Request SYSTEM_ALERT_WINDOW to bypass background activity launch restrictions
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "Enable 'Display over other apps' to receive Ads instantly.", Toast.LENGTH_LONG).show();
@@ -95,11 +104,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         List<String> permissions = new ArrayList<>();
-        
-        // Location is needed for Advertiser Maps
         permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
         
-        // Storage/Media is needed for IPFS Image Selection
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
             permissions.add(Manifest.permission.POST_NOTIFICATIONS);
@@ -120,14 +126,83 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * UPDATED: Adjusts the visible menu items ensuring Settings is ALWAYS available.
-     * Prevents the glitch where Settings click does nothing in Advertiser mode.
+     * FIXED: Global Ad Listener stays active across the entire app lifecycle.
+     * Captures Kind 30001 events and triggers the AdPopupActivity on the UI thread.
+     */
+    private void setupGlobalAdListener() {
+        wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
+            @Override
+            public void onRelayConnected(String url) {
+                Log.d(TAG, "Global Listener: Connected to " + url);
+            }
+
+            @Override
+            public void onRelayDisconnected(String url, String reason) {
+                Log.d(TAG, "Global Listener: Disconnected from " + url);
+            }
+
+            @Override
+            public void onMessageReceived(String url, String message) {
+                try {
+                    if (message.startsWith("[")) {
+                        JSONArray msgArray = new JSONArray(message);
+                        if ("EVENT".equals(msgArray.getString(0))) {
+                            JSONObject event = msgArray.getJSONObject(2);
+                            int kind = event.optInt("kind", -1);
+
+                            // Only proceed if it is a verified Ad Event (Kind 30001)
+                            if (kind == 30001) {
+                                String contentStr = event.optString("content", "");
+                                if (contentStr.isEmpty() || !contentStr.contains("\"title\"")) {
+                                    return; 
+                                }
+
+                                // Verify the 'd' tag to ensure it's an Ad broadcast
+                                boolean isAdBroadcast = false;
+                                JSONArray tags = event.optJSONArray("tags");
+                                if (tags != null) {
+                                    for (int i = 0; i < tags.length(); i++) {
+                                        JSONArray tagPair = tags.optJSONArray(i);
+                                        if (tagPair != null && tagPair.length() >= 2) {
+                                            if ("d".equals(tagPair.getString(0)) && tagPair.getString(1).startsWith("adnostr_ad_")) {
+                                                isAdBroadcast = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Trigger Popup if monitoring is active
+                                if (isAdBroadcast && db.isListening()) {
+                                    runOnUiThread(() -> {
+                                        Intent intent = new Intent(MainActivity.this, AdPopupActivity.class);
+                                        intent.putExtra("AD_PAYLOAD_JSON", message);
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                        startActivity(intent);
+                                    });
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Global ad processing failed: " + e.getMessage());
+                }
+            }
+
+            @Override
+            public void onError(String url, Exception ex) {
+                Log.e(TAG, "Global Listener Error on " + url + ": " + ex.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Adjusts the visible menu items ensuring Settings is ALWAYS available.
      */
     private void configureRoleBasedUI() {
         String role = db.getUserRole();
         Menu menu = binding.bottomNav.getMenu();
 
-        // Standard Top Level destinations (prevents "Up" button on main tabs)
         AppBarConfiguration.Builder builder = new AppBarConfiguration.Builder(
                 R.id.nav_user_dashboard, 
                 R.id.nav_advertiser_dashboard, 
@@ -137,23 +212,18 @@ public class MainActivity extends AppCompatActivity {
         NavigationUI.setupActionBarWithNavController(this, navController, builder.build());
 
         if (RoleSelectionActivity.ROLE_USER.equals(role)) {
-            // USER VIEW
             menu.findItem(R.id.nav_user_dashboard).setVisible(true);
             menu.findItem(R.id.nav_advertiser_dashboard).setVisible(false);
             menu.findItem(R.id.nav_create_ad).setVisible(false);
             menu.findItem(R.id.nav_relay_marketplace).setVisible(false);
             menu.findItem(R.id.nav_settings).setVisible(true);
-            
             navController.navigate(R.id.nav_user_dashboard);
-            
         } else {
-            // ADVERTISER VIEW
             menu.findItem(R.id.nav_user_dashboard).setVisible(false);
             menu.findItem(R.id.nav_advertiser_dashboard).setVisible(true);
             menu.findItem(R.id.nav_create_ad).setVisible(true);
             menu.findItem(R.id.nav_relay_marketplace).setVisible(true);
             menu.findItem(R.id.nav_settings).setVisible(true);
-            
             navController.navigate(R.id.nav_advertiser_dashboard);
         }
     }
