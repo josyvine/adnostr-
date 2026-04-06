@@ -38,6 +38,7 @@ import java.util.Set;
  * FIXED: Changed Kind to 30001 as per Ad Event specification.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * FIXED: Displays discovered usernames in brackets during Reach Discovery.
+ * FIXED: Enforced manual string construction for content JSON to resolve "invalid: bad event id".
  */
 public class CreateAdFragment extends Fragment {
 
@@ -237,30 +238,30 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
-            // Create Ad JSON as per requirements
-            JSONObject content = new JSONObject();
-            content.put("title", title);
-            content.put("desc", desc);
-
-            // image: Use the first CID string
-            content.put("image", ipfsImageCIDs.isEmpty() ? "" : ipfsImageCIDs.get(0));
-
-            // cta: Format as WhatsApp URL
+            // FIXED: Construction of CTA and Media fields
+            String mediaUrl = ipfsImageCIDs.isEmpty() ? "" : ipfsImageCIDs.get(0);
             String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
-            content.put("cta", "https://wa.me/" + cleanPhone);
+            String ctaUrl = whatsapp.isEmpty() ? "" : "https://wa.me/" + cleanPhone;
 
-            // maps: Add captured GPS if available
-            content.put("maps", capturedMapsUrl);
-
-            content.put("expiry", "2026-05-01");
+            // FIXED: Enforce strict manual string construction for the 'content' field.
+            // Using raw concatenation ensures that JSONObject does not escape slashes or reorder keys, 
+            // which was causing the Event ID to mismatch the hash during relay validation.
+            String contentStr = "{" +
+                    "\"title\":\"" + title.replace("\"", "\\\"") + "\"," +
+                    "\"desc\":\"" + desc.replace("\"", "\\\"") + "\"," +
+                    "\"image\":\"" + mediaUrl + "\"," +
+                    "\"cta\":\"" + ctaUrl + "\"," +
+                    "\"maps\":\"" + capturedMapsUrl + "\"," +
+                    "\"expiry\":\"2026-05-01\"" +
+                    "}";
 
             JSONObject event = new JSONObject();
             event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
 
-            // Nostr events must have the content field as a stringified JSON
-            event.put("content", content.toString());
+            // Use our manually constructed canonical string
+            event.put("content", contentStr);
 
             JSONArray tags = new JSONArray();
 
