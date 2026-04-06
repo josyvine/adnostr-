@@ -17,8 +17,8 @@ import java.util.Arrays;
  * Cryptographic Signer for Nostr Events.
  * Handles the creation of unique Event IDs (SHA-256) and 
  * generates REAL BIP-340 Schnorr signatures using the user's private key.
- * FIXED: Enforced strict canonical serialization to resolve "invalid: bad event id" 
- * by preventing double-escaping of JSON content.
+ * FIXED: Enforced strict canonical serialization to resolve "invalid: bad event id".
+ * Content strings are now handled raw to ensure the Hash matches the transmission.
  */
 public class NostrEventSigner {
 
@@ -57,9 +57,9 @@ public class NostrEventSigner {
 
     /**
      * Serializes the Nostr event for hashing as per BIP-340 / NIP-01.
-     * FIXED: Strict handling of the 'content' field. We ensure that the string 
-     * used for hashing is the EXACT same string sent to the relay, with no 
-     * extra escaping of forward slashes.
+     * FIXED: We now use the exact string value of "content" without allowing 
+     * the JSON library to auto-escape slashes. This ensures the Hash ID 
+     * matches what the relay calculates.
      */
     private static String calculateEventId(JSONObject event) throws Exception {
         StringBuilder sb = new StringBuilder();
@@ -73,18 +73,21 @@ public class NostrEventSigner {
 
         sb.append(",\"");
 
-        // CRITICAL FIX: Relays expect the content string exactly as provided.
-        // Android's JSONObject.getString() unescapes strings. We must ensure 
-        // that forward slashes are NOT escaped in the final serialization.
-        String contentRaw = event.getString("content").replace("\\/", "/");
-        sb.append(contentRaw);
+        // CRITICAL FIX: To prevent "Bad Event ID", the content inside the hash 
+        // array must match the content field in the JSON exactly. 
+        // We use the raw string and ensure nested quotes are escaped.
+        String contentRaw = event.getString("content");
+        
+        // Escape backslashes first, then escape double quotes for the JSON array wrap
+        String escapedContent = contentRaw.replace("\\", "\\\\").replace("\"", "\\\"");
+        sb.append(escapedContent);
 
         sb.append("\"]");
 
         String serialized = sb.toString();
 
-        // LOGGING: This is used to verify the exact string being hashed
-        Log.i(TAG, "CANONICAL SERIALIZATION FOR HASH: " + serialized);
+        // This log allows us to verify the exact string being hashed
+        Log.i(TAG, "CANONICAL SERIALIZATION: " + serialized);
 
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(serialized.getBytes(StandardCharsets.UTF_8));
@@ -134,7 +137,7 @@ public class NostrEventSigner {
             BigInteger d = isYOdd ? n.subtract(d0) : d0;
             byte[] pubKeyX = normalize32(P.getAffineXCoord().getEncoded());
 
-            // Nonce generation strictly requires 96 bytes: Private Key (d) + Public Key X (Px) + Message (m)
+            // Nonce generation
             byte[] dBytes = normalize32(d.toByteArray());
             byte[] kInput = new byte[32 + 32 + 32];
             System.arraycopy(dBytes, 0, kInput, 0, 32);
