@@ -31,6 +31,7 @@ import java.util.Set;
  * UPDATED: broadcastUserInterests now prints "Signing Debug" (k, e, parity) for verification.
  * FIXED: Added strict checks to ignore empty User Interest lists and only trigger on real Ads.
  * FIXED: Enforced UI Thread execution for AdPopup launch to bypass background activity restrictions.
+ * FIXED: Embeds optional Username into the Kind 30001 content for Advertiser Reach Discovery.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -154,7 +155,16 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            event.put("content", ""); 
+            
+            // NEW: Embed the username in the content payload if it exists
+            String savedName = db.getUsername();
+            if (savedName != null && !savedName.isEmpty()) {
+                JSONObject contentObj = new JSONObject();
+                contentObj.put("username", savedName);
+                event.put("content", contentObj.toString()); 
+            } else {
+                event.put("content", ""); 
+            }
 
             JSONArray tags = new JSONArray();
 
