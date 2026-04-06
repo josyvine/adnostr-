@@ -37,6 +37,7 @@ import java.util.Set;
  * UPDATED: Fixed File Picker, Real Reach Discovery, and verified Broadcast sync.
  * FIXED: Changed Kind to 30001 as per Ad Event specification.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
+ * FIXED: Displays discovered usernames in brackets during Reach Discovery.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -155,16 +156,31 @@ public class CreateAdFragment extends Fragment {
         // Call the real Discovery Helper logic
         ReachDiscoveryHelper.discoverGlobalReach(requireContext(), tagsToSearch, new ReachDiscoveryHelper.ReachCallback() {
             @Override
-            public void onReachCalculated(int totalUsers) {
+            public void onReachCalculated(int totalUsers, List<String> usernames) {
                 if (isAdded() && binding != null) {
                     requireActivity().runOnUiThread(() -> {
-                        binding.tvActiveWatchers.setText(totalUsers + " Active Users Found");
+                        // NEW Logic: Format the result to show count and names in brackets
+                        String resultText = totalUsers + " Active Users Found";
+                        if (usernames != null && !usernames.isEmpty()) {
+                            StringBuilder names = new StringBuilder(" (");
+                            for (int i = 0; i < usernames.size(); i++) {
+                                names.append(usernames.get(i));
+                                if (i < usernames.size() - 1) names.append(", ");
+                            }
+                            names.append(")");
+                            resultText += names.toString();
+                        }
+
+                        binding.tvActiveWatchers.setText(resultText);
                         Toast.makeText(getContext(), "Discovery Complete.", Toast.LENGTH_SHORT).show();
 
                         // Update the open console
                         RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
                         if (existing != null) {
                             discoveryLogs.append("\n[SUCCESS] Found ").append(totalUsers).append(" unique users matching tags.");
+                            if (usernames != null && !usernames.isEmpty()) {
+                                discoveryLogs.append("\nIdentified Usernames: ").append(usernames.toString());
+                            }
                             existing.updateTechnicalLogs("Scan Complete", discoveryLogs.toString());
                         }
                     });
