@@ -11,6 +11,7 @@ import java.util.Set;
  * Local Data Management Utility for AdNostr.
  * UPDATED: Added a massive bootstrap relay pool to ensure 30+ connections 
  * and fixed default hashtag visibility.
+ * FIXED: Added Username saving capabilities for Reach Discovery identification.
  */
 public class AdNostrDatabaseHelper {
 
@@ -19,6 +20,7 @@ public class AdNostrDatabaseHelper {
     // Identity Keys
     private static final String KEY_PRIVATE_KEY = "nostr_private_key_hex";
     private static final String KEY_PUBLIC_KEY = "nostr_public_key_hex";
+    private static final String KEY_USERNAME = "user_display_name"; // NEW: For Reach Discovery
 
     // App State & Role
     private static final String KEY_USER_ROLE = "user_app_role"; 
@@ -97,6 +99,15 @@ public class AdNostrDatabaseHelper {
 
     public String getPublicKey() {
         return prefs.getString(KEY_PUBLIC_KEY, null);
+    }
+
+    // NEW: Save and retrieve the optional username for reach discovery
+    public void saveUsername(String username) {
+        prefs.edit().putString(KEY_USERNAME, username).apply();
+    }
+
+    public String getUsername() {
+        return prefs.getString(KEY_USERNAME, "");
     }
 
     // =========================================================================
