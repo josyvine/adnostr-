@@ -13,6 +13,8 @@ import java.net.URI;
  * Fire-and-Forget Event Broadcaster.
  * UPDATED: Added technical reporting hooks to provide detailed broadcast 
  * information for the Network Console popup.
+ * FIXED: Removed synchronous Thread.sleep() to prevent socket blocking, 
+ * allowing the Relay ACK to be received properly.
  */
 public class NostrPublisher {
 
@@ -48,19 +50,29 @@ public class NostrPublisher {
                             message.put(signedEvent);
 
                             String jsonPayload = message.toString();
+                            
+                            // Send without blocking the WebSocket thread
                             send(jsonPayload);
 
                             Log.d(TAG, "Sent to " + relayUrl);
 
-                            // NEW: Report the exact JSON and Pubkey to the console for technical identification
+                            // Report the exact JSON and Pubkey to the console for technical identification
                             if (listener != null) {
                                 String reportMsg = "PAYLOAD SENT:\n" + signedEvent.toString(2);
                                 listener.onRelayReport(relayUrl, true, reportMsg);
                             }
 
-                            // Wait for buffer to clear and to allow onMessage (ACK) to trigger
-                            Thread.sleep(2000); 
-                            close();
+                            // FIX: Close the socket asynchronously after 4 seconds 
+                            // to allow time for transmission and the Relay's "OK" ACK.
+                            new Thread(() -> {
+                                try {
+                                    Thread.sleep(4000);
+                                    if (!isClosed()) {
+                                        close();
+                                    }
+                                } catch (Exception ignored) {}
+                            }).start();
+
                         } catch (Exception e) {
                             if (listener != null) {
                                 listener.onRelayReport(relayUrl, false, "ERROR: Failed during transmission - " + e.getMessage());
@@ -73,7 +85,7 @@ public class NostrPublisher {
                         // Captures relay confirmation: ["OK", event_id, true, "msg"]
                         Log.d(TAG, "Response from " + relayUrl + ": " + message);
                         if (listener != null) {
-                            // NEW: Identifies the raw relay acknowledgement for debugging
+                            // Identifies the raw relay acknowledgement for debugging
                             listener.onRelayReport(relayUrl, true, "RELAY_ACK: " + message);
                         }
                     }
