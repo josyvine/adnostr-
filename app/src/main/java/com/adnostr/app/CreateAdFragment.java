@@ -344,4 +344,4 @@ public class CreateAdFragment extends Fragment {
         super.onDestroyView();
         binding = null;
     }
-}
+} 
