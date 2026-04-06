@@ -19,6 +19,7 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * Global Settings Interface for AdNostr.
  * Handles identity display, role switching between User and Advertiser,
  * and local database management.
+ * FIXED: Added logic to load and save optional Username for Reach Discovery.
  */
 public class SettingsFragment extends Fragment {
 
@@ -39,6 +40,16 @@ public class SettingsFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
 
         db = AdNostrDatabaseHelper.getInstance(requireContext());
+
+        // NEW: Load existing username from database and display it
+        binding.etUsername.setText(db.getUsername());
+
+        // NEW: Save username button click listener
+        binding.btnSaveUsername.setOnClickListener(v -> {
+            String name = binding.etUsername.getText().toString().trim();
+            db.saveUsername(name);
+            Toast.makeText(getContext(), "Username Saved!", Toast.LENGTH_SHORT).show();
+        });
 
         // 1. Display Current Identity
         setupIdentityDisplay();
