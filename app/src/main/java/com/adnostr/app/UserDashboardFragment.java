@@ -32,6 +32,7 @@ import java.util.Set;
  * FIXED: Added strict checks to ignore empty User Interest lists and only trigger on real Ads.
  * FIXED: Enforced UI Thread execution for AdPopup launch to bypass background activity restrictions.
  * FIXED: Embeds optional Username into the Kind 30001 content for Advertiser Reach Discovery.
+ * FIXED: Enforced strict manual string construction for content to resolve Event ID mismatch.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -156,15 +157,14 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
             
-            // NEW: Embed the username in the content payload if it exists
+            // FIXED: Manual string construction for content to ensure SHA-256 consistency.
+            // Using raw string avoids JSONObject escaping behavior which causes "Bad Event ID".
+            String contentStr = "";
             String savedName = db.getUsername();
             if (savedName != null && !savedName.isEmpty()) {
-                JSONObject contentObj = new JSONObject();
-                contentObj.put("username", savedName);
-                event.put("content", contentObj.toString()); 
-            } else {
-                event.put("content", ""); 
+                contentStr = "{\"username\":\"" + savedName + "\"}";
             }
+            event.put("content", contentStr); 
 
             JSONArray tags = new JSONArray();
 
