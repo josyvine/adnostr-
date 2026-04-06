@@ -9,6 +9,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -23,13 +24,15 @@ import java.util.concurrent.TimeUnit;
  * This ensures that the hashtag search returns real user counts based on published metadata.
  * FIXED: Implements Pool Alignment, Tag Sanitization, and Increased Parallelism.
  * UPDATED: Added Relay NOTICE and CLOSED handling to debug "0 users found" issues.
+ * FIXED: Extracts usernames from the content payload to identify users in the search results.
  */
 public class ReachDiscoveryHelper {
 
     private static final String TAG = "AdNostr_Discovery";
 
+    // UPDATED Interface: Now returns a list of usernames along with the count
     public interface ReachCallback {
-        void onReachCalculated(int totalUsers);
+        void onReachCalculated(int totalUsers, List<String> usernames);
         void onDiscoveryError(String error);
     }
 
@@ -39,7 +42,7 @@ public class ReachDiscoveryHelper {
      * 
      * @param context Required to fetch the full 31+ relay pool from Database.
      * @param hashtags List of hashtags provided by the advertiser.
-     * @param callback Interface to return the final count to the UI.
+     * @param callback Interface to return the final count and names to the UI.
      */
     public static void discoverGlobalReach(Context context, List<String> hashtags, ReachCallback callback) {
         if (hashtags == null || hashtags.isEmpty()) {
@@ -54,6 +57,9 @@ public class ReachDiscoveryHelper {
         new Thread(() -> {
             // Thread-safe set to store unique pubkeys found across the pool
             final Set<String> uniqueUserPubkeys = Collections.synchronizedSet(new HashSet<>());
+            
+            // NEW: Thread-safe set to store discovered usernames
+            final Set<String> discoveredUsernames = Collections.synchronizedSet(new HashSet<>());
 
             // 3. INCREASED PARALLELISM: Scale latch to wait for the entire relay pool
             final CountDownLatch latch = new CountDownLatch(relayPool.size());
@@ -82,7 +88,7 @@ public class ReachDiscoveryHelper {
 
                 // Launch parallel scans across the entire database relay pool
                 for (String relayUrl : relayPool) {
-                    connectAndScanRelay(relayUrl, reqMessage, uniqueUserPubkeys, latch);
+                    connectAndScanRelay(relayUrl, reqMessage, uniqueUserPubkeys, discoveredUsernames, latch);
                 }
 
                 // Wait for the network search to aggregate (12 seconds max - increased for slow relays)
@@ -91,9 +97,9 @@ public class ReachDiscoveryHelper {
                 Log.i(TAG, "Discovery Aggregate finished. Success: " + finished 
                         + ". Unique users found: " + uniqueUserPubkeys.size());
 
-                // 4. Return results to the Advertiser UI
+                // 4. Return results (Count + List of Names) to the Advertiser UI
                 if (callback != null) {
-                    callback.onReachCalculated(uniqueUserPubkeys.size());
+                    callback.onReachCalculated(uniqueUserPubkeys.size(), new ArrayList<>(discoveredUsernames));
                 }
 
             } catch (Exception e) {
@@ -106,8 +112,9 @@ public class ReachDiscoveryHelper {
     /**
      * Internal worker to connect to a single relay and scrape matched events.
      * UPDATED: Now parses NOTICE and CLOSED messages to identify signature rejection.
+     * FIXED: Parses the content field for optional 'username' metadata.
      */
-    private static void connectAndScanRelay(String relayUrl, String reqMessage, Set<String> results, CountDownLatch latch) {
+    private static void connectAndScanRelay(String relayUrl, String reqMessage, Set<String> results, Set<String> usernames, CountDownLatch latch) {
         try {
             WebSocketClient client = new WebSocketClient(new URI(relayUrl)) {
                 @Override
@@ -129,6 +136,18 @@ public class ReachDiscoveryHelper {
                             // Aggregate the unique identity (Pubkey)
                             String pubkey = event.getString("pubkey");
                             results.add(pubkey); 
+
+                            // NEW: Try to parse the content JSON for a username
+                            String contentStr = event.optString("content", "");
+                            if (!contentStr.isEmpty() && contentStr.startsWith("{")) {
+                                try {
+                                    JSONObject contentJson = new JSONObject(contentStr);
+                                    String foundName = contentJson.optString("username", "");
+                                    if (!foundName.isEmpty()) {
+                                        usernames.add(foundName);
+                                    }
+                                } catch (Exception ignored) {}
+                            }
 
                         } else if ("EOSE".equals(type)) {
                             // Relay has finished scanning its database
