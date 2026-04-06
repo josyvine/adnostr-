@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.adnostr.app.databinding.ItemMarketplaceOfferBinding;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.List;
@@ -17,6 +18,8 @@ import java.util.List;
 /**
  * Adapter for the Decentralized Relay Marketplace.
  * UPDATED: Filters out free relays from "Buy" actions and handles invalid event data gracefully.
+ * FIXED: Implemented fail-safe parsing for standard NIP-65 relay lists to prevent 
+ * "Malformed Relay Event" errors and show free/public relays correctly.
  */
 public class MarketplaceAdapter extends RecyclerView.Adapter<MarketplaceAdapter.MarketplaceViewHolder> {
 
@@ -61,57 +64,88 @@ public class MarketplaceAdapter extends RecyclerView.Adapter<MarketplaceAdapter.
 
         public void bind(JSONObject offerEvent, OnMarketplaceActionListener listener) {
             try {
-                // 1. Validate and Parse Content
+                // 1. Identify the Relay URL and Pricing
                 String rawContent = offerEvent.optString("content", "");
-                if (rawContent.isEmpty() || !rawContent.startsWith("{")) {
-                    showInvalidState();
-                    return;
+                String ownerPubkey = offerEvent.optString("pubkey", "Unknown");
+                
+                String relayUrl = "Unknown Node";
+                String location = "Global";
+                boolean isPaid = false;
+                String priceText = "FREE / PUBLIC";
+
+                // CASE A: Premium Relay Listing (Custom AdNostr JSON in content)
+                if (!rawContent.isEmpty() && rawContent.startsWith("{")) {
+                    JSONObject content = new JSONObject(rawContent);
+                    relayUrl = content.optString("relay", "Unknown Node");
+                    location = content.optString("location", "Global");
+                    
+                    String price = content.optString("price", "").trim();
+                    isPaid = !price.isEmpty() && !price.equalsIgnoreCase("0") && !price.equalsIgnoreCase("free");
+                    
+                    if (isPaid) {
+                        priceText = price;
+                    }
+                } 
+                // CASE B: Standard Public Relay (NIP-65 / Kind 10002/30002 Tags)
+                else {
+                    JSONArray tags = offerEvent.optJSONArray("tags");
+                    if (tags != null) {
+                        for (int i = 0; i < tags.length(); i++) {
+                            JSONArray tagPair = tags.optJSONArray(i);
+                            if (tagPair != null && tagPair.length() >= 2) {
+                                String tagName = tagPair.optString(0);
+                                if ("r".equals(tagName)) {
+                                    relayUrl = tagPair.optString(1);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
 
-                JSONObject content = new JSONObject(rawContent);
-
-                // 2. Set Relay Name & Location
-                String relayUrl = content.optString("relay", "Unknown Node");
-                String location = content.optString("location", "Global");
+                // 2. Set UI Text Fields
                 binding.tvRelayName.setText(relayUrl + " (" + location + ")");
 
-                // 3. Set Owner Info
-                String ownerPubkey = offerEvent.optString("pubkey", "Unknown");
+                // Set Owner Info (Truncated)
                 if (ownerPubkey.length() > 12) {
                     String displayOwner = ownerPubkey.substring(0, 8) + "..." + ownerPubkey.substring(ownerPubkey.length() - 4);
                     binding.tvOwnerId.setText("Owner: " + displayOwner);
                 } else {
-                    binding.tvOwnerId.setText("Owner: Anonymous");
+                    binding.tvOwnerId.setText("Owner: " + ownerPubkey);
                 }
 
-                // 4. PRICE LOGIC FIX: Check if relay is actually paid
-                String price = content.optString("price", "").trim();
-                boolean isPaid = !price.isEmpty() && !price.equalsIgnoreCase("0") && !price.equalsIgnoreCase("free");
-
+                // 3. Price and Action Logic
                 if (isPaid) {
-                    binding.tvPrice.setText(price);
+                    binding.tvPrice.setText(priceText);
                     binding.tvPrice.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.hfs_active_green));
                     binding.btnBuyAccess.setVisibility(View.VISIBLE);
                 } else {
                     binding.tvPrice.setText("FREE / PUBLIC");
                     binding.tvPrice.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.hfs_text_grey));
-                    // HIDE BUTTON: If it's a free relay, there is no access to buy
                     binding.btnBuyAccess.setVisibility(View.GONE);
                 }
 
-                // 5. Capacity Stats
-                int maxClients = content.optInt("max_clients", 1000);
-                int currentUsers = content.optInt("users", (int) (Math.random() * 200));
+                // 4. Capacity Stats (Randomized for visual simulation if not in JSON)
+                int maxClients = 1000;
+                int currentUsers = (int) (Math.random() * 200);
+                
+                // If JSON provides real stats, use them
+                if (!rawContent.isEmpty() && rawContent.startsWith("{")) {
+                    JSONObject content = new JSONObject(rawContent);
+                    maxClients = content.optInt("max_clients", 1000);
+                    currentUsers = content.optInt("users", currentUsers);
+                }
+
                 binding.tvUserCapacity.setText("Connected: " + currentUsers + " / " + maxClients);
                 binding.pbUserCapacity.setMax(maxClients);
                 binding.pbUserCapacity.setProgress(currentUsers);
 
-                // 6. Action
+                // 5. Setup Action Click
                 binding.btnBuyAccess.setOnClickListener(v -> {
                     if (listener != null) listener.onBuyAccessClicked(offerEvent);
                 });
 
-                // Reset visual state from any previous error
+                // Reset visual state
                 binding.tvRelayName.setTextColor(ContextCompat.getColor(itemView.getContext(), android.R.color.white));
 
             } catch (Exception e) {
