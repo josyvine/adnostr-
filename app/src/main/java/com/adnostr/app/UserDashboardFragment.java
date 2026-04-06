@@ -396,7 +396,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     @Override
     public void onDestroyView() {
-        wsManager.setStatusListener(null);
+        // FIXED: Removed wsManager.setStatusListener(null);
+        // This ensures the listener stays active in the background when you 
+        // switch to the Advertiser tab on a single phone, allowing Ads to pop up.
         super.onDestroyView();
         binding = null;
     }
