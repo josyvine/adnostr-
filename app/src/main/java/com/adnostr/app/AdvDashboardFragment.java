@@ -10,7 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
-import androidx.navigation.Navigation;
+import androidx.viewpager2.widget.ViewPager2;
 
 import com.adnostr.app.databinding.FragmentAdvDashboardBinding;
 
@@ -18,6 +18,7 @@ import com.adnostr.app.databinding.FragmentAdvDashboardBinding;
  * Dashboard for AdNostr Advertisers.
  * Displays business metrics, identity status, and provide the entry point 
  * for creating and broadcasting new decentralized ads.
+ * FIXED: Navigation logic updated from NavController to ViewPager2 Index switching.
  */
 public class AdvDashboardFragment extends Fragment {
 
@@ -46,15 +47,29 @@ public class AdvDashboardFragment extends Fragment {
         refreshBusinessMetrics();
 
         // 3. Setup Primary Floating Action Button (FAB)
-        // Navigates to the CreateAdFragment as per the technical spec
+        // FIXED: Replaced NavController logic with ViewPager2 page switching.
+        // For Advertisers, 'Create Ad' is at Position 2.
         binding.fabCreateAd.setOnClickListener(v -> {
             Log.d(TAG, "Advertiser requested to create a new ad broadcast.");
-            Navigation.findNavController(v).navigate(R.id.nav_create_ad);
+            if (getActivity() != null) {
+                ViewPager2 viewPager = getActivity().findViewById(R.id.mainViewPager);
+                if (viewPager != null) {
+                    viewPager.setCurrentItem(2, true);
+                }
+            }
         });
 
         // 4. Setup shortcut to Relay Management
+        // FIXED: Replaced NavController logic with ViewPager2 page switching.
+        // For Advertisers, 'Relay Marketplace' is at Position 3.
         binding.btnManageRelays.setOnClickListener(v -> {
-            Navigation.findNavController(v).navigate(R.id.nav_relay_marketplace);
+            Log.d(TAG, "Advertiser requested to open Relay Marketplace.");
+            if (getActivity() != null) {
+                ViewPager2 viewPager = getActivity().findViewById(R.id.mainViewPager);
+                if (viewPager != null) {
+                    viewPager.setCurrentItem(3, true);
+                }
+            }
         });
     }
 
@@ -64,7 +79,7 @@ public class AdvDashboardFragment extends Fragment {
      */
     private void setupIdentityHeader() {
         String pubKey = db.getPublicKey();
-        
+
         if (pubKey != null && !pubKey.isEmpty()) {
             // Truncate for display (e.g., npub1xyz...89q)
             String displayId = "ID: " + pubKey.substring(0, 8) + "..." + pubKey.substring(pubKey.length() - 4);
@@ -74,7 +89,7 @@ public class AdvDashboardFragment extends Fragment {
         // Mock status check: PRO vs FREE
         // In full implementation, this checks the local verified license
         boolean isPro = false; 
-        
+
         if (isPro) {
             binding.tvStatusBadge.setText("PRO SUBSCRIBER");
             binding.tvStatusBadge.setBackgroundTintList(ContextCompat.getColorStateList(requireContext(), android.R.color.holo_orange_dark));
@@ -97,7 +112,7 @@ public class AdvDashboardFragment extends Fragment {
 
             binding.tvActiveAdsCount.setText(String.valueOf(activeAds));
             binding.tvRelayReachCount.setText(String.valueOf(relayReach));
-            
+
             Log.i(TAG, "Advertiser metrics refreshed successfully.");
 
         } catch (Exception e) {
