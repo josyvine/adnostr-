@@ -16,6 +16,15 @@
         android:title="Stats"
         android:visible="false" />
 
+    <!-- SHARED MIDDLE TAB: ADS HISTORY -->
+    <!-- This tab handles both received ads (User) and broadcasted ads (Advertiser) -->
+    <item
+        android:id="@+id/nav_ads_history"
+        android:icon="@android:drawable/ic_menu_recent_history"
+        android:title="History"
+        android:visible="true" />
+
+    <!-- ADVERTISER SPECIFIC ITEMS (CONTINUED) -->
     <item
         android:id="@+id/nav_create_ad"
         android:icon="@android:drawable/ic_menu_add"
