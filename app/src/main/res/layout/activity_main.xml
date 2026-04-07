@@ -35,7 +35,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/appBarLayout" />
 
-    <!-- NEW: TabLayout - Replaces BottomNavigationView to support 6 items at the bottom -->
+    <!-- FIXED: TabLayout - Removed invalid tabBackground to fix build failure -->
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tabLayout"
         android:layout_width="0dp"
@@ -45,7 +45,6 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:tabBackground="#1E1E1E"
         app:tabGravity="fill"
         app:tabIconTint="@color/nav_item_color_selector"
         app:tabIndicatorColor="@color/hfs_active_blue"
