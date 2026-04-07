@@ -19,7 +19,8 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * Global Settings Interface for AdNostr.
  * Handles identity display, role switching between User and Advertiser,
  * and local database management.
- * FIXED: Added logic to load and save optional Username for Reach Discovery.
+ * FIXED: Added null-checks for binding to prevent NPE crash during role switching.
+ * FIXED: Refined role toggle logic to work with the new ViewPager2 navigation.
  */
 public class SettingsFragment extends Fragment {
 
@@ -41,11 +42,15 @@ public class SettingsFragment extends Fragment {
 
         db = AdNostrDatabaseHelper.getInstance(requireContext());
 
+        // Safety check to ensure binding is available
+        if (binding == null) return;
+
         // NEW: Load existing username from database and display it
         binding.etUsername.setText(db.getUsername());
 
         // NEW: Save username button click listener
         binding.btnSaveUsername.setOnClickListener(v -> {
+            if (binding == null) return;
             String name = binding.etUsername.getText().toString().trim();
             db.saveUsername(name);
             Toast.makeText(getContext(), "Username Saved!", Toast.LENGTH_SHORT).show();
@@ -65,6 +70,8 @@ public class SettingsFragment extends Fragment {
      * Displays the user's public identity as a truncated hex string.
      */
     private void setupIdentityDisplay() {
+        if (binding == null) return;
+
         String pubKey = db.getPublicKey();
         if (pubKey != null) {
             String truncated = pubKey.substring(0, 10) + "..." + pubKey.substring(pubKey.length() - 6);
@@ -78,10 +85,13 @@ public class SettingsFragment extends Fragment {
 
     /**
      * Configures the toggle to switch between User and Advertiser profiles instantly.
+     * FIXED: Added binding null-checks to prevent "Attempt to read from field on a null object reference" crash.
      */
     private void setupRoleToggle() {
+        if (binding == null) return;
+
         String currentRole = db.getUserRole();
-        
+
         // Update button text based on current role
         if (RoleSelectionActivity.ROLE_USER.equals(currentRole)) {
             binding.btnSwitchRole.setText("SWITCH TO ADVERTISER MODE");
@@ -92,22 +102,23 @@ public class SettingsFragment extends Fragment {
         }
 
         binding.btnSwitchRole.setOnClickListener(v -> {
+            if (binding == null) return;
+
             String newRole = RoleSelectionActivity.ROLE_USER.equals(currentRole) 
                     ? RoleSelectionActivity.ROLE_ADVERTISER 
                     : RoleSelectionActivity.ROLE_USER;
 
             // Save the new role to the database
             db.saveUserRole(newRole);
-            
+
             Toast.makeText(getContext(), "Role switched to " + newRole, Toast.LENGTH_SHORT).show();
 
-            // Refresh the MainActivity UI to update the bottom navigation and dashboards
+            // Refresh the MainActivity UI to update the ViewPager and TabLayout
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).refreshRoleAndUI();
-                
-                // Navigate to the new dashboard for the selected role
-                setupRoleToggle(); // Refresh button text locally
-                setupIdentityDisplay(); // Refresh identity text
+
+                // Note: We do NOT call setupRoleToggle() here again because refreshRoleAndUI 
+                // will recreate the fragments via the adapter, making this instance obsolete.
             }
         });
     }
@@ -121,7 +132,7 @@ public class SettingsFragment extends Fragment {
                 .setMessage("This will permanently delete your Nostr keys, saved relays, and interests. You will need to start onboarding again.")
                 .setPositiveButton("RESET", (dialog, which) -> {
                     db.clearAllData();
-                    
+
                     // Restart the app from the Splash screen
                     Intent intent = new Intent(requireContext(), SplashActivity.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -135,6 +146,6 @@ public class SettingsFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        binding = null;
+        binding = null; // Clean up binding to prevent memory leaks
     }
 }
