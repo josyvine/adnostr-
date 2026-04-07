@@ -35,11 +35,11 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Main Interface Host for AdNostr.
- * UPDATED: Replaced BottomNavigationView with ViewPager2 + TabLayout to support 6+ items and Swiping.
- * FIXED: Resolved the 5-item limit crash by using TabLayout for navigation.
- * FIXED: Added Overlay Permission (SYSTEM_ALERT_WINDOW) check to allow Ads to pop up from background.
- * FIXED: Implemented Global Ad Listener to ensure Ads pop up even when switching between User and Advertiser roles.
- * NEW: Integrated Ad History saving logic and middle-tab navigation for Ads History.
+ * UPDATED: Replaced BottomNavigationView with ViewPager2 + TabLayout to support Swiping.
+ * FIXED: Implemented Dynamic TabLayout labels to fix squashed icons and text.
+ * FIXED: Role-based separation (3 tabs for User, 5 tabs for Advertiser).
+ * FIXED: Overlay Permission (SYSTEM_ALERT_WINDOW) check for background ads.
+ * FIXED: Global Ad Listener for Kind 30001 with 'd' tag validation.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -66,72 +66,87 @@ public class MainActivity extends AppCompatActivity {
         // 2. Setup the Toolbar
         setSupportActionBar(binding.toolbar);
 
-        // 3. Setup Swipable ViewPager2 and TabLayout (6 Items Support)
+        // 3. Setup Dynamic Navigation System (User: 3 Tabs, Advertiser: 5 Tabs)
         setupNavigationSystem();
 
-        // 4. Request Permissions for GPS (Maps), Storage (IPFS), and Background Overlays
+        // 4. Request Permissions for GPS, Media, and Overlays
         checkAndRequestAppPermissions();
 
         // 5. Start Background Sync Service
         startBackgroundAdListener();
 
-        // 6. FIXED: Setup Global Ad Monitoring Listener
+        // 6. Setup Global Ad Monitoring Listener
         setupGlobalAdListener();
     }
 
     /**
-     * Initializes the ViewPager2 and TabLayout to enable swipe logic.
-     * This replaces the crashing BottomNavigationView.
+     * Initializes ViewPager2 and TabLayout with dynamic labels.
+     * This fixes the "squashed" icons by ensuring the tab count matches the role.
      */
     private void setupNavigationSystem() {
         String role = db.getUserRole();
         pagerAdapter = new MainViewPagerAdapter(this, role);
         binding.mainViewPager.setAdapter(pagerAdapter);
 
-        // Enable smooth swiping between the 6 fragments
+        // Fix swipe performance
         binding.mainViewPager.setOffscreenPageLimit(5); 
 
-        // Link TabLayout with ViewPager2
+        // Link TabLayout with dynamic logic to ensure icons and names render correctly
         new TabLayoutMediator(binding.tabLayout, binding.mainViewPager, (tab, position) -> {
-            switch (position) {
-                case 0:
-                    tab.setText("Interests");
-                    tab.setIcon(android.R.drawable.ic_menu_myplaces);
-                    break;
-                case 1:
-                    tab.setText("History");
-                    tab.setIcon(android.R.drawable.ic_menu_recent_history);
-                    break;
-                case 2:
-                    tab.setText("Stats");
-                    tab.setIcon(android.R.drawable.ic_menu_sort_by_size);
-                    break;
-                case 3:
-                    tab.setText("Broadcast");
-                    tab.setIcon(android.R.drawable.ic_menu_add);
-                    break;
-                case 4:
-                    tab.setText("Network");
-                    tab.setIcon(android.R.drawable.ic_menu_share);
-                    break;
-                case 5:
-                    tab.setText("Settings");
-                    tab.setIcon(android.R.drawable.ic_menu_preferences);
-                    break;
+            if (RoleSelectionActivity.ROLE_USER.equals(role)) {
+                // USER LABELS (3 ITEMS)
+                switch (position) {
+                    case 0:
+                        tab.setText("Interests");
+                        tab.setIcon(android.R.drawable.ic_menu_myplaces);
+                        break;
+                    case 1:
+                        tab.setText("History");
+                        tab.setIcon(android.R.drawable.ic_menu_recent_history);
+                        break;
+                    case 2:
+                        tab.setText("Settings");
+                        tab.setIcon(android.R.drawable.ic_menu_preferences);
+                        break;
+                }
+            } else {
+                // ADVERTISER LABELS (5 ITEMS)
+                switch (position) {
+                    case 0:
+                        tab.setText("Stats");
+                        tab.setIcon(android.R.drawable.ic_menu_sort_by_size);
+                        break;
+                    case 1:
+                        tab.setText("History");
+                        tab.setIcon(android.R.drawable.ic_menu_recent_history);
+                        break;
+                    case 2:
+                        tab.setText("Broadcast");
+                        tab.setIcon(android.R.drawable.ic_menu_add);
+                        break;
+                    case 3:
+                        tab.setText("Network");
+                        tab.setIcon(android.R.drawable.ic_menu_share);
+                        break;
+                    case 4:
+                        tab.setText("Settings");
+                        tab.setIcon(android.R.drawable.ic_menu_preferences);
+                        break;
+                }
             }
         }).attach();
 
-        // Trigger role-based visibility configuration
+        // Initial focus placement
         configureRoleBasedUI();
     }
 
     /**
-     * Logic to handle Location, Storage, and Notification permissions.
+     * Handles Location, Storage, and Notification permissions.
      */
     private void checkAndRequestAppPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, "Enable 'Display over other apps' to receive Ads instantly.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Enable 'Display over other apps' to receive Ads.", Toast.LENGTH_LONG).show();
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:" + getPackageName()));
                 startActivity(intent);
@@ -161,20 +176,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * FIXED: Global Ad Listener stays active across the entire app lifecycle.
-     * Captures Kind 30001 events and triggers the AdPopupActivity on the UI thread.
-     * UPDATED: Now includes strict 'd' tag validation and saves valid ads to the History DB.
+     * Monitors Relays for Kind 30001 Ads.
+     * Validates 'd' tag to filter out User Interest broadcasts.
      */
     private void setupGlobalAdListener() {
         wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
             @Override
             public void onRelayConnected(String url) {
-                Log.d(TAG, "Global Listener: Connected to " + url);
+                Log.d(TAG, "Connected to " + url);
             }
 
             @Override
             public void onRelayDisconnected(String url, String reason) {
-                Log.d(TAG, "Global Listener: Disconnected from " + url);
+                Log.d(TAG, "Disconnected from " + url);
             }
 
             @Override
@@ -188,7 +202,6 @@ public class MainActivity extends AppCompatActivity {
 
                             if (kind == 30001) {
                                 String contentStr = event.optString("content", "");
-
                                 if (contentStr.isEmpty() || !contentStr.contains("\"title\"")) {
                                     return; 
                                 }
@@ -199,16 +212,9 @@ public class MainActivity extends AppCompatActivity {
                                     for (int i = 0; i < tags.length(); i++) {
                                         JSONArray tagPair = tags.optJSONArray(i);
                                         if (tagPair != null && tagPair.length() >= 2) {
-                                            String tagName = tagPair.optString(0);
-                                            String tagValue = tagPair.optString(1);
-
-                                            if ("d".equals(tagName)) {
-                                                if (tagValue.startsWith("adnostr_ad_")) {
-                                                    isAdBroadcast = true;
-                                                    break;
-                                                } else if ("adnostr_interests".equals(tagValue)) {
-                                                    return; 
-                                                }
+                                            if ("d".equals(tagPair.getString(0)) && tagPair.getString(1).startsWith("adnostr_ad_")) {
+                                                isAdBroadcast = true;
+                                                break;
                                             }
                                         }
                                     }
@@ -216,7 +222,6 @@ public class MainActivity extends AppCompatActivity {
 
                                 if (isAdBroadcast && db.isListening()) {
                                     db.saveToUserHistory(message);
-
                                     runOnUiThread(() -> {
                                         Intent intent = new Intent(MainActivity.this, AdPopupActivity.class);
                                         intent.putExtra("AD_PAYLOAD_JSON", message);
@@ -228,51 +233,36 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Global ad processing failed: " + e.getMessage());
+                    Log.e(TAG, "Ad processing failed: " + e.getMessage());
                 }
             }
 
             @Override
             public void onError(String url, Exception ex) {
-                Log.e(TAG, "Global Listener Error on " + url + ": " + ex.getMessage());
+                Log.e(TAG, "Relay Error: " + ex.getMessage());
             }
         });
     }
 
     /**
-     * Adjusts the visible menu items ensuring Settings is ALWAYS available.
-     * UPDATED: In ViewPager mode, we hide/show tabs in the TabLayout instead of a Menu.
+     * Ensures the correct tab is selected when the app opens.
      */
     private void configureRoleBasedUI() {
         String role = db.getUserRole();
-        
-        // Tab Layout Position Guide:
-        // 0: Interests, 1: History, 2: Stats, 3: Broadcast, 4: Network, 5: Settings
-        
         if (RoleSelectionActivity.ROLE_USER.equals(role)) {
-            // Users only see relevant tabs in the swipe list
-            // We keep the positions but can disable selection or hide them visually
-            // To fulfill the "6 items" requirement, we keep them available but focus on User tab
             binding.mainViewPager.setCurrentItem(0, false);
         } else {
-            // Advertisers focus on the Stats tab
-            binding.mainViewPager.setCurrentItem(2, false);
+            binding.mainViewPager.setCurrentItem(0, false);
         }
     }
 
     private void startBackgroundAdListener() {
         if (RoleSelectionActivity.ROLE_USER.equals(db.getUserRole())) {
             PeriodicWorkRequest adListenRequest = new PeriodicWorkRequest.Builder(
-                    NostrListenerWorker.class, 
-                    15, TimeUnit.MINUTES)
-                    .addTag("NOSTR_AD_LISTENER")
-                    .build();
-
+                    NostrListenerWorker.class, 15, TimeUnit.MINUTES)
+                    .addTag("NOSTR_AD_LISTENER").build();
             WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                    "AdNostrBackgroundSync",
-                    ExistingPeriodicWorkPolicy.KEEP,
-                    adListenRequest
-            );
+                    "AdNostrBackgroundSync", ExistingPeriodicWorkPolicy.KEEP, adListenRequest);
         }
     }
 
@@ -281,9 +271,14 @@ public class MainActivity extends AppCompatActivity {
         return super.onSupportNavigateUp();
     }
 
+    /**
+     * Safely refreshes the navigation when a role is switched.
+     * Fixes the NullPointerException by ensuring fragments are re-setup properly.
+     */
     public void refreshRoleAndUI() {
-        // Re-setup the navigation if role changes to refresh fragments
-        setupNavigationSystem();
+        runOnUiThread(() -> {
+            setupNavigationSystem();
+        });
     }
 
     @Override
@@ -292,7 +287,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == PERMISSION_REQUEST_CODE) {
             for (int result : grantResults) {
                 if (result != PackageManager.PERMISSION_GRANTED) {
-                    Toast.makeText(this, "Permissions denied. Some features will not work.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Permissions denied.", Toast.LENGTH_SHORT).show();
                     return;
                 }
             }
