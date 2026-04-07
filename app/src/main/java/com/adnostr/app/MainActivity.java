@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit;
  * UPDATED: Fixed Settings navigation glitch and added full hardware permission handling.
  * FIXED: Added Overlay Permission (SYSTEM_ALERT_WINDOW) check to allow Ads to pop up from background.
  * FIXED: Implemented Global Ad Listener to ensure Ads pop up even when switching between User and Advertiser roles.
+ * NEW: Integrated Ad History saving logic and middle-tab navigation for Ads History.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -128,6 +129,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * FIXED: Global Ad Listener stays active across the entire app lifecycle.
      * Captures Kind 30001 events and triggers the AdPopupActivity on the UI thread.
+     * UPDATED: Now includes strict 'd' tag validation and saves valid ads to the History DB.
      */
     private void setupGlobalAdListener() {
         wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
@@ -153,27 +155,40 @@ public class MainActivity extends AppCompatActivity {
                             // Only proceed if it is a verified Ad Event (Kind 30001)
                             if (kind == 30001) {
                                 String contentStr = event.optString("content", "");
+                                
+                                // Peek logic to ensure this isn't an empty payload
                                 if (contentStr.isEmpty() || !contentStr.contains("\"title\"")) {
                                     return; 
                                 }
 
-                                // Verify the 'd' tag to ensure it's an Ad broadcast
+                                // Verify the 'd' tag to ensure it's a real Ad broadcast
                                 boolean isAdBroadcast = false;
                                 JSONArray tags = event.optJSONArray("tags");
                                 if (tags != null) {
                                     for (int i = 0; i < tags.length(); i++) {
                                         JSONArray tagPair = tags.optJSONArray(i);
                                         if (tagPair != null && tagPair.length() >= 2) {
-                                            if ("d".equals(tagPair.getString(0)) && tagPair.getString(1).startsWith("adnostr_ad_")) {
-                                                isAdBroadcast = true;
-                                                break;
+                                            String tagName = tagPair.optString(0);
+                                            String tagValue = tagPair.optString(1);
+
+                                            if ("d".equals(tagName)) {
+                                                if (tagValue.startsWith("adnostr_ad_")) {
+                                                    isAdBroadcast = true;
+                                                    break;
+                                                } else if ("adnostr_interests".equals(tagValue)) {
+                                                    return; // Ignore user interest broadcasts
+                                                }
                                             }
                                         }
                                     }
                                 }
 
-                                // Trigger Popup if monitoring is active
+                                // Trigger Popup and Save to History if monitoring is active
                                 if (isAdBroadcast && db.isListening()) {
+                                    
+                                    // Save the valid ad to the User History DB
+                                    db.saveToUserHistory(message);
+
                                     runOnUiThread(() -> {
                                         Intent intent = new Intent(MainActivity.this, AdPopupActivity.class);
                                         intent.putExtra("AD_PAYLOAD_JSON", message);
@@ -198,18 +213,24 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Adjusts the visible menu items ensuring Settings is ALWAYS available.
+     * UPDATED: Now ensures the nav_ads_history (middle tab) is visible for both roles.
      */
     private void configureRoleBasedUI() {
         String role = db.getUserRole();
         Menu menu = binding.bottomNav.getMenu();
 
+        // Define top level destinations for the Action Bar
         AppBarConfiguration.Builder builder = new AppBarConfiguration.Builder(
                 R.id.nav_user_dashboard, 
-                R.id.nav_advertiser_dashboard, 
+                R.id.nav_advertiser_dashboard,
+                R.id.nav_ads_history,
                 R.id.nav_settings
         );
         
         NavigationUI.setupActionBarWithNavController(this, navController, builder.build());
+
+        // Standard middle tab is always visible for both roles
+        menu.findItem(R.id.nav_ads_history).setVisible(true);
 
         if (RoleSelectionActivity.ROLE_USER.equals(role)) {
             menu.findItem(R.id.nav_user_dashboard).setVisible(true);
@@ -217,14 +238,24 @@ public class MainActivity extends AppCompatActivity {
             menu.findItem(R.id.nav_create_ad).setVisible(false);
             menu.findItem(R.id.nav_relay_marketplace).setVisible(false);
             menu.findItem(R.id.nav_settings).setVisible(true);
-            navController.navigate(R.id.nav_user_dashboard);
+            
+            // Default landing for User
+            if (navController.getCurrentDestination() != null && 
+                navController.getCurrentDestination().getId() == R.id.nav_advertiser_dashboard) {
+                navController.navigate(R.id.nav_user_dashboard);
+            }
         } else {
             menu.findItem(R.id.nav_user_dashboard).setVisible(false);
             menu.findItem(R.id.nav_advertiser_dashboard).setVisible(true);
             menu.findItem(R.id.nav_create_ad).setVisible(true);
             menu.findItem(R.id.nav_relay_marketplace).setVisible(true);
             menu.findItem(R.id.nav_settings).setVisible(true);
-            navController.navigate(R.id.nav_advertiser_dashboard);
+            
+            // Default landing for Advertiser
+            if (navController.getCurrentDestination() != null && 
+                navController.getCurrentDestination().getId() == R.id.nav_user_dashboard) {
+                navController.navigate(R.id.nav_advertiser_dashboard);
+            }
         }
     }
 
