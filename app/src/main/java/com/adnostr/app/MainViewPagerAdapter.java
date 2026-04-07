@@ -7,15 +7,11 @@ import androidx.viewpager2.adapter.FragmentStateAdapter;
 
 /**
  * Adapter for the Main ViewPager2.
- * FEATURE: Manages the 6 primary screens of AdNostr.
+ * FEATURE: Manages the primary screens of AdNostr dynamically based on Role.
  * FEATURE: Enables the "Swipe Left to Right / Right to Left" logic.
- * SCREENS: 
- * 0: User Interests (UserDashboard)
- * 1: Ads History (The new History System)
- * 2: Advertiser Stats (AdvDashboard)
- * 3: Broadcast New Ad (CreateAd)
- * 4: Relay Marketplace (Marketplace)
- * 5: App Settings (Settings)
+ * 
+ * FIXED: USER ROLE (3 TABS) -> Interests, History, Settings.
+ * FIXED: ADVERTISER ROLE (5 TABS) -> Stats, History, Broadcast, Network, Settings.
  */
 public class MainViewPagerAdapter extends FragmentStateAdapter {
 
@@ -27,42 +23,53 @@ public class MainViewPagerAdapter extends FragmentStateAdapter {
     }
 
     /**
-     * Instantiates the fragment for the given position.
-     * This defines the order of the 6 swipeable screens.
+     * Instantiates the fragment for the given position based on the User's Role.
+     * This separates the User and Advertiser views completely.
      */
     @NonNull
     @Override
     public Fragment createFragment(int position) {
-        switch (position) {
-            case 0:
-                // User Interests (Consumer Path)
-                return new UserDashboardFragment();
-            case 1:
-                // Central Ads History System (Shared)
-                return new AdsHistoryFragment();
-            case 2:
-                // Advertiser Dashboard / Stats (Business Path)
-                return new AdvDashboardFragment();
-            case 3:
-                // Ad Creation Interface
-                return new CreateAdFragment();
-            case 4:
-                // Decentralized Relay Marketplace
-                return new MarketplaceFragment();
-            case 5:
-                // Global Settings & Profile
-                return new SettingsFragment();
-            default:
-                return new UserDashboardFragment();
+        if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
+            // USER PATH (Exactly 3 Fragments)
+            switch (position) {
+                case 0:
+                    return new UserDashboardFragment(); // Interests
+                case 1:
+                    return new AdsHistoryFragment();    // History
+                case 2:
+                    return new SettingsFragment();      // Settings
+                default:
+                    return new UserDashboardFragment();
+            }
+        } else {
+            // ADVERTISER PATH (Exactly 5 Fragments)
+            switch (position) {
+                case 0:
+                    return new AdvDashboardFragment();  // Stats
+                case 1:
+                    return new AdsHistoryFragment();    // History
+                case 2:
+                    return new CreateAdFragment();      // Broadcast
+                case 3:
+                    return new MarketplaceFragment();   // Network
+                case 4:
+                    return new SettingsFragment();      // Settings
+                default:
+                    return new AdvDashboardFragment();
+            }
         }
     }
 
     /**
-     * Returns the total count of swipeable items.
-     * FIXED: Set to 6 as per user requirement.
+     * Returns the total count of swipeable items based on the Role.
+     * FIXED: 3 for User, 5 for Advertiser.
      */
     @Override
     public int getItemCount() {
-        return 6;
+        if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
+            return 3; 
+        } else {
+            return 5;
+        }
     }
 }
