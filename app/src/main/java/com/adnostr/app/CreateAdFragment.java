@@ -4,8 +4,10 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -27,6 +29,7 @@ import com.google.android.gms.location.LocationServices;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -39,6 +42,8 @@ import java.util.Set;
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * FIXED: Displays discovered usernames in brackets during Reach Discovery.
  * FIXED: Enforced manual string construction for content JSON to resolve "invalid: bad event id".
+ * NEW: Implemented real IPFSHelper upload logic and multi-image JSONArray support.
+ * NEW: Saves broadcasted ads to Advertiser History DB.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -62,9 +67,16 @@ public class CreateAdFragment extends Fragment {
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
                     if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-                        Uri imageUri = result.getData().getData();
-                        if (imageUri != null) {
-                            handleSelectedImage(imageUri);
+                        // Support for single selection
+                        if (result.getData().getData() != null) {
+                            handleSelectedImage(result.getData().getData());
+                        } 
+                        // Support for multiple selection if enabled in Intent
+                        else if (result.getData().getClipData() != null) {
+                            int count = result.getData().getClipData().getItemCount();
+                            for (int i = 0; i < count; i++) {
+                                handleSelectedImage(result.getData().getClipData().getItemAt(i).getUri());
+                            }
                         }
                     }
                 }
@@ -100,29 +112,75 @@ public class CreateAdFragment extends Fragment {
 
     /**
      * Triggers the Android system file manager to allow advertiser to select media.
+     * Support multiple image selection for the swiping feature.
      */
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_PICK);
         intent.setType("image/*");
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true); // Enable multi-selection
         imagePickerLauncher.launch(intent);
     }
 
     /**
-     * Simulates the IPFS upload after the user selects a real file.
+     * REAL LOGIC: Resolves the Uri to a File and calls IPFSHelper for decentralized storage.
      */
     private void handleSelectedImage(Uri uri) {
-        // In full implementation, this calls IPFSHelper.uploadImage()
-        // For now, we simulate the CID generation from the real selected file
-        String simulatedCid = "bafybeihash" + System.currentTimeMillis();
-        ipfsImageCIDs.add("ipfs://" + simulatedCid);
+        try {
+            File file = new File(getRealPathFromURI(uri));
+            if (!file.exists()) {
+                Toast.makeText(getContext(), "Error: Could not resolve file path.", Toast.LENGTH_SHORT).show();
+                return;
+            }
 
-        binding.tvImageCount.setText(ipfsImageCIDs.size() + " Images Attached");
-        Toast.makeText(getContext(), "Image Selected & Processed for IPFS", Toast.LENGTH_SHORT).show();
+            binding.tvImageCount.setText("Uploading to IPFS...");
+
+            IPFSHelper.uploadImage(file, new IPFSHelper.IPFSUploadCallback() {
+                @Override
+                public void onSuccess(String cid, String gatewayUrl) {
+                    if (isAdded() && getActivity() != null) {
+                        getActivity().runOnUiThread(() -> {
+                            // Collect the real ipfs:// URL
+                            ipfsImageCIDs.add("ipfs://" + cid);
+                            binding.tvImageCount.setText(ipfsImageCIDs.size() + " Media Items Ready");
+                            Toast.makeText(getContext(), "Decentralized Upload Success", Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    if (isAdded() && getActivity() != null) {
+                        getActivity().runOnUiThread(() -> {
+                            binding.tvImageCount.setText("Upload Failed");
+                            Toast.makeText(getContext(), "IPFS Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        });
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "File resolution failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Utility to resolve content Uri to physical file path.
+     */
+    private String getRealPathFromURI(Uri contentUri) {
+        String result;
+        Cursor cursor = requireContext().getContentResolver().query(contentUri, null, null, null, null);
+        if (cursor == null) {
+            result = contentUri.getPath();
+        } else {
+            cursor.moveToFirst();
+            int idx = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
+            result = cursor.getString(idx);
+            cursor.close();
+        }
+        return result;
     }
 
     /**
      * FIXED: Calls the discovery engine to count REAL users on the network.
-     * UPDATED: Opens the console immediately to show the exact tags being parsed.
      */
     private void discoverHashtagReach() {
         String tagsInput = binding.etAdTags.getText().toString().trim();
@@ -134,18 +192,15 @@ public class CreateAdFragment extends Fragment {
         binding.cvReachDiscovery.setVisibility(View.VISIBLE);
         binding.tvActiveWatchers.setText("Scanning Network...");
 
-        // Parse tags to list
         List<String> tagsToSearch = new ArrayList<>();
         for (String s : tagsInput.split(",")) {
-            String clean = s.trim().toLowerCase().replace("#", ""); // FIXED: More robust hashtag cleaning
+            String clean = s.trim().toLowerCase().replace("#", "");
             if (!clean.isEmpty()) tagsToSearch.add(clean);
         }
 
-        // Open the console immediately to log the query
         StringBuilder discoveryLogs = new StringBuilder();
         discoveryLogs.append("INITIATING REACH DISCOVERY...\n\n");
         discoveryLogs.append("Tags formatted for Nostr search: ").append(tagsToSearch.toString()).append("\n");
-        discoveryLogs.append("Waiting for relay responses...\n");
 
         RelayReportDialog dialog = RelayReportDialog.newInstance(
                 "DISCOVERY CONSOLE",
@@ -154,13 +209,11 @@ public class CreateAdFragment extends Fragment {
         );
         dialog.showSafe(getChildFragmentManager(), "DISCOVERY_CONSOLE");
 
-        // Call the real Discovery Helper logic
         ReachDiscoveryHelper.discoverGlobalReach(requireContext(), tagsToSearch, new ReachDiscoveryHelper.ReachCallback() {
             @Override
             public void onReachCalculated(int totalUsers, List<String> usernames) {
                 if (isAdded() && binding != null) {
                     requireActivity().runOnUiThread(() -> {
-                        // NEW Logic: Format the result to show count and names in brackets
                         String resultText = totalUsers + " Active Users Found";
                         if (usernames != null && !usernames.isEmpty()) {
                             StringBuilder names = new StringBuilder(" (");
@@ -171,17 +224,11 @@ public class CreateAdFragment extends Fragment {
                             names.append(")");
                             resultText += names.toString();
                         }
-
                         binding.tvActiveWatchers.setText(resultText);
-                        Toast.makeText(getContext(), "Discovery Complete.", Toast.LENGTH_SHORT).show();
 
-                        // Update the open console
                         RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
                         if (existing != null) {
-                            discoveryLogs.append("\n[SUCCESS] Found ").append(totalUsers).append(" unique users matching tags.");
-                            if (usernames != null && !usernames.isEmpty()) {
-                                discoveryLogs.append("\nIdentified Usernames: ").append(usernames.toString());
-                            }
+                            discoveryLogs.append("\n[SUCCESS] Found ").append(totalUsers).append(" unique users.");
                             existing.updateTechnicalLogs("Scan Complete", discoveryLogs.toString());
                         }
                     });
@@ -193,13 +240,6 @@ public class CreateAdFragment extends Fragment {
                 if (isAdded() && binding != null) {
                     requireActivity().runOnUiThread(() -> {
                         binding.tvActiveWatchers.setText("Reach: 0 (Offline)");
-
-                        // Update the open console with the error
-                        RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
-                        if (existing != null) {
-                            discoveryLogs.append("\n[ERROR] ").append(error);
-                            existing.updateTechnicalLogs("Scan Failed", discoveryLogs.toString());
-                        }
                     });
                 }
             }
@@ -220,8 +260,6 @@ public class CreateAdFragment extends Fragment {
                 capturedMapsUrl = "https://maps.google.com/?q=" + location.getLatitude() + "," + location.getLongitude();
                 binding.tvLocationStatus.setText("GPS Location Locked");
                 binding.tvLocationStatus.setTextColor(getResources().getColor(android.R.color.holo_green_light));
-            } else {
-                Toast.makeText(getContext(), "GPS Signal Unavailable.", Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -238,18 +276,23 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
-            // FIXED: Construction of CTA and Media fields
-            String mediaUrl = ipfsImageCIDs.isEmpty() ? "" : ipfsImageCIDs.get(0);
+            // CRITICAL FIX: Convert the IPFS List to a JSON Array for swiping support
+            StringBuilder imageJsonBuilder = new StringBuilder("[");
+            for (int i = 0; i < ipfsImageCIDs.size(); i++) {
+                imageJsonBuilder.append("\"").append(ipfsImageCIDs.get(i)).append("\"");
+                if (i < ipfsImageCIDs.size() - 1) imageJsonBuilder.append(",");
+            }
+            imageJsonBuilder.append("]");
+            String imagePayload = imageJsonBuilder.toString();
+
             String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
             String ctaUrl = whatsapp.isEmpty() ? "" : "https://wa.me/" + cleanPhone;
 
-            // FIXED: Enforce strict manual string construction for the 'content' field.
-            // Using raw concatenation ensures that JSONObject does not escape slashes or reorder keys, 
-            // which was causing the Event ID to mismatch the hash during relay validation.
+            // FIXED: Strict manual string construction to prevent event ID mismatch
             String contentStr = "{" +
                     "\"title\":\"" + title.replace("\"", "\\\"") + "\"," +
                     "\"desc\":\"" + desc.replace("\"", "\\\"") + "\"," +
-                    "\"image\":\"" + mediaUrl + "\"," +
+                    "\"image\":" + imagePayload + "," +
                     "\"cta\":\"" + ctaUrl + "\"," +
                     "\"maps\":\"" + capturedMapsUrl + "\"," +
                     "\"expiry\":\"2026-05-01\"" +
@@ -259,14 +302,9 @@ public class CreateAdFragment extends Fragment {
             event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-
-            // Use our manually constructed canonical string
             event.put("content", contentStr);
 
             JSONArray tags = new JSONArray();
-
-            // FIXED: Mandatory 'd' tag for Parameterized Replaceable Events (Kind 30001)
-            // This ensures relays correctly index the ad for hashtag discovery.
             JSONArray dTag = new JSONArray();
             dTag.put("d");
             dTag.put("adnostr_ad_" + System.currentTimeMillis());
@@ -275,7 +313,6 @@ public class CreateAdFragment extends Fragment {
             for (String t : tagsInput.split(",")) {
                 String cleanTag = t.trim().toLowerCase().replace("#", ""); 
                 if (cleanTag.isEmpty()) continue;
-
                 JSONArray tagPair = new JSONArray();
                 tagPair.put("t");
                 tagPair.put(cleanTag);
@@ -283,13 +320,21 @@ public class CreateAdFragment extends Fragment {
             }
             event.put("tags", tags);
 
-            // Sign the event cryptographically before sending
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
+                // BROADCAST MESSAGE: Construct the full Nostr array message for storage
+                JSONArray fullMsg = new JSONArray();
+                fullMsg.put("EVENT");
+                fullMsg.put(""); // subId placeholder
+                fullMsg.put(signedEvent);
+                
+                // NEW: Save successfully signed ad to local Advertiser History DB
+                db.saveToAdvertiserHistory(fullMsg.toString());
+
                 broadcastToNetwork(signedEvent);
             } else {
-                Toast.makeText(getContext(), "Signing Failed: Error in crypto keys", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "Signing Failed", Toast.LENGTH_SHORT).show();
             }
 
         } catch (Exception e) {
@@ -298,9 +343,6 @@ public class CreateAdFragment extends Fragment {
         }
     }
 
-    /**
-     * Technical console popup shows technical information for each relay during broadcast.
-     */
     private void broadcastToNetwork(JSONObject signedEvent) {
         Set<String> relayPool = db.getRelayPool();
         StringBuilder technicalLogs = new StringBuilder();
@@ -311,27 +353,15 @@ public class CreateAdFragment extends Fragment {
 
         NostrPublisher.publishToPool(relayPool, signedEvent, (relayUrl, success, message) -> {
             finishedNodes[0]++;
+            technicalLogs.append(success ? "[OK] " : "[FAIL] ").append(relayUrl).append("\n");
 
-            technicalLogs.append(success ? "[OK] " : "[FAIL] ")
-                         .append(relayUrl).append("\n")
-                         .append(" > ").append(message).append("\n\n");
-
-            // Refresh the popup when data starts coming in
             if (isAdded() && getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
                     RelayReportDialog existingDialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("AD_CONSOLE");
-
                     if (existingDialog != null) {
-                        existingDialog.updateTechnicalLogs(
-                                "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
-                                technicalLogs.toString()
-                        );
+                        existingDialog.updateTechnicalLogs("Relays: " + finishedNodes[0] + "/" + totalNodes, technicalLogs.toString());
                     } else {
-                        RelayReportDialog dialog = RelayReportDialog.newInstance(
-                                "AD BROADCAST CONSOLE",
-                                "Relays: " + finishedNodes[0] + "/" + totalNodes + " Responded",
-                                technicalLogs.toString()
-                        );
+                        RelayReportDialog dialog = RelayReportDialog.newInstance("AD BROADCAST CONSOLE", "Broadcasting...", technicalLogs.toString());
                         dialog.showSafe(getChildFragmentManager(), "AD_CONSOLE");
                     }
                 });
@@ -344,4 +374,4 @@ public class CreateAdFragment extends Fragment {
         super.onDestroyView();
         binding = null;
     }
-} 
+}
