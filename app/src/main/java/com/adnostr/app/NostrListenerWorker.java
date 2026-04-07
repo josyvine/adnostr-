@@ -32,6 +32,8 @@ import java.util.concurrent.TimeUnit;
  * to ensure ads are actually received and processed.
  * FIXED: Implemented Kind 30001 filtering and dynamic hashtag matching.
  * FIXED: Added content peeking to ignore empty interest lists in background.
+ * FIXED: Added strict 'd' tag validation to prevent crashes from adnostr_interests.
+ * NEW: Saves verified Ads to local User History Database.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -173,10 +175,45 @@ public class NostrListenerWorker extends Worker {
                 return; // Silently ignore events that contain no Ad payload
             }
 
+            // STRICT PROTOCOL FILTERING: Verify the 'd' tag to ensure it's a real Ad Broadcast
+            boolean isAdNostrBroadcast = false;
+            JSONArray tags = event.optJSONArray("tags");
+            if (tags != null) {
+                for (int i = 0; i < tags.length(); i++) {
+                    JSONArray tagPair = tags.optJSONArray(i);
+                    if (tagPair != null && tagPair.length() >= 2) {
+                        String tagName = tagPair.optString(0);
+                        String tagValue = tagPair.optString(1);
+                        
+                        if ("d".equals(tagName)) {
+                            if (tagValue.startsWith("adnostr_ad_")) {
+                                isAdNostrBroadcast = true;
+                                break;
+                            } else if ("adnostr_interests".equals(tagValue)) {
+                                return; // STRICT FIX: Ignore user interest lists to prevent crash
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If it's not a verified Ad, discard it
+            if (!isAdNostrBroadcast) {
+                return;
+            }
+
             JSONObject content = new JSONObject(contentStr);
+
+            // Crash Prevention: Ensure title actually exists
+            if (!content.has("title")) {
+                return;
+            }
 
             String title = content.optString("title", "Local Deal Found");
             String desc = content.optString("desc", "A new ad matches your interests.");
+
+            // NEW: Save the verified Ad to the Local User History Database
+            db.saveToUserHistory(rawMessage);
 
             // Launch system notification
             showAdNotification(title, desc, rawMessage);
