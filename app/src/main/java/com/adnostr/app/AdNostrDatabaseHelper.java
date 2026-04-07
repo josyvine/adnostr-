@@ -3,8 +3,10 @@ package com.adnostr.app;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -12,6 +14,7 @@ import java.util.Set;
  * UPDATED: Added a massive bootstrap relay pool to ensure 30+ connections 
  * and fixed default hashtag visibility.
  * FIXED: Added Username saving capabilities for Reach Discovery identification.
+ * NEW: Implemented Ad History storage for both User and Advertiser roles.
  */
 public class AdNostrDatabaseHelper {
 
@@ -20,7 +23,7 @@ public class AdNostrDatabaseHelper {
     // Identity Keys
     private static final String KEY_PRIVATE_KEY = "nostr_private_key_hex";
     private static final String KEY_PUBLIC_KEY = "nostr_public_key_hex";
-    private static final String KEY_USERNAME = "user_display_name"; // NEW: For Reach Discovery
+    private static final String KEY_USERNAME = "user_display_name";
 
     // App State & Role
     private static final String KEY_USER_ROLE = "user_app_role"; 
@@ -31,6 +34,10 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_RELAY_LIST = "nostr_relay_list_json";
     private static final String KEY_USER_INTERESTS = "ad_interest_hashtags"; 
     private static final String KEY_AVAILABLE_HASHTAGS = "available_hashtag_pool";
+
+    // NEW: History Keys
+    private static final String KEY_USER_HISTORY = "local_user_ad_history";
+    private static final String KEY_ADVERTISER_HISTORY = "local_advertiser_ad_history";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -101,7 +108,6 @@ public class AdNostrDatabaseHelper {
         return prefs.getString(KEY_PUBLIC_KEY, null);
     }
 
-    // NEW: Save and retrieve the optional username for reach discovery
     public void saveUsername(String username) {
         prefs.edit().putString(KEY_USERNAME, username).apply();
     }
@@ -151,7 +157,6 @@ public class AdNostrDatabaseHelper {
     }
 
     public Set<String> getAvailableHashtags() {
-        // Expanded default list to include your test cases
         Set<String> defaults = new HashSet<>(Arrays.asList(
                 "food", "kochi", "electronics", "realestate", 
                 "cars", "fashion", "deals", "shoes", "adnostr"
@@ -171,22 +176,70 @@ public class AdNostrDatabaseHelper {
     // RELAY MANAGEMENT
     // =========================================================================
 
-    /**
-     * Returns the list of relays. 
-     * FIXED: If no custom list is found, it returns the full 31+ bootstrap relays.
-     */
     public Set<String> getRelayPool() {
         String savedJson = prefs.getString(KEY_RELAY_LIST, null);
         if (savedJson == null) {
-            // Return all bootstrap relays as a Set
             return new HashSet<>(Arrays.asList(BOOTSTRAP_RELAYS));
         }
-        // In full implementation, parse savedJson here.
         return new HashSet<>(Arrays.asList(BOOTSTRAP_RELAYS));
     }
 
     public void saveRelayList(String jsonRelays) {
         prefs.edit().putString(KEY_RELAY_LIST, jsonRelays).apply();
+    }
+
+    // =========================================================================
+    // NEW: AD HISTORY MANAGEMENT (USER & ADVERTISER)
+    // =========================================================================
+
+    /**
+     * Saves a received ad payload to the local user history.
+     */
+    public void saveToUserHistory(String eventJson) {
+        Set<String> history = new HashSet<>(prefs.getStringSet(KEY_USER_HISTORY, new HashSet<>()));
+        history.add(eventJson);
+        prefs.edit().putStringSet(KEY_USER_HISTORY, history).apply();
+    }
+
+    /**
+     * Retrieves all locally saved ads received by the user.
+     */
+    public Set<String> getUserHistory() {
+        return prefs.getStringSet(KEY_USER_HISTORY, new HashSet<>());
+    }
+
+    /**
+     * Removes a specific ad from local user history.
+     */
+    public void deleteFromUserHistory(String eventJson) {
+        Set<String> history = new HashSet<>(prefs.getStringSet(KEY_USER_HISTORY, new HashSet<>()));
+        history.remove(eventJson);
+        prefs.edit().putStringSet(KEY_USER_HISTORY, history).apply();
+    }
+
+    /**
+     * Saves a broadcasted ad payload to the advertiser's local record.
+     */
+    public void saveToAdvertiserHistory(String eventJson) {
+        Set<String> history = new HashSet<>(prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>()));
+        history.add(eventJson);
+        prefs.edit().putStringSet(KEY_ADVERTISER_HISTORY, history).apply();
+    }
+
+    /**
+     * Retrieves all ads broadcasted by this advertiser.
+     */
+    public Set<String> getAdvertiserHistory() {
+        return prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>());
+    }
+
+    /**
+     * Removes a specific ad from the advertiser's local record.
+     */
+    public void deleteFromAdvertiserHistory(String eventJson) {
+        Set<String> history = new HashSet<>(prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>()));
+        history.remove(eventJson);
+        prefs.edit().putStringSet(KEY_ADVERTISER_HISTORY, history).apply();
     }
 
     // =========================================================================
