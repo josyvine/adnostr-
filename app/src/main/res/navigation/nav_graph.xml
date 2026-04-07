@@ -12,6 +12,13 @@
         android:label="My Interests"
         tools:layout="@layout/fragment_user_dashboard" />
 
+    <!-- SHARED MIDDLE TAB: Ads History (Received Ads for User / Broadcasted Ads for Advertiser) -->
+    <fragment
+        android:id="@+id/nav_ads_history"
+        android:name="com.adnostr.app.AdsHistoryFragment"
+        android:label="Ads History"
+        tools:layout="@layout/fragment_ads_history" />
+
     <!-- ADVERTISER PATH: Business Metrics & Active Ad Reach -->
     <fragment
         android:id="@+id/nav_advertiser_dashboard"
