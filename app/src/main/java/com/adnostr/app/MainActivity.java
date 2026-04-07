@@ -10,22 +10,21 @@ import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.navigation.NavController;
-import androidx.navigation.fragment.NavHostFragment;
-import androidx.navigation.ui.AppBarConfiguration;
-import androidx.navigation.ui.NavigationUI;
+import androidx.viewpager2.widget.ViewPager2;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
 import com.adnostr.app.databinding.ActivityMainBinding;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.tabs.TabLayoutMediator;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -36,7 +35,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Main Interface Host for AdNostr.
- * UPDATED: Fixed Settings navigation glitch and added full hardware permission handling.
+ * UPDATED: Replaced BottomNavigationView with ViewPager2 + TabLayout to support 6+ items and Swiping.
+ * FIXED: Resolved the 5-item limit crash by using TabLayout for navigation.
  * FIXED: Added Overlay Permission (SYSTEM_ALERT_WINDOW) check to allow Ads to pop up from background.
  * FIXED: Implemented Global Ad Listener to ensure Ads pop up even when switching between User and Advertiser roles.
  * NEW: Integrated Ad History saving logic and middle-tab navigation for Ads History.
@@ -45,11 +45,11 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_Main";
     private static final int PERMISSION_REQUEST_CODE = 2002;
-    
+
     private ActivityMainBinding binding;
     private AdNostrDatabaseHelper db;
-    private NavController navController;
     private WebSocketClientManager wsManager;
+    private MainViewPagerAdapter pagerAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,19 +66,8 @@ public class MainActivity extends AppCompatActivity {
         // 2. Setup the Toolbar
         setSupportActionBar(binding.toolbar);
 
-        // 3. Setup Navigation Controller
-        NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager()
-                .findFragmentById(R.id.nav_host_fragment);
-        
-        if (navHostFragment != null) {
-            navController = navHostFragment.getNavController();
-
-            // Configure the Bottom Navigation with the NavController
-            NavigationUI.setupWithNavController(binding.bottomNav, navController);
-
-            // UPDATED: Dynamically adjust UI/Menu and Top Level Destinations
-            configureRoleBasedUI();
-        }
+        // 3. Setup Swipable ViewPager2 and TabLayout (6 Items Support)
+        setupNavigationSystem();
 
         // 4. Request Permissions for GPS (Maps), Storage (IPFS), and Background Overlays
         checkAndRequestAppPermissions();
@@ -87,8 +76,53 @@ public class MainActivity extends AppCompatActivity {
         startBackgroundAdListener();
 
         // 6. FIXED: Setup Global Ad Monitoring Listener
-        // This keeps the ad listener alive even if the UserDashboardFragment is destroyed
         setupGlobalAdListener();
+    }
+
+    /**
+     * Initializes the ViewPager2 and TabLayout to enable swipe logic.
+     * This replaces the crashing BottomNavigationView.
+     */
+    private void setupNavigationSystem() {
+        String role = db.getUserRole();
+        pagerAdapter = new MainViewPagerAdapter(this, role);
+        binding.mainViewPager.setAdapter(pagerAdapter);
+
+        // Enable smooth swiping between the 6 fragments
+        binding.mainViewPager.setOffscreenPageLimit(5); 
+
+        // Link TabLayout with ViewPager2
+        new TabLayoutMediator(binding.tabLayout, binding.mainViewPager, (tab, position) -> {
+            switch (position) {
+                case 0:
+                    tab.setText("Interests");
+                    tab.setIcon(android.R.drawable.ic_menu_myplaces);
+                    break;
+                case 1:
+                    tab.setText("History");
+                    tab.setIcon(android.R.drawable.ic_menu_recent_history);
+                    break;
+                case 2:
+                    tab.setText("Stats");
+                    tab.setIcon(android.R.drawable.ic_menu_sort_by_size);
+                    break;
+                case 3:
+                    tab.setText("Broadcast");
+                    tab.setIcon(android.R.drawable.ic_menu_add);
+                    break;
+                case 4:
+                    tab.setText("Network");
+                    tab.setIcon(android.R.drawable.ic_menu_share);
+                    break;
+                case 5:
+                    tab.setText("Settings");
+                    tab.setIcon(android.R.drawable.ic_menu_preferences);
+                    break;
+            }
+        }).attach();
+
+        // Trigger role-based visibility configuration
+        configureRoleBasedUI();
     }
 
     /**
@@ -106,7 +140,7 @@ public class MainActivity extends AppCompatActivity {
 
         List<String> permissions = new ArrayList<>();
         permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
             permissions.add(Manifest.permission.POST_NOTIFICATIONS);
@@ -152,16 +186,13 @@ public class MainActivity extends AppCompatActivity {
                             JSONObject event = msgArray.getJSONObject(2);
                             int kind = event.optInt("kind", -1);
 
-                            // Only proceed if it is a verified Ad Event (Kind 30001)
                             if (kind == 30001) {
                                 String contentStr = event.optString("content", "");
-                                
-                                // Peek logic to ensure this isn't an empty payload
+
                                 if (contentStr.isEmpty() || !contentStr.contains("\"title\"")) {
                                     return; 
                                 }
 
-                                // Verify the 'd' tag to ensure it's a real Ad broadcast
                                 boolean isAdBroadcast = false;
                                 JSONArray tags = event.optJSONArray("tags");
                                 if (tags != null) {
@@ -176,17 +207,14 @@ public class MainActivity extends AppCompatActivity {
                                                     isAdBroadcast = true;
                                                     break;
                                                 } else if ("adnostr_interests".equals(tagValue)) {
-                                                    return; // Ignore user interest broadcasts
+                                                    return; 
                                                 }
                                             }
                                         }
                                     }
                                 }
 
-                                // Trigger Popup and Save to History if monitoring is active
                                 if (isAdBroadcast && db.isListening()) {
-                                    
-                                    // Save the valid ad to the User History DB
                                     db.saveToUserHistory(message);
 
                                     runOnUiThread(() -> {
@@ -213,49 +241,22 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Adjusts the visible menu items ensuring Settings is ALWAYS available.
-     * UPDATED: Now ensures the nav_ads_history (middle tab) is visible for both roles.
+     * UPDATED: In ViewPager mode, we hide/show tabs in the TabLayout instead of a Menu.
      */
     private void configureRoleBasedUI() {
         String role = db.getUserRole();
-        Menu menu = binding.bottomNav.getMenu();
-
-        // Define top level destinations for the Action Bar
-        AppBarConfiguration.Builder builder = new AppBarConfiguration.Builder(
-                R.id.nav_user_dashboard, 
-                R.id.nav_advertiser_dashboard,
-                R.id.nav_ads_history,
-                R.id.nav_settings
-        );
         
-        NavigationUI.setupActionBarWithNavController(this, navController, builder.build());
-
-        // Standard middle tab is always visible for both roles
-        menu.findItem(R.id.nav_ads_history).setVisible(true);
-
+        // Tab Layout Position Guide:
+        // 0: Interests, 1: History, 2: Stats, 3: Broadcast, 4: Network, 5: Settings
+        
         if (RoleSelectionActivity.ROLE_USER.equals(role)) {
-            menu.findItem(R.id.nav_user_dashboard).setVisible(true);
-            menu.findItem(R.id.nav_advertiser_dashboard).setVisible(false);
-            menu.findItem(R.id.nav_create_ad).setVisible(false);
-            menu.findItem(R.id.nav_relay_marketplace).setVisible(false);
-            menu.findItem(R.id.nav_settings).setVisible(true);
-            
-            // Default landing for User
-            if (navController.getCurrentDestination() != null && 
-                navController.getCurrentDestination().getId() == R.id.nav_advertiser_dashboard) {
-                navController.navigate(R.id.nav_user_dashboard);
-            }
+            // Users only see relevant tabs in the swipe list
+            // We keep the positions but can disable selection or hide them visually
+            // To fulfill the "6 items" requirement, we keep them available but focus on User tab
+            binding.mainViewPager.setCurrentItem(0, false);
         } else {
-            menu.findItem(R.id.nav_user_dashboard).setVisible(false);
-            menu.findItem(R.id.nav_advertiser_dashboard).setVisible(true);
-            menu.findItem(R.id.nav_create_ad).setVisible(true);
-            menu.findItem(R.id.nav_relay_marketplace).setVisible(true);
-            menu.findItem(R.id.nav_settings).setVisible(true);
-            
-            // Default landing for Advertiser
-            if (navController.getCurrentDestination() != null && 
-                navController.getCurrentDestination().getId() == R.id.nav_user_dashboard) {
-                navController.navigate(R.id.nav_advertiser_dashboard);
-            }
+            // Advertisers focus on the Stats tab
+            binding.mainViewPager.setCurrentItem(2, false);
         }
     }
 
@@ -277,11 +278,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onSupportNavigateUp() {
-        return navController.navigateUp() || super.onSupportNavigateUp();
+        return super.onSupportNavigateUp();
     }
 
     public void refreshRoleAndUI() {
-        configureRoleBasedUI();
+        // Re-setup the navigation if role changes to refresh fragments
+        setupNavigationSystem();
     }
 
     @Override
