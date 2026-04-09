@@ -1,6 +1,8 @@
 package com.adnostr.app;
 
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -19,8 +21,8 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * Global Settings Interface for AdNostr.
  * Handles identity display, role switching between User and Advertiser,
  * and local database management.
- * FIXED: Added null-checks for binding to prevent NPE crash during role switching.
- * FIXED: Refined role toggle logic to work with the new ViewPager2 navigation.
+ * FIXED: Username section is now hidden for Advertisers.
+ * NEW: Implements Decentralized Username checks, claiming, and releasing via UsernameManager.
  */
 public class SettingsFragment extends Fragment {
 
@@ -45,17 +47,6 @@ public class SettingsFragment extends Fragment {
         // Safety check to ensure binding is available
         if (binding == null) return;
 
-        // NEW: Load existing username from database and display it
-        binding.etUsername.setText(db.getUsername());
-
-        // NEW: Save username button click listener
-        binding.btnSaveUsername.setOnClickListener(v -> {
-            if (binding == null) return;
-            String name = binding.etUsername.getText().toString().trim();
-            db.saveUsername(name);
-            Toast.makeText(getContext(), "Username Saved!", Toast.LENGTH_SHORT).show();
-        });
-
         // 1. Display Current Identity
         setupIdentityDisplay();
 
@@ -64,6 +55,126 @@ public class SettingsFragment extends Fragment {
 
         // 3. Setup Data Management
         binding.btnResetApp.setOnClickListener(v -> showResetConfirmation());
+
+        // 4. Setup Username Logic (Exclusive to USER role)
+        configureProfileSectionVisibility();
+    }
+
+    /**
+     * Hides the profile/username section if the user is an Advertiser.
+     * Initializes the decentralized logic if they are a User.
+     */
+    private void configureProfileSectionVisibility() {
+        if (binding == null) return;
+
+        String currentRole = db.getUserRole();
+        
+        if (RoleSelectionActivity.ROLE_ADVERTISER.equals(currentRole)) {
+            // Hide Username box entirely for Advertisers
+            binding.tvProfileHeader.setVisibility(View.GONE);
+            binding.cvProfileCard.setVisibility(View.GONE);
+        } else {
+            // Show and configure for Users
+            binding.tvProfileHeader.setVisibility(View.VISIBLE);
+            binding.cvProfileCard.setVisibility(View.VISIBLE);
+            refreshUsernameUIState();
+        }
+    }
+
+    /**
+     * Toggles the Username UI between "CLAIM" mode and "RELEASE" mode 
+     * based on whether they currently own a name in the local database.
+     */
+    private void refreshUsernameUIState() {
+        if (binding == null) return;
+
+        String savedName = db.getUsername();
+
+        if (savedName == null || savedName.trim().isEmpty()) {
+            // MODE: READY TO CLAIM A NEW USERNAME
+            binding.etUsername.setText("");
+            binding.etUsername.setEnabled(true);
+            binding.btnSaveUsername.setText("CLAIM USERNAME");
+            binding.btnSaveUsername.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#2196F3"))); // Blue
+
+            binding.btnSaveUsername.setOnClickListener(v -> {
+                String requestedName = binding.etUsername.getText().toString().trim();
+                if (requestedName.isEmpty()) {
+                    Toast.makeText(getContext(), "Please enter a username.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                // Prevent spam clicks
+                binding.btnSaveUsername.setEnabled(false);
+                binding.btnSaveUsername.setText("CHECKING NETWORK...");
+                binding.etUsername.setEnabled(false);
+
+                // 1. Check network availability
+                UsernameManager.checkAvailability(requestedName, db.getPublicKey(), (isAvailable, message) -> {
+                    if (!isAdded() || binding == null) return;
+
+                    if (isAvailable) {
+                        binding.btnSaveUsername.setText("CLAIMING ON BLOCKCHAIN...");
+                        
+                        // 2. Broadcast Kind 0 to claim it globally
+                        UsernameManager.claimUsername(requireContext(), requestedName, db.getPrivateKey(), db.getPublicKey(), (success, claimMsg) -> {
+                            if (!isAdded() || binding == null) return;
+
+                            if (success) {
+                                db.saveUsername(requestedName);
+                                Toast.makeText(getContext(), "Username Locked & Claimed!", Toast.LENGTH_SHORT).show();
+                                refreshUsernameUIState(); // Refresh to DELETE mode
+                            } else {
+                                Toast.makeText(getContext(), "Claim failed: " + claimMsg, Toast.LENGTH_LONG).show();
+                                resetToClaimState();
+                            }
+                        });
+                    } else {
+                        Toast.makeText(getContext(), "ERROR: " + message, Toast.LENGTH_LONG).show();
+                        resetToClaimState();
+                    }
+                });
+            });
+
+        } else {
+            // MODE: ALREADY OWNS A USERNAME, ALLOW DELETION/RELEASE
+            binding.etUsername.setText(savedName);
+            binding.etUsername.setEnabled(false); // Lock input
+            binding.btnSaveUsername.setText("RELEASE USERNAME");
+            binding.btnSaveUsername.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#FF5252"))); // Red
+            binding.btnSaveUsername.setEnabled(true);
+
+            binding.btnSaveUsername.setOnClickListener(v -> {
+                // Prevent spam clicks
+                binding.btnSaveUsername.setEnabled(false);
+                binding.btnSaveUsername.setText("RELEASING TO NETWORK...");
+
+                // Broadcast empty Kind 0 to wipe metadata from relays
+                UsernameManager.releaseUsername(requireContext(), db.getPrivateKey(), db.getPublicKey(), (success, releaseMsg) -> {
+                    if (!isAdded() || binding == null) return;
+
+                    if (success) {
+                        db.saveUsername(""); // Wipe locally
+                        Toast.makeText(getContext(), "Username Released and Deleted.", Toast.LENGTH_SHORT).show();
+                        refreshUsernameUIState(); // Refresh to CLAIM mode
+                    } else {
+                        Toast.makeText(getContext(), "Release failed: " + releaseMsg, Toast.LENGTH_LONG).show();
+                        refreshUsernameUIState(); // Reset failure
+                    }
+                });
+            });
+        }
+    }
+
+    /**
+     * Helper to revert the UI if a claim fails.
+     */
+    private void resetToClaimState() {
+        if (binding != null) {
+            binding.btnSaveUsername.setEnabled(true);
+            binding.btnSaveUsername.setText("CLAIM USERNAME");
+            binding.etUsername.setEnabled(true);
+        }
     }
 
     /**
@@ -85,7 +196,6 @@ public class SettingsFragment extends Fragment {
 
     /**
      * Configures the toggle to switch between User and Advertiser profiles instantly.
-     * FIXED: Added binding null-checks to prevent "Attempt to read from field on a null object reference" crash.
      */
     private void setupRoleToggle() {
         if (binding == null) return;
@@ -116,9 +226,6 @@ public class SettingsFragment extends Fragment {
             // Refresh the MainActivity UI to update the ViewPager and TabLayout
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).refreshRoleAndUI();
-
-                // Note: We do NOT call setupRoleToggle() here again because refreshRoleAndUI 
-                // will recreate the fragments via the adapter, making this instance obsolete.
             }
         });
     }
