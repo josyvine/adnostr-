@@ -15,7 +15,7 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // MANDATORY FOR IPFS LITE:
+        // MANDATORY FOR P2P STORAGE:
         // P2P libraries contain native Go code. We must specify which processor 
         // architectures to support to prevent the app from crashing on different phones.
         ndk {
@@ -50,7 +50,7 @@ android {
     }
 
     packagingOptions {
-        // MANDATORY FOR IPFS LITE:
+        // MANDATORY FOR DATAHOP / IPFS:
         // Prevents build errors caused by duplicate native libraries and 
         // metadata properties files found in the P2P Go-mobile packages.
         resources {
@@ -66,7 +66,7 @@ android {
         }
         
         // These 'pickFirst' rules prevent the "Duplicate File" build error
-        // caused by Go-native code conflicting with Android system libraries.
+        // caused by Go-native code conflicting with standard Android libraries.
         pickFirst 'lib/x86/libc++_shared.so'
         pickFirst 'lib/x86_64/libc++_shared.so'
         pickFirst 'lib/armeabi-v7a/libc++_shared.so'
@@ -103,11 +103,11 @@ dependencies {
     implementation 'io.coil-kt:coil:2.6.0'
 
     // =========================================================================
-    // TRUE DECENTRALIZED STORAGE: IPFS LITE (P2P)
+    // TRUE DECENTRALIZED STORAGE: DATAHOP IPFS-LITE (P2P)
     // =========================================================================
-    // FIXED: Replaced 'v1.0.0' with the verified commit hash '3c5938d69f'.
-    // This bypasses the broken build on JitPack's server and fixes the 401 error.
-    implementation 'com.github.berty:ipfs-lite-android:3c5938d69f' 
+    // FIXED: Replaced Berty with Datahop IPFS-Lite. 
+    // This is a pre-compiled library that fixes the JitPack 401 build failure.
+    implementation 'io.datahop:ipfs-lite:0.0.10'
 
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
