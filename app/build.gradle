@@ -59,7 +59,7 @@ android {
                 'META-INF/ASL2.0'
             ]
         }
-        
+
         // MANDATORY FOR DATAHOP AAR:
         // Prevents build failures caused by duplicate native .so files 
         // within the library and the Android system.
@@ -71,17 +71,14 @@ android {
 }
 
 /**
- * NOTE: The 'repositories' block has been removed from this file.
- * It is now correctly defined in settings.gradle to fix the Gradle 8.0 
- * repository conflict that was causing the "package does not exist" error.
+ * Repositories are defined in settings.gradle (correct for Gradle 8)
  */
 
 dependencies {
-    // =========================================================================
-    // TRUE DECENTRALIZED STORAGE: DATAHOP BINARY
-    // =========================================================================
-    // FIXED: The flatDir in settings.gradle allows the compiler to resolve this
-    implementation(name: 'datahop', ext: 'aar')
+
+    // ✅ FIXED — THIS IS THE CRITICAL LINE
+    // This makes Gradle 8 correctly load the AAR classes during compilation
+    implementation files("libs/datahop.aar")
 
     // Android Core & UI
     implementation 'androidx.appcompat:appcompat:1.6.1'
@@ -90,7 +87,7 @@ dependencies {
 
     // Flexbox Layout (Required for Ad Popup Card)
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
-    
+
     // SwipeRefreshLayout (Needed for Marketplace list refresh)
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
 
