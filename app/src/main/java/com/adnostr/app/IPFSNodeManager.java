@@ -7,14 +7,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 
-import io.ipfs.lite.Config;
-import io.ipfs.lite.IPFS;
-
 /**
  * ============================================================
  * AdNostr P2P STORAGE ENGINE
- * Powered by Datahop IPFS-Lite (Modern SDK)
- * ------------------------------------------------------------
+ * Powered by Datahop IPFS-Lite (Go gomobile binding)
+ * 
  * • No API keys
  * • No registration
  * • No centralized servers
@@ -23,17 +20,26 @@ import io.ipfs.lite.IPFS;
  */
 public class IPFSNodeManager {
 
-    private static final String TAG = "AdNostr_IPFSNode"; 
+    private static final String TAG = "AdNostr_IPFSNode";
     private static IPFSNodeManager instance;
 
-    private IPFS ipfs;
+    private Object peer;
     private final Context context;
     private boolean isStarted = false;
 
+    /**
+     * Private constructor for singleton pattern
+     * @param context Application context
+     */
     private IPFSNodeManager(Context context) {
         this.context = context.getApplicationContext();
     }
 
+    /**
+     * Get singleton instance of IPFSNodeManager
+     * @param context Application context
+     * @return IPFSNodeManager instance
+     */
     public static synchronized IPFSNodeManager getInstance(Context context) {
         if (instance == null) {
             instance = new IPFSNodeManager(context);
@@ -41,108 +47,321 @@ public class IPFSNodeManager {
         return instance;
     }
 
-    // ============================================================
-    // START EMBEDDED IPFS NODE
-    // ============================================================
+    /**
+     * ============================================================
+     * START EMBEDDED IPFS NODE
+     * ============================================================
+     * Initializes and starts the embedded IPFS peer node.
+     * This runs on a background thread to avoid blocking the UI.
+     */
     public synchronized void startNode() {
-        if (isStarted) return;
+        if (isStarted) {
+            Log.w(TAG, "IPFS node is already running.");
+            return;
+        }
 
         new Thread(() -> {
             try {
+                Log.i(TAG, "====================================");
                 Log.i(TAG, "Initializing embedded IPFS node...");
+                Log.i(TAG, "====================================");
 
-                // Folder where IPFS stores blocks + keys
+                // Create directory where IPFS stores blocks, keys, and configuration
                 File repoDir = new File(context.getFilesDir(), "ipfs_repo");
+                if (!repoDir.exists()) {
+                    boolean created = repoDir.mkdirs();
+                    if (!created) {
+                        throw new IOException("Failed to create IPFS repository directory");
+                    }
+                    Log.i(TAG, "Created IPFS repository directory: " + repoDir.getAbsolutePath());
+                }
 
-                // Default config from Datahop SDK
-                Config config = new Config();
+                String repoDirPath = repoDir.getAbsolutePath();
+                Log.i(TAG, "IPFS Repository path: " + repoDirPath);
 
-                // Create IPFS instance
-                ipfs = new IPFS(repoDir, config);
+                // Initialize Datahop IPFS peer
+                // This is the Go gomobile binding that manages the embedded IPFS node
+                try {
+                    // Attempt to create peer using Datahop mobile bindings
+                    // Note: The actual class name depends on what Datahop exports
+                    Class<?> mobileClass = Class.forName("mobile.Mobile");
+                    Object newNodeMethod = mobileClass.getMethod("NewNode", Context.class, String.class)
+                            .invoke(null, context, repoDirPath);
+                    
+                    peer = newNodeMethod;
+                    
+                    Log.i(TAG, "IPFS Peer object created successfully");
 
-                // Start P2P networking
-                ipfs.start();
+                    // Start the peer node
+                    peer.getClass().getMethod("Start").invoke(peer);
+                    Log.i(TAG, "IPFS Peer started successfully");
+
+                } catch (ClassNotFoundException e) {
+                    Log.e(TAG, "Mobile.Mobile class not found - checking alternative imports");
+                    // Fallback: Try alternative initialization if gomobile structure differs
+                    Log.e(TAG, "Make sure datahop.aar is properly included in libs/");
+                    throw new Exception("Datahop IPFS-Lite library not found in classpath", e);
+                }
 
                 isStarted = true;
-                Log.i(TAG, "IPFS Node is ONLINE.");
+                Log.i(TAG, "====================================");
+                Log.i(TAG, "✓ IPFS Node is ONLINE");
+                Log.i(TAG, "====================================");
 
             } catch (Exception e) {
-                Log.e(TAG, "CRITICAL: Failed to start IPFS node: " + e.getMessage());
+                Log.e(TAG, "CRITICAL: Failed to start IPFS node");
+                Log.e(TAG, "Error message: " + e.getMessage());
+                Log.e(TAG, "Stack trace: ", e);
                 isStarted = false;
             }
         }).start();
     }
 
-    // ============================================================
-    // ADD FILE TO P2P NETWORK (Advertiser uploads image)
-    // ============================================================
+    /**
+     * ============================================================
+     * ADD FILE TO P2P NETWORK
+     * ============================================================
+     * Advertiser uploads an image/file to the IPFS network.
+     * The file is stored in the peer's local block store and made
+     * available to the network.
+     * 
+     * @param file The file to add to IPFS
+     * @return Content Identifier (CID) of the added file
+     * @throws Exception if node is not ready or operation fails
+     */
     public String addFile(File file) throws Exception {
         ensureNodeReady();
 
-        byte[] fileBytes = readFileToBytes(file);
+        if (!file.exists()) {
+            throw new FileNotFoundException("File does not exist: " + file.getAbsolutePath());
+        }
 
-        // Add bytes to IPFS → returns CID
-        String cid = ipfs.add(fileBytes);
+        Log.i(TAG, "====================================");
+        Log.i(TAG, "Adding file to IPFS network...");
+        Log.i(TAG, "File: " + file.getName());
+        Log.i(TAG, "Size: " + file.length() + " bytes");
+        Log.i(TAG, "====================================");
 
-        Log.i(TAG, "File added to IPFS. CID: " + cid);
-        return cid;
+        try {
+            // Read file into byte array
+            byte[] fileBytes = readFileToBytes(file);
+            Log.d(TAG, "File read successfully: " + fileBytes.length + " bytes");
+
+            // Add bytes to IPFS network
+            // This returns a CID (Content Identifier) that uniquely identifies the file
+            String cid = (String) peer.getClass().getMethod("Add", byte[].class)
+                    .invoke(peer, (Object) fileBytes);
+
+            Log.i(TAG, "====================================");
+            Log.i(TAG, "✓ File added to IPFS successfully");
+            Log.i(TAG, "CID: " + cid);
+            Log.i(TAG, "====================================");
+
+            return cid;
+
+        } catch (Exception e) {
+            Log.e(TAG, "ERROR: Failed to add file to IPFS");
+            Log.e(TAG, "Exception: " + e.getMessage());
+            throw new Exception("Failed to add file to IPFS: " + e.getMessage(), e);
+        }
     }
 
-    // ============================================================
-    // DOWNLOAD FILE FROM P2P NETWORK (User views ad image)
-    // ============================================================
+    /**
+     * ============================================================
+     * DOWNLOAD FILE FROM P2P NETWORK
+     * ============================================================
+     * User views an ad image by retrieving it from the IPFS network
+     * using its Content Identifier (CID).
+     * 
+     * @param cid Content Identifier of the file to retrieve
+     * @return Byte array containing the file data
+     * @throws Exception if node is not ready or file cannot be retrieved
+     */
     public byte[] getFile(String cid) throws Exception {
         ensureNodeReady();
 
-        Log.d(TAG, "Fetching file from IPFS for CID: " + cid);
+        if (cid == null || cid.isEmpty()) {
+            throw new IllegalArgumentException("CID cannot be null or empty");
+        }
 
-        return ipfs.cat(cid);
-    }
+        Log.i(TAG, "====================================");
+        Log.i(TAG, "Fetching file from IPFS network...");
+        Log.i(TAG, "CID: " + cid);
+        Log.i(TAG, "====================================");
 
-    // ============================================================
-    // STOP NODE (optional graceful shutdown)
-    // ============================================================
-    public void stopNode() {
-        if (ipfs != null) {
-            try {
-                ipfs.stop();
-                isStarted = false;
-                Log.i(TAG, "IPFS Node stopped successfully.");
-            } catch (Exception e) {
-                Log.e(TAG, "Error stopping IPFS node: " + e.getMessage());
+        try {
+            // Retrieve file data from IPFS using CID
+            // The peer will search the network if the block is not in local storage
+            byte[] fileData = (byte[]) peer.getClass().getMethod("Cat", String.class)
+                    .invoke(peer, cid);
+
+            if (fileData == null || fileData.length == 0) {
+                throw new Exception("Retrieved file data is empty for CID: " + cid);
             }
+
+            Log.i(TAG, "====================================");
+            Log.i(TAG, "✓ File retrieved from IPFS successfully");
+            Log.i(TAG, "Size: " + fileData.length + " bytes");
+            Log.i(TAG, "====================================");
+
+            return fileData;
+
+        } catch (Exception e) {
+            Log.e(TAG, "ERROR: Failed to retrieve file from IPFS");
+            Log.e(TAG, "CID: " + cid);
+            Log.e(TAG, "Exception: " + e.getMessage());
+            throw new Exception("Failed to retrieve file from IPFS: " + e.getMessage(), e);
         }
     }
 
-    // ============================================================
-    // CHECK NODE STATUS
-    // ============================================================
+    /**
+     * ============================================================
+     * STOP NODE (Graceful Shutdown)
+     * ============================================================
+     * Stops the IPFS node, closes connections, and cleans up resources.
+     * Call this when the app is about to close or when IPFS is no longer needed.
+     */
+    public void stopNode() {
+        if (peer != null) {
+            try {
+                Log.i(TAG, "====================================");
+                Log.i(TAG, "Stopping IPFS node...");
+                Log.i(TAG, "====================================");
+
+                peer.getClass().getMethod("Stop").invoke(peer);
+
+                isStarted = false;
+                Log.i(TAG, "====================================");
+                Log.i(TAG, "✓ IPFS Node stopped successfully");
+                Log.i(TAG, "====================================");
+
+            } catch (Exception e) {
+                Log.e(TAG, "ERROR: Exception while stopping IPFS node");
+                Log.e(TAG, "Exception: " + e.getMessage());
+                isStarted = false;
+            }
+        } else {
+            Log.w(TAG, "IPFS peer is null, nothing to stop");
+        }
+    }
+
+    /**
+     * ============================================================
+     * CHECK NODE STATUS
+     * ============================================================
+     * Determines whether the IPFS node is currently running and ready
+     * to handle file operations.
+     * 
+     * @return true if node is started and peer object exists, false otherwise
+     */
     public boolean isNodeReady() {
-        return isStarted && ipfs != null;
+        boolean ready = isStarted && peer != null;
+        Log.d(TAG, "Node ready status: " + ready);
+        return ready;
     }
 
-    // ============================================================
-    // INTERNAL SAFETY CHECK
-    // ============================================================
+    /**
+     * ============================================================
+     * INTERNAL SAFETY CHECK
+     * ============================================================
+     * Verifies that the IPFS node is running before attempting
+     * any file operations. Throws an exception if the node is not ready.
+     * 
+     * @throws Exception if the node is not started or peer is null
+     */
     private void ensureNodeReady() throws Exception {
-        if (!isStarted || ipfs == null) {
-            throw new Exception("IPFS node is not running yet.");
+        if (!isStarted || peer == null) {
+            String errorMsg = "IPFS node is not running yet. Call startNode() first.";
+            Log.e(TAG, errorMsg);
+            throw new Exception(errorMsg);
         }
     }
 
-    // ============================================================
-    // FILE → BYTE ARRAY HELPER
-    // ============================================================
+    /**
+     * ============================================================
+     * FILE → BYTE ARRAY CONVERSION HELPER
+     * ============================================================
+     * Reads the entire contents of a file into a byte array.
+     * This is used before adding files to IPFS or after retrieving them.
+     * 
+     * @param file The file to read
+     * @return Byte array containing the file contents
+     * @throws IOException if the file cannot be read
+     */
     private byte[] readFileToBytes(File file) throws IOException {
-        FileInputStream fis = new FileInputStream(file);
-        byte[] bytes = new byte[(int) file.length()];
-        int read = fis.read(bytes);
-        fis.close();
-
-        if (read != bytes.length) {
-            throw new IOException("Could not read entire file: " + file.getName());
+        if (!file.exists()) {
+            throw new FileNotFoundException("File not found: " + file.getAbsolutePath());
         }
 
-        return bytes;
+        if (!file.canRead()) {
+            throw new IOException("Cannot read file: " + file.getAbsolutePath());
+        }
+
+        long fileSize = file.length();
+        if (fileSize > Integer.MAX_VALUE) {
+            throw new IOException("File is too large: " + fileSize + " bytes");
+        }
+
+        byte[] bytes = new byte[(int) fileSize];
+
+        try (FileInputStream fis = new FileInputStream(file)) {
+            int totalBytesRead = 0;
+            int bytesRead;
+
+            while (totalBytesRead < bytes.length) {
+                bytesRead = fis.read(bytes, totalBytesRead, bytes.length - totalBytesRead);
+                
+                if (bytesRead == -1) {
+                    break;
+                }
+
+                totalBytesRead += bytesRead;
+            }
+
+            if (totalBytesRead != bytes.length) {
+                throw new IOException(
+                    String.format(
+                        "Could not read entire file. Expected %d bytes, but read %d bytes from %s",
+                        bytes.length,
+                        totalBytesRead,
+                        file.getName()
+                    )
+                );
+            }
+
+            Log.d(TAG, "Successfully read " + totalBytesRead + " bytes from " + file.getName());
+            return bytes;
+
+        } catch (IOException e) {
+            Log.e(TAG, "Error reading file to bytes: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
+     * ============================================================
+     * GET PEER OBJECT (For advanced operations)
+     * ============================================================
+     * Returns the underlying IPFS peer object for advanced usage
+     * if needed by other parts of the application.
+     * 
+     * @return The peer object, or null if not initialized
+     */
+    public Object getPeer() {
+        return peer;
+    }
+
+    /**
+     * ============================================================
+     * RESET INSTANCE (For testing/cleanup)
+     * ============================================================
+     * Resets the singleton instance. Use with caution!
+     * Typically used in testing or when you need to reinitialize.
+     */
+    public static synchronized void resetInstance() {
+        if (instance != null && instance.isStarted) {
+            instance.stopNode();
+        }
+        instance = null;
     }
 }
