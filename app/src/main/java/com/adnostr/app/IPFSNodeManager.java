@@ -6,16 +6,13 @@ import android.util.Log;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 
-// These imports refer to the Go-mobile bindings included in your build.gradle
-import ipfslite.IpfsLite;
-import ipfslite.Peer;
+// Datahop IPFS-Lite imports
+import io.datahop.ipfslite.IPFS;
 
 /**
  * The Heart of AdNostr's P2P Storage.
- * Manages an embedded IPFS Lite node on the device.
+ * Powered by Datahop IPFS-Lite for modern Android P2P networking.
  * NO REGISTRATION, NO API KEYS, NO CENTRAL SERVER.
  */
 public class IPFSNodeManager {
@@ -23,7 +20,7 @@ public class IPFSNodeManager {
     private static final String TAG = "AdNostr_IPFSNode";
     private static IPFSNodeManager instance;
     
-    private IpfsLite node;
+    private IPFS ipfs;
     private final Context context;
     private boolean isStarted = false;
 
@@ -47,108 +44,107 @@ public class IPFSNodeManager {
     }
 
     /**
-     * Initializes and starts the embedded IPFS node.
-     * This should be called from the AdNostrApplication or a Foreground Service.
+     * Initializes and starts the embedded Datahop IPFS node.
      */
     public synchronized void startNode() {
         if (isStarted) return;
 
         new Thread(() -> {
             try {
-                Log.i(TAG, "Initializing Decentralized IPFS Node...");
+                Log.i(TAG, "Initializing Datahop P2P Node...");
 
-                // 1. Setup the local data directory
-                File repoPath = new File(context.getFilesDir(), "ipfs_repo");
-                if (!repoPath.exists()) repoPath.mkdirs();
+                // 1. Get the Datahop IPFS instance
+                ipfs = IPFS.getInstance(context);
 
-                // 2. Configure the Node with the Bootstrap Peers
-                node = IpfsLite.newNode(repoPath.getAbsolutePath());
+                // 2. Start the node
+                // This initializes the local repo and starts the P2P networking stack
+                ipfs.start();
 
-                // 3. Connect to the swarm
+                // 3. Connect to the public swarm via your bootstrap peers
                 for (String peerAddr : BOOTSTRAP_PEERS) {
                     try {
-                        node.connect(peerAddr);
-                        Log.d(TAG, "Connected to IPFS Bootstrap Peer: " + peerAddr);
+                        ipfs.connect(peerAddr);
+                        Log.d(TAG, "Connected to P2P Bootstrap Peer: " + peerAddr);
                     } catch (Exception e) {
-                        Log.w(TAG, "Failed to connect to peer: " + peerAddr);
+                        Log.w(TAG, "Could not reach peer: " + peerAddr);
                     }
                 }
 
                 isStarted = true;
-                Log.i(TAG, "IPFS Node is ONLINE and P2P Swarm is active.");
+                Log.i(TAG, "P2P Node is ONLINE. Sharing is enabled.");
 
             } catch (Exception e) {
-                Log.e(TAG, "CRITICAL: IPFS Node failed to start: " + e.getMessage());
+                Log.e(TAG, "CRITICAL: P2P Node failed to start: " + e.getMessage());
+                isStarted = false;
             }
         }).start();
     }
 
     /**
-     * ADVERTISER ACTION: Adds a file to the local IPFS node.
-     * Returns the CID string (e.g. Qm... or bafy...).
+     * ADVERTISER ACTION: Adds a file to the local P2P repository.
+     * 
+     * @param file The image file to be hosted.
+     * @return The resulting IPFS CID.
      */
     public String addFile(File file) throws Exception {
-        if (node == null || !isStarted) {
-            throw new Exception("IPFS Node is not started yet.");
+        if (ipfs == null || !isStarted) {
+            throw new Exception("P2P Engine is offline.");
         }
 
         byte[] fileData = readFileToByteArray(file);
         
-        // node.add() performs the hashing and adds it to the local P2P blockstore.
-        // It returns the CID which is the content fingerprint.
-        String cid = node.add(fileData);
+        // Datahop adds the bytes and returns the mathematical CID
+        String cid = ipfs.add(fileData);
         
-        // We 'pin' it locally so the Advertiser's phone will always host it 
-        // until they choose to delete the ad.
-        node.pin(cid);
-        
-        Log.i(TAG, "File Added to P2P Swarm. CID: " + cid);
+        Log.i(TAG, "Image hosted on P2P node. CID: " + cid);
         return cid;
     }
 
     /**
-     * USER ACTION: Fetches a file from the P2P network.
+     * USER ACTION: Fetches an image from the P2P network.
+     * 
+     * @param cid The CID of the image.
+     * @return Raw byte array of the image.
      */
     public byte[] getFile(String cid) throws Exception {
-        if (node == null || !isStarted) {
-            throw new Exception("IPFS Node is offline.");
+        if (ipfs == null || !isStarted) {
+            throw new Exception("P2P Node is not ready.");
         }
 
-        Log.d(TAG, "Requesting CID from P2P Network: " + cid);
+        Log.d(TAG, "Requesting data from P2P swarm for CID: " + cid);
         
-        // node.cat() fetches the blocks from the swarm (Advertiser -> Bootstrap -> User)
-        return node.cat(cid);
+        // Fetches blocks from the advertiser's phone or other seeding peers
+        return ipfs.get(cid);
     }
 
     /**
-     * DELETE ACTION: Removes the image from the local phone storage.
-     * Use this when the Advertiser deletes an ad to stop storage bloat.
+     * DELETE ACTION: Physically removes the file from the local device.
      */
     public void deleteFile(String cid) {
-        if (node == null || !isStarted) return;
+        if (ipfs == null || !isStarted) return;
 
         try {
-            // Unpin tells the node this CID is no longer a priority to host.
-            node.unpin(cid);
-            
-            // Trigger a Garbage Collection to physically wipe the blocks from disk.
-            node.repoGC();
-            
-            Log.i(TAG, "CID Unpinned and Deleted from local storage: " + cid);
+            // Remove the content from the local blockstore
+            ipfs.remove(cid);
+            Log.i(TAG, "P2P Storage Cleared for CID: " + cid);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to delete CID: " + e.getMessage());
+            Log.e(TAG, "Failed to wipe P2P content: " + e.getMessage());
         }
     }
 
     public boolean isNodeReady() {
-        return isStarted;
+        return isStarted && ipfs != null;
     }
 
     public void stopNode() {
-        if (node != null) {
-            node.close();
-            isStarted = false;
-            Log.i(TAG, "IPFS Node Shutdown Complete.");
+        if (ipfs != null) {
+            try {
+                ipfs.stop();
+                isStarted = false;
+                Log.i(TAG, "P2P Node Shutdown Successful.");
+            } catch (Exception e) {
+                Log.e(TAG, "Error during P2P shutdown: " + e.getMessage());
+            }
         }
     }
 
