@@ -2,15 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Network permissions for Nostr WebSockets and IPFS Gateways -->
+    <!-- Network permissions for Nostr WebSockets and IPFS P2P Swarm -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- MANDATORY FOR P2P: Allows the IPFS node to stay alive when the screen is off -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- MANDATORY FOR ANDROID 14 (API 34): Allows the P2P node to share data in the background -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Advertiser GPS Location for generating shop map links -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- STORAGE PERMISSIONS: Required to select and upload images to IPFS -->
+    <!-- STORAGE PERMISSIONS: Required to select images from gallery -->
     <!-- For devices running Android 12 (API 32) and below -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
         android:maxSdkVersion="32" />
@@ -18,7 +26,6 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <!-- Background Execution & WorkManager for listening to Ad Relays -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Notifications for alerting Users about new Local Deals (API 33+) -->
@@ -73,13 +80,24 @@
             android:theme="@style/Theme.AdNostr.Transparent" />
 
         <!-- CRITICAL: The Global Error Display Activity -->
-        <!-- Runs in a separate process to capture crashes from the main process -->
         <activity
             android:name=".ErrorDisplayActivity"
             android:process=":error_handler"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- ================================================================= -->
+        <!-- DECENTRALIZED P2P NODE SERVICE -->
+        <!-- ================================================================= -->
+        <!-- This service runs the embedded Go-IPFS node. It is marked as 
+             'dataSync' foreground type to comply with Android 14 rules for 
+             P2P file sharing. -->
+        <service
+            android:name=".IPFSNodeService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 
