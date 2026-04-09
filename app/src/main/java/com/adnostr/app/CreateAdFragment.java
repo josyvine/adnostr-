@@ -20,7 +20,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
-import androidx.navigation.Navigation;
 
 import com.adnostr.app.databinding.FragmentCreateAdBinding;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -30,14 +29,15 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 /**
  * Ad Creation Interface for Advertisers.
- * UPDATED: Fixed File Picker, Real Reach Discovery, and verified Broadcast sync.
+ * UPDATED: Restored detailed Advertiser Logging to Console and routed IPFS errors to Network Console.
  * FIXED: Changed Kind to 30001 as per Ad Event specification.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * FIXED: Displays discovered usernames in brackets during Reach Discovery.
@@ -152,7 +152,19 @@ public class CreateAdFragment extends Fragment {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
                             binding.tvImageCount.setText("Upload Failed");
-                            Toast.makeText(getContext(), "IPFS Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            
+                            // FIX: Extract raw Java exception and show it in the Big Screen Console instead of a Toast
+                            StringWriter sw = new StringWriter();
+                            PrintWriter pw = new PrintWriter(sw);
+                            e.printStackTrace(pw);
+                            String rawStackTrace = sw.toString();
+
+                            RelayReportDialog dialog = RelayReportDialog.newInstance(
+                                    "IPFS UPLOAD FAILURE",
+                                    "Error communicating with decentralized storage gateway.",
+                                    "RAW EXCEPTION:\n" + rawStackTrace
+                            );
+                            dialog.showSafe(getChildFragmentManager(), "IPFS_ERROR_CONSOLE");
                         });
                     }
                 }
@@ -353,7 +365,15 @@ public class CreateAdFragment extends Fragment {
 
         NostrPublisher.publishToPool(relayPool, signedEvent, (relayUrl, success, message) -> {
             finishedNodes[0]++;
+            
+            // FIX: Restoring the highly detailed advertiser logging logic.
+            // Appends [OK]/[FAIL] and then explicitly appends the exact Payload/ACK message below it.
             technicalLogs.append(success ? "[OK] " : "[FAIL] ").append(relayUrl).append("\n");
+            if (message != null && !message.isEmpty()) {
+                technicalLogs.append(" > ").append(message).append("\n\n");
+            } else {
+                technicalLogs.append("\n");
+            }
 
             if (isAdded() && getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
