@@ -2,32 +2,21 @@
 
 buildscript {
     repositories {
-        // Modern required repositories for plugin resolution
         google()
         mavenCentral()
     }
     dependencies {
-        // --- THIS IS THE FIX ---
         // Upgrade the Android Gradle Plugin to a version compatible with modern libraries and SDK 34.
         classpath 'com.android.tools.build:gradle:8.1.4'
-        
-        // Add the Google services classpath for Firebase/Location integration
+        // Add the Google services classpath for Firebase integration
         classpath 'com.google.gms:google-services:4.4.1'
     }
 }
 
-allprojects {
-    repositories {
-        // Repositories used by all sub-modules (app, etc.)
-        google()
-        mavenCentral()
-        
-        // Jitpack is required for specialized decentralized networking libraries
-        maven { url "https://jitpack.io" }
-    }
-}
+// CRITICAL FIX: The 'allprojects' block has been REMOVED. 
+// Repositories are now declared in settings.gradle to comply with Gradle 8.0 
+// and fix the "package does not exist" error.
 
-// Task to ensure a clean state before new builds
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
