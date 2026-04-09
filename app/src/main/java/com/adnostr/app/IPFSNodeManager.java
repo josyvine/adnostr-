@@ -132,10 +132,16 @@ public class IPFSNodeManager {
         }
     }
 
+    /**
+     * Checks if the P2P stack is initialized and running.
+     */
     public boolean isNodeReady() {
         return isStarted && ipfs != null;
     }
 
+    /**
+     * Gracefully shuts down the P2P engine.
+     */
     public void stopNode() {
         if (ipfs != null) {
             try {
@@ -148,11 +154,17 @@ public class IPFSNodeManager {
         }
     }
 
+    /**
+     * Internal utility to read file bytes before passing to the native library.
+     */
     private byte[] readFileToByteArray(File file) throws IOException {
         FileInputStream fis = new FileInputStream(file);
         byte[] bArray = new byte[(int) file.length()];
-        fis.read(bArray);
+        int bytesRead = fis.read(bArray);
         fis.close();
+        if (bytesRead != bArray.length) {
+            throw new IOException("Could not read full file: " + file.getName());
+        }
         return bArray;
     }
 }
