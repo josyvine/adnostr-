@@ -7,7 +7,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 
-// Datahop IPFS-Lite imports
+// Datahop IPFS-Lite imports provided by the AAR library
 import io.datahop.ipfslite.IPFS;
 
 /**
