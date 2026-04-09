@@ -159,12 +159,13 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
             
-            // FIXED: Manual string construction for content to ensure SHA-256 consistency.
-            // Using raw string avoids JSONObject escaping behavior which causes "Bad Event ID".
+            // FIXED: Send the username as a plain string instead of JSON format.
+            // This prevents Android's JSONObject from escaping quotes and causing "bad event id" 
+            // mismatch hashes at the relay level.
             String contentStr = "";
             String savedName = db.getUsername();
             if (savedName != null && !savedName.isEmpty()) {
-                contentStr = "{\"username\":\"" + savedName + "\"}";
+                contentStr = savedName; 
             }
             event.put("content", contentStr); 
 
