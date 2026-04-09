@@ -1,8 +1,34 @@
-# These rules fix the crash when analyzing PDF files.
+# =========================================================
+# PROGUARD / R8 RULES FOR ADNOSTR RELEASE BUILD
+# =========================================================
 
-# Rule 1: Prevents the PDF library's code from being altered or removed by the build process.
+
+# =========================================================
+# PDFBOX (PDF ANALYZER) RULES
+# =========================================================
+# Prevents the PDF library's code from being altered or removed
 -keep class com.tom_roush.pdfbox.** { *; }
 
-# Rule 2: Prevents the PDF library's essential resource files (like glyphlist.txt) 
-# from being deleted by the build process. This is the direct fix for the crash.
+# Prevents essential PDFBox resource files from being removed
 -keepresources com/tom_roush/pdfbox/resources/**
+
+
+
+# =========================================================
+# DATAHOP IPFS LITE (CRITICAL - DO NOT REMOVE)
+# =========================================================
+# Keep Datahop Java wrapper classes
+-keep class io.datahop.** { *; }
+-keep class io.ipfs.** { *; }
+
+# Keep Go mobile bindings (generated JNI bridge)
+-keep class go.** { *; }
+
+# Prevent stripping of native JNI methods
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Keep annotations and generic signatures
+-keepattributes *Annotation*
+-keepattributes Signature
