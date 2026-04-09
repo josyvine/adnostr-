@@ -28,6 +28,9 @@ import java.util.Set;
  * USER MODE: Displays received ads; performs local device deletion only.
  * ADVERTISER MODE: Displays broadcasted ads; performs local deletion AND 
  * generates/signs/broadcasts Nostr Kind 5 Deletion events to the network.
+ * 
+ * FIXED: Persistent Delete FAB bug and IndexOutOfBoundsException by clearing selection 
+ * immediately after the deletion process.
  */
 public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnAdHistoryClickListener {
 
@@ -120,42 +123,48 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
      * Logic to handle the deletion of selected ad events.
      */
     private void processDeletion() {
+        // 1. Get the list of items to delete
         List<String> selectedItems = adapter.getSelectedItems();
-        if (selectedItems.isEmpty()) return;
+        
+        // 2. CRITICAL SAFETY: If nothing is selected, hide button and exit
+        if (selectedItems == null || selectedItems.isEmpty()) {
+            adapter.clearSelection(); 
+            return;
+        }
 
+        // 3. Perform Deletion
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
-            // Logic for Users: Local Deletion Only
             for (String ad : selectedItems) {
                 db.deleteFromUserHistory(ad);
             }
             Toast.makeText(getContext(), "Selected ads removed locally.", Toast.LENGTH_SHORT).show();
-            loadHistoryData();
         } else {
-            // Logic for Advertisers: Local Deletion + Network Wipe (Kind 5)
             broadcastNostrDeletion(selectedItems);
         }
+
+        // 4. FIX: Clear selection immediately to hide the FAB and prevent double-clicks
+        adapter.clearSelection();
+
+        // 5. Refresh the list UI
+        loadHistoryData();
     }
 
     /**
      * ADVERTISER ONLY: Implements NIP-09 (Event Deletion).
-     * Generates a Kind 5 event for each selected ad, signs it, and broadcasts it to relays.
      */
     private void broadcastNostrDeletion(List<String> adsToDelete) {
         try {
             for (String fullPayload : adsToDelete) {
-                // Extract the Ad Event Object from the full Nostr message array
                 JSONArray msgArray = new JSONArray(fullPayload);
                 JSONObject adEvent = msgArray.getJSONObject(2);
                 String adEventId = adEvent.getString("id");
 
-                // 1. Construct Kind 5 Deletion Event
                 JSONObject deletionEvent = new JSONObject();
                 deletionEvent.put("kind", 5);
                 deletionEvent.put("pubkey", db.getPublicKey());
                 deletionEvent.put("created_at", System.currentTimeMillis() / 1000);
                 deletionEvent.put("content", "Ad removed by advertiser.");
 
-                // 2. Add the 'e' tag targeting the specific Ad Event ID (NIP-09)
                 JSONArray tags = new JSONArray();
                 JSONArray eTag = new JSONArray();
                 eTag.put("e");
@@ -163,26 +172,18 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
                 tags.put(eTag);
                 deletionEvent.put("tags", tags);
 
-                // 3. Sign the Deletion Event with the advertiser's private key
                 JSONObject signedDeletion = NostrEventSigner.signEvent(db.getPrivateKey(), deletionEvent);
 
                 if (signedDeletion != null) {
-                    // 4. Broadcast to the entire relay pool to wipe the ad from network
                     NostrPublisher.publishToPool(db.getRelayPool(), signedDeletion, (relayUrl, success, message) -> {
-                        // Technical logging handled by NostrPublisher
+                        // Logging handled by publisher
                     });
-
-                    // 5. Cleanup local record
                     db.deleteFromAdvertiserHistory(fullPayload);
                 }
             }
-
-            Toast.makeText(getContext(), "Ads deleted locally and broadcasted for network wipe.", Toast.LENGTH_LONG).show();
-            loadHistoryData();
-
+            Toast.makeText(getContext(), "Ads deleted locally and broadcasted.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             Log.e(TAG, "NIP-09 Deletion Failure: " + e.getMessage());
-            Toast.makeText(getContext(), "Deletion failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
