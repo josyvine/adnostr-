@@ -18,34 +18,44 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # STEP: Download the large AAR file directly to the build server
-      # This bypasses the GitHub 25MB upload limit
+      # Download the large Datahop AAR directly on the runner
       - name: Download Datahop AAR
         run: |
           mkdir -p app/libs
           curl -L https://github.com/datahop/ipfs-lite/releases/download/v0.0.15/datahop.aar -o app/libs/datahop.aar
 
-      # STEP: Verify the file exists and check its size
-      # If this step shows 0 bytes, the build will fail here instead of during compilation
+      # Confirm file exists (debug safety)
       - name: Check AAR presence
         run: ls -lh app/libs/
 
-      # Decode the Keystore file from your GitHub Secrets
+      # Decode signing keystore
       - name: Decode Keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
 
+      # 🔥 CRITICAL: Clean Gradle caches to force AAR class indexing
+      - name: Clean Gradle Cache
+        run: |
+          rm -rf ~/.gradle/caches/
+          rm -rf ~/.gradle/daemon/
+          rm -rf ~/.gradle/native/
+
+      # 🔥 CRITICAL: Clean project before build
+      - name: Gradle Clean
+        run: ./gradlew clean
+
+      # Build signed release APK
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
           gradle-version: '8.0'
           cache-disabled: true
-          arguments: app:assembleRelease
+          arguments: app:assembleRelease --refresh-dependencies --no-build-cache
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # Upload the signed RELEASE APK as an artifact
+      # Upload signed APK artifact
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
