@@ -15,9 +15,10 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // MANDATORY FOR P2P / DATAHOP:
-        // P2P libraries contain native Go code. We must specify which processor 
-        // architectures to support to prevent the app from crashing on different phones.
+        // MANDATORY FOR LOCAL P2P MODULE:
+        // Since we are now compiling the 'ipfslite' module locally, we must
+        // define these filters so the Go-mobile tool knows which native 
+        // CPU architectures to build for.
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
         }
@@ -50,9 +51,9 @@ android {
     }
 
     packagingOptions {
-        // MANDATORY FOR DATAHOP:
+        // MANDATORY FOR IPFS:
         // Prevents build errors caused by duplicate native libraries and 
-        // metadata properties files found in the P2P Go-mobile packages.
+        // metadata properties files generated during the local Go-compilation.
         resources {
             excludes += [
                 'META-INF/DEPENDENCIES', 
@@ -66,7 +67,8 @@ android {
         }
         
         // These 'pickFirst' rules prevent the "Duplicate File" build error
-        // caused by Go-native code conflicting with standard Android libraries.
+        // when the local ':ipfslite' module and standard Android libraries
+        // both try to include the C++ shared runtime.
         pickFirst 'lib/x86/libc++_shared.so'
         pickFirst 'lib/x86_64/libc++_shared.so'
         pickFirst 'lib/armeabi-v7a/libc++_shared.so'
@@ -103,11 +105,12 @@ dependencies {
     implementation 'io.coil-kt:coil:2.6.0'
 
     // =========================================================================
-    // TRUE DECENTRALIZED STORAGE: DATAHOP IPFS-LITE (P2P)
+    // TRUE DECENTRALIZED STORAGE: LOCAL P2P MODULE
     // =========================================================================
-    // FIXED: Using the verified JitPack coordinate for Datahop.
-    // Replaces the old Berty and dead Bintray coordinates to fix the build error.
-    implementation 'com.github.datahop:ipfs-lite-android:v0.0.10'
+    // FIXED: Removed external JitPack coordinate.
+    // The app now links directly to the source code in your '/ipfslite' folder.
+    // This completely bypasses the 401 Unauthorized server error.
+    implementation project(":ipfslite")
 
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
