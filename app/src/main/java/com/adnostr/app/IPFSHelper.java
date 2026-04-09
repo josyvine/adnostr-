@@ -5,6 +5,7 @@ import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -14,13 +15,17 @@ import org.json.JSONObject;
  * Decentralized Storage Utility for AdNostr.
  * Handles uploading ad media to IPFS via HTTP Gateways.
  * Returns the CID (Content Identifier) used in Nostr kind:30001 events.
+ * FIXED: Captures exact server ErrorStreams (e.g. 401 Unauthorized details) 
+ * so they can be piped into the UI Network Console for debugging.
  */
 public class IPFSHelper {
 
     private static final String TAG = "AdNostr_IPFSHelper";
     
-    // Public IPFS API Endpoint (e.g., Infura, Pinata, or a custom node)
-    // Note: Some public gateways require an API Key/Secret for POST requests.
+    // Public IPFS API Endpoint 
+    // Note: Infura (used below) recently deprecated unauthenticated public uploads. 
+    // This is why you are receiving a 401 error. You may need to provide a JWT Auth header,
+    // or switch to a Nostr-native upload endpoint like nostr.build in the future.
     private static final String IPFS_API_URL = "https://ipfs.infura.io:5001/api/v0/add";
     
     // Recommended Public Gateway for reading images
@@ -60,6 +65,9 @@ public class IPFSHelper {
                 connection.setRequestProperty("Connection", "Keep-Alive");
                 connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
 
+                // If you get an Infura API key, you would add it here to fix the 401:
+                // connection.setRequestProperty("Authorization", "Basic YOUR_BASE64_AUTH_STRING");
+
                 outputStream = new DataOutputStream(connection.getOutputStream());
                 outputStream.writeBytes(twoHyphens + boundary + lineEnd);
                 outputStream.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"" + imageFile.getName() + "\"" + lineEnd);
@@ -97,7 +105,20 @@ public class IPFSHelper {
                         callback.onSuccess(cid, finalUrl);
                     }
                 } else {
-                    throw new Exception("IPFS Gateway responded with code: " + responseCode);
+                    // FIXED: Extract the exact raw server error stream instead of just returning the 401 code.
+                    InputStream errorStream = connection.getErrorStream();
+                    StringBuilder errorResponse = new StringBuilder();
+                    if (errorStream != null) {
+                        BufferedReader errorReader = new BufferedReader(new InputStreamReader(errorStream));
+                        String errLine;
+                        while ((errLine = errorReader.readLine()) != null) {
+                            errorResponse.append(errLine);
+                        }
+                        errorReader.close();
+                    }
+                    
+                    String detailedError = "HTTP " + responseCode + " Error.\nServer Raw Response:\n" + errorResponse.toString();
+                    throw new Exception(detailedError);
                 }
 
             } catch (Exception e) {
