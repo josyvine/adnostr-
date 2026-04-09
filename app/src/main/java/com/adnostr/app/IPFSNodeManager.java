@@ -23,7 +23,7 @@ import io.ipfs.lite.IPFS;
  */
 public class IPFSNodeManager {
 
-    private static final String TAG = "AdNostr_IPFSNode";
+    private static final String TAG = "AdNostr_IPFSNode"; 
     private static IPFSNodeManager instance;
 
     private IPFS ipfs;
