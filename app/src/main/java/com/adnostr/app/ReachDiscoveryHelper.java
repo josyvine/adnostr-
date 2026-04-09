@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
  * FIXED: Implements Pool Alignment, Tag Sanitization, and Increased Parallelism.
  * UPDATED: Added Relay NOTICE and CLOSED handling to debug "0 users found" issues.
  * FIXED: Extracts usernames from the content payload to identify users in the search results.
+ * FIXED: Support for both JSON and Plain-Text usernames to ensure discovery visibility.
  */
 public class ReachDiscoveryHelper {
 
@@ -137,16 +138,25 @@ public class ReachDiscoveryHelper {
                             String pubkey = event.getString("pubkey");
                             results.add(pubkey); 
 
-                            // NEW: Try to parse the content JSON for a username
-                            String contentStr = event.optString("content", "");
-                            if (!contentStr.isEmpty() && contentStr.startsWith("{")) {
-                                try {
-                                    JSONObject contentJson = new JSONObject(contentStr);
-                                    String foundName = contentJson.optString("username", "");
-                                    if (!foundName.isEmpty()) {
-                                        usernames.add(foundName);
+                            // FIXED: Robust parsing for Username
+                            String contentStr = event.optString("content", "").trim();
+                            if (!contentStr.isEmpty()) {
+                                if (contentStr.startsWith("{")) {
+                                    // Handle legacy/alternate JSON format
+                                    try {
+                                        JSONObject contentJson = new JSONObject(contentStr);
+                                        String foundName = contentJson.optString("username", "");
+                                        if (!foundName.isEmpty()) {
+                                            usernames.add(foundName);
+                                        }
+                                    } catch (Exception ignored) {}
+                                } else {
+                                    // Handle fixed Plain-Text format (resolves escaping signature rejections)
+                                    // Make sure we don't accidentally add advertiser ad titles as usernames
+                                    if (!contentStr.contains("\"title\"")) {
+                                        usernames.add(contentStr);
                                     }
-                                } catch (Exception ignored) {}
+                                }
                             }
 
                         } else if ("EOSE".equals(type)) {
@@ -191,4 +201,4 @@ public class ReachDiscoveryHelper {
             latch.countDown();
         }
     }
-} 
+}
