@@ -14,6 +14,13 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // MANDATORY FOR IPFS LITE:
+        // P2P libraries contain native Go code. We must specify which processor 
+        // architectures to support to prevent the app from crashing on different phones.
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
     }
 
     signingConfigs {
@@ -43,9 +50,15 @@ android {
     }
 
     packagingOptions {
+        // MANDATORY FOR IPFS LITE:
+        // Prevents build errors caused by duplicate native libraries in the P2P packages.
         resources {
-            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/notice.txt', 'META-INF/ASL2.0']
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/io.netty.versions.properties', 'META-INF/INDEX.LIST']
         }
+        pickFirst 'lib/x86/libc++_shared.so'
+        pickFirst 'lib/x86_64/libc++_shared.so'
+        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
     }
 }
 
@@ -58,7 +71,7 @@ dependencies {
     // Flexbox Layout (Required for Ad Popup Card)
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
     
-    // SwipeRefreshLayout (REQUIRED FIX: Needed for Marketplace list refresh)
+    // SwipeRefreshLayout (Needed for Marketplace list refresh)
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
 
     // Navigation
@@ -71,11 +84,18 @@ dependencies {
     // Cryptography (For Nostr Secp256k1/Schnorr keys)
     implementation 'org.bouncycastle:bcprov-jdk15to18:1.77'
 
-    // JSON Parsing (Using Gson for perfect Java compatibility instead of Kotlinx)
+    // JSON Parsing
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // Image Loading (From IPFS HTTP Gateways)
+    // Image Loading
     implementation 'io.coil-kt:coil:2.6.0'
+
+    // =========================================================================
+    // TRUE DECENTRALIZED STORAGE: IPFS LITE (P2P)
+    // =========================================================================
+    // This provides the embedded Go-IPFS node logic for Android.
+    // It enables add(), cat(), and pin() without a central gateway/registration.
+    implementation 'com.github.berty:ipfs-lite-android:1.0.0' 
 
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
