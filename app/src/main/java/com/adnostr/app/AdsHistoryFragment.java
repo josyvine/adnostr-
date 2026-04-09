@@ -26,11 +26,10 @@ import java.util.Set;
  * Ads History & Deletion System.
  * FEATURE: Handles local history viewing and decentralized deletion (NIP-09).
  * USER MODE: Displays received ads; performs local device deletion only.
- * ADVERTISER MODE: Displays broadcasted ads; performs local deletion AND 
- * generates/signs/broadcasts Nostr Kind 5 Deletion events to the network.
+ * ADVERTISER MODE: Displays broadcasted ads; performs local deletion, 
+ * generates Nostr Kind 5 Deletion events, AND physically wipes IPFS P2P storage.
  * 
- * FIXED: Persistent Delete FAB bug and IndexOutOfBoundsException by clearing selection 
- * immediately after the deletion process.
+ * FIXED: Implemented IPFS P2P local file deletion to prevent storage bloat.
  */
 public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnAdHistoryClickListener {
 
@@ -139,7 +138,8 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
             }
             Toast.makeText(getContext(), "Selected ads removed locally.", Toast.LENGTH_SHORT).show();
         } else {
-            broadcastNostrDeletion(selectedItems);
+            // Logic for Advertisers: Local Deletion + Nostr Wipe + IPFS P2P Storage Wipe
+            broadcastNostrDeletionAndWipeP2P(selectedItems);
         }
 
         // 4. FIX: Clear selection immediately to hide the FAB and prevent double-clicks
@@ -150,15 +150,18 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
     }
 
     /**
-     * ADVERTISER ONLY: Implements NIP-09 (Event Deletion).
+     * ADVERTISER ONLY: Implements NIP-09 (Event Deletion) and P2P Storage Cleanup.
      */
-    private void broadcastNostrDeletion(List<String> adsToDelete) {
+    private void broadcastNostrDeletionAndWipeP2P(List<String> adsToDelete) {
         try {
+            IPFSNodeManager nodeManager = IPFSNodeManager.getInstance(requireContext());
+
             for (String fullPayload : adsToDelete) {
                 JSONArray msgArray = new JSONArray(fullPayload);
                 JSONObject adEvent = msgArray.getJSONObject(2);
                 String adEventId = adEvent.getString("id");
 
+                // --- PART 1: BROADCAST NOSTR KIND 5 ---
                 JSONObject deletionEvent = new JSONObject();
                 deletionEvent.put("kind", 5);
                 deletionEvent.put("pubkey", db.getPublicKey());
@@ -178,12 +181,34 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
                     NostrPublisher.publishToPool(db.getRelayPool(), signedDeletion, (relayUrl, success, message) -> {
                         // Logging handled by publisher
                     });
+                    
+                    // Cleanup local database record
                     db.deleteFromAdvertiserHistory(fullPayload);
                 }
+
+                // --- PART 2: WIPE PHYSICAL IPFS STORAGE ---
+                // Parse content to find CIDs that need to be unpinned
+                String contentRaw = adEvent.optString("content", "");
+                if (!contentRaw.isEmpty()) {
+                    JSONObject content = new JSONObject(contentRaw);
+                    Object imageObj = content.opt("image");
+                    
+                    if (imageObj instanceof JSONArray) {
+                        JSONArray imgArr = (JSONArray) imageObj;
+                        for (int i = 0; i < imgArr.length(); i++) {
+                            String cid = imgArr.getString(i).replace("ipfs://", "");
+                            nodeManager.deleteFile(cid);
+                        }
+                    } else if (imageObj instanceof String) {
+                        String cid = ((String) imageObj).replace("ipfs://", "");
+                        nodeManager.deleteFile(cid);
+                    }
+                }
             }
-            Toast.makeText(getContext(), "Ads deleted locally and broadcasted.", Toast.LENGTH_LONG).show();
+            Toast.makeText(getContext(), "Ads deleted and storage space freed.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            Log.e(TAG, "NIP-09 Deletion Failure: " + e.getMessage());
+            Log.e(TAG, "Deletion/Wipe Failure: " + e.getMessage());
+            Toast.makeText(getContext(), "Error during wipe: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
