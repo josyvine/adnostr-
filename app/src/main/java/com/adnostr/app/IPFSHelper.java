@@ -7,20 +7,19 @@ import org.json.JSONObject;
 
 /**
  * Decentralized Storage Utility for AdNostr.
- * UPDATED: Replaced centralized HTTP gateways with local P2P IPFS Node logic.
- * This class now acts as a bridge to the embedded Go-IPFS Lite node.
+ * Acts as the bridge between the UI and the Datahop P2P Engine.
  * 
- * NO REGISTRATION REQUIRED. NO API KEYS. TRUE PEER-TO-PEER.
+ * NO REGISTRATION REQUIRED. NO API KEYS. 
+ * ZERO DEPENDENCY ON CENTRALIZED UPLOAD PROVIDERS.
  */
 public class IPFSHelper {
 
     private static final String TAG = "AdNostr_IPFSHelper";
     
     // Public Read-Only Gateways (Used for the Automatic Fallback Safety Net)
-    // These gateways do not require registration for viewing/downloading images.
+    // Uploading to these is restricted, but viewing/downloading is free and anonymous.
     private static final String FALLBACK_GATEWAY_1 = "https://cloudflare-ipfs.com/ipfs/";
     private static final String FALLBACK_GATEWAY_2 = "https://ipfs.io/ipfs/";
-    private static final String FALLBACK_GATEWAY_3 = "https://gateway.pinata.cloud/ipfs/";
 
     /**
      * Interface for handling asynchronous IPFS results.
@@ -31,43 +30,41 @@ public class IPFSHelper {
     }
 
     /**
-     * ADVERTISER LOGIC: Adds an image to the local P2P node.
-     * This does NOT upload to a server; it hashes the file locally and 
-     * begins announcing it to the P2P swarm via bootstrap peers.
+     * ADVERTISER LOGIC: Adds an image to the local P2P node repository.
+     * The file stays on the phone and is announced to the network. 
+     * No data is sent to a central server.
      * 
-     * @param imageFile The local image file to be decentralized.
+     * @param imageFile The local image file selected by the advertiser.
      * @param callback The result listener.
      */
     public static void uploadImage(final File imageFile, final IPFSUploadCallback callback) {
-        // We run this in a thread to keep the UI smooth
         new Thread(() -> {
             try {
-                Log.i(TAG, "Starting local P2P 'Add' for: " + imageFile.getName());
+                Log.i(TAG, "Initiating local P2P hosting for: " + imageFile.getName());
 
-                // 1. Get the instance of the internal P2P node
-                // Note: IPFSNodeManager must be initialized in AdNostrApplication first
+                // 1. Get instance of the Datahop Node Manager
                 IPFSNodeManager nodeManager = IPFSNodeManager.getInstance(null);
 
                 if (!nodeManager.isNodeReady()) {
-                    throw new Exception("P2P Node is still starting. Please wait a few seconds.");
+                    throw new Exception("P2P Engine is still warming up. Please try again in 5 seconds.");
                 }
 
-                // 2. Add the file to the local P2P repository
-                // This returns the mathematical CID (Content Identifier)
+                // 2. Add the file to the local P2P blockstore
+                // This generates the unique mathematical CID (Content Identifier)
                 String cid = nodeManager.addFile(imageFile);
 
-                // 3. Generate the primary decentralized link
-                String ipfsLink = "ipfs://" + cid;
+                // 3. Construct the protocol link for Nostr JSON
+                String ipfsProtocolLink = "ipfs://" + cid;
 
-                Log.i(TAG, "P2P Add Success. Local CID: " + cid);
+                Log.i(TAG, "P2P Hosting Success. CID: " + cid);
 
-                // 4. Return success to the Fragment
+                // 4. Return success back to the CreateAdFragment
                 if (callback != null) {
-                    callback.onSuccess(cid, ipfsLink);
+                    callback.onSuccess(cid, ipfsProtocolLink);
                 }
 
             } catch (Exception e) {
-                Log.e(TAG, "P2P Storage Failed: " + e.getMessage());
+                Log.e(TAG, "P2P Hosting Failed: " + e.getMessage());
                 if (callback != null) {
                     callback.onFailure(e);
                 }
@@ -77,28 +74,24 @@ public class IPFSHelper {
 
     /**
      * USER LOGIC: Automatic Fallback Resolver.
-     * If the P2P network is slow (due to NAT/Firewall), this method provides 
-     * the HTTP mirror URL to ensure the ad shows up instantly.
+     * If a direct P2P 'leech' from the Advertiser's phone is blocked by 
+     * a mobile firewall/NAT, this method provides a public HTTP bridge URL.
      * 
-     * @param cid The Content Identifier from the Nostr JSON.
-     * @return A public HTTP URL that mirrors the decentralized content.
+     * @param cid The IPFS CID (with or without protocol prefix).
+     * @return A fast public HTTP mirror link.
      */
     public static String getFallbackUrl(String cid) {
         if (cid == null || cid.isEmpty()) return "";
         
-        // Remove the ipfs:// prefix if present
+        // Remove the ipfs:// prefix to get the raw CID string
         String cleanCid = cid.replace("ipfs://", "");
         
-        // We use Cloudflare as the primary fallback because it is the fastest 
-        // HTTP bridge to the IPFS P2P network.
+        // Return the fastest public mirror (Cloudflare)
         return FALLBACK_GATEWAY_1 + cleanCid;
     }
 
     /**
-     * Converts an IPFS CID into a standard ipfs:// protocol string.
-     * 
-     * @param cid The Content Identifier.
-     * @return Protocol formatted string.
+     * Standardizes a CID into an ipfs:// formatted string for storage in Nostr events.
      */
     public static String generateGatewayUrl(String cid) {
         if (cid == null || cid.isEmpty()) return "";
