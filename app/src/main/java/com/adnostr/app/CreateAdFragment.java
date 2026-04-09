@@ -37,13 +37,10 @@ import java.util.Set;
 
 /**
  * Ad Creation Interface for Advertisers.
- * UPDATED: Restored detailed Advertiser Logging to Console and routed IPFS errors to Network Console.
- * FIXED: Changed Kind to 30001 as per Ad Event specification.
+ * UPDATED: Replaced centralized HTTP upload with local P2P IPFS Hosting.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
- * FIXED: Displays discovered usernames in brackets during Reach Discovery.
  * FIXED: Enforced manual string construction for content JSON to resolve "invalid: bad event id".
- * NEW: Implemented real IPFSHelper upload logic and multi-image JSONArray support.
- * NEW: Saves broadcasted ads to Advertiser History DB.
+ * NEW: Uses the embedded IPFS node to host images directly from the phone.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -97,13 +94,13 @@ public class CreateAdFragment extends Fragment {
         db = AdNostrDatabaseHelper.getInstance(requireContext());
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireContext());
 
-        // 1. FIXED: Open Real File Manager for IPFS Media
+        // 1. Open Real File Manager for Media
         binding.btnAddImage.setOnClickListener(v -> openFilePicker());
 
         // 2. Location Logic (GPS capture)
         binding.btnCaptureLocation.setOnClickListener(v -> captureBusinessLocation());
 
-        // 3. FIXED: Real Hashtag Reach Discovery (No more random numbers)
+        // 3. Real Hashtag Reach Discovery
         binding.btnDiscoverReach.setOnClickListener(v -> discoverHashtagReach());
 
         // 4. Broadcast Action
@@ -111,18 +108,17 @@ public class CreateAdFragment extends Fragment {
     }
 
     /**
-     * Triggers the Android system file manager to allow advertiser to select media.
-     * Support multiple image selection for the swiping feature.
+     * Triggers the Android system file manager.
      */
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_PICK);
         intent.setType("image/*");
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true); // Enable multi-selection
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         imagePickerLauncher.launch(intent);
     }
 
     /**
-     * REAL LOGIC: Resolves the Uri to a File and calls IPFSHelper for decentralized storage.
+     * REAL P2P LOGIC: Resolves the Uri to a File and adds it to the internal IPFS Node.
      */
     private void handleSelectedImage(Uri uri) {
         try {
@@ -132,17 +128,19 @@ public class CreateAdFragment extends Fragment {
                 return;
             }
 
-            binding.tvImageCount.setText("Uploading to IPFS...");
+            // Update UI to reflect P2P state
+            binding.tvImageCount.setText("Preparing P2P Host...");
 
+            // Use the P2P version of uploadImage (local 'Add' & 'Pin')
             IPFSHelper.uploadImage(file, new IPFSHelper.IPFSUploadCallback() {
                 @Override
-                public void onSuccess(String cid, String gatewayUrl) {
+                public void onSuccess(String cid, String ipfsUrl) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            // Collect the real ipfs:// URL
-                            ipfsImageCIDs.add("ipfs://" + cid);
-                            binding.tvImageCount.setText(ipfsImageCIDs.size() + " Media Items Ready");
-                            Toast.makeText(getContext(), "Decentralized Upload Success", Toast.LENGTH_SHORT).show();
+                            // Collect the local ipfs:// CID
+                            ipfsImageCIDs.add(ipfsUrl);
+                            binding.tvImageCount.setText(ipfsImageCIDs.size() + " P2P Media Items Ready");
+                            Toast.makeText(getContext(), "P2P Hosting Ready", Toast.LENGTH_SHORT).show();
                         });
                     }
                 }
@@ -151,17 +149,17 @@ public class CreateAdFragment extends Fragment {
                 public void onFailure(Exception e) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            binding.tvImageCount.setText("Upload Failed");
+                            binding.tvImageCount.setText("P2P Hosting Failed");
                             
-                            // FIX: Extract raw Java exception and show it in the Big Screen Console instead of a Toast
+                            // Extract raw Java exception for the Network Console
                             StringWriter sw = new StringWriter();
                             PrintWriter pw = new PrintWriter(sw);
                             e.printStackTrace(pw);
                             String rawStackTrace = sw.toString();
 
                             RelayReportDialog dialog = RelayReportDialog.newInstance(
-                                    "IPFS UPLOAD FAILURE",
-                                    "Error communicating with decentralized storage gateway.",
+                                    "P2P HOSTING FAILURE",
+                                    "Your local IPFS node could not process this image.",
                                     "RAW EXCEPTION:\n" + rawStackTrace
                             );
                             dialog.showSafe(getChildFragmentManager(), "IPFS_ERROR_CONSOLE");
@@ -192,7 +190,7 @@ public class CreateAdFragment extends Fragment {
     }
 
     /**
-     * FIXED: Calls the discovery engine to count REAL users on the network.
+     * Calls the discovery engine to count REAL users on the network.
      */
     private void discoverHashtagReach() {
         String tagsInput = binding.etAdTags.getText().toString().trim();
@@ -212,7 +210,6 @@ public class CreateAdFragment extends Fragment {
 
         StringBuilder discoveryLogs = new StringBuilder();
         discoveryLogs.append("INITIATING REACH DISCOVERY...\n\n");
-        discoveryLogs.append("Tags formatted for Nostr search: ").append(tagsToSearch.toString()).append("\n");
 
         RelayReportDialog dialog = RelayReportDialog.newInstance(
                 "DISCOVERY CONSOLE",
@@ -227,15 +224,6 @@ public class CreateAdFragment extends Fragment {
                 if (isAdded() && binding != null) {
                     requireActivity().runOnUiThread(() -> {
                         String resultText = totalUsers + " Active Users Found";
-                        if (usernames != null && !usernames.isEmpty()) {
-                            StringBuilder names = new StringBuilder(" (");
-                            for (int i = 0; i < usernames.size(); i++) {
-                                names.append(usernames.get(i));
-                                if (i < usernames.size() - 1) names.append(", ");
-                            }
-                            names.append(")");
-                            resultText += names.toString();
-                        }
                         binding.tvActiveWatchers.setText(resultText);
 
                         RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
@@ -288,7 +276,7 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
-            // CRITICAL FIX: Convert the IPFS List to a JSON Array for swiping support
+            // Construct JSON image array for swiping
             StringBuilder imageJsonBuilder = new StringBuilder("[");
             for (int i = 0; i < ipfsImageCIDs.size(); i++) {
                 imageJsonBuilder.append("\"").append(ipfsImageCIDs.get(i)).append("\"");
@@ -300,7 +288,7 @@ public class CreateAdFragment extends Fragment {
             String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
             String ctaUrl = whatsapp.isEmpty() ? "" : "https://wa.me/" + cleanPhone;
 
-            // FIXED: Strict manual string construction to prevent event ID mismatch
+            // Manual string construction for SHA-256 consistency
             String contentStr = "{" +
                     "\"title\":\"" + title.replace("\"", "\\\"") + "\"," +
                     "\"desc\":\"" + desc.replace("\"", "\\\"") + "\"," +
@@ -335,15 +323,12 @@ public class CreateAdFragment extends Fragment {
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
-                // BROADCAST MESSAGE: Construct the full Nostr array message for storage
                 JSONArray fullMsg = new JSONArray();
                 fullMsg.put("EVENT");
-                fullMsg.put(""); // subId placeholder
+                fullMsg.put(""); 
                 fullMsg.put(signedEvent);
                 
-                // NEW: Save successfully signed ad to local Advertiser History DB
                 db.saveToAdvertiserHistory(fullMsg.toString());
-
                 broadcastToNetwork(signedEvent);
             } else {
                 Toast.makeText(getContext(), "Signing Failed", Toast.LENGTH_SHORT).show();
@@ -366,8 +351,6 @@ public class CreateAdFragment extends Fragment {
         NostrPublisher.publishToPool(relayPool, signedEvent, (relayUrl, success, message) -> {
             finishedNodes[0]++;
             
-            // FIX: Restoring the highly detailed advertiser logging logic.
-            // Appends [OK]/[FAIL] and then explicitly appends the exact Payload/ACK message below it.
             technicalLogs.append(success ? "[OK] " : "[FAIL] ").append(relayUrl).append("\n");
             if (message != null && !message.isEmpty()) {
                 technicalLogs.append(" > ").append(message).append("\n\n");
