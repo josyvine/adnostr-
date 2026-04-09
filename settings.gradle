@@ -7,17 +7,15 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
+    // FIXED: Enforces that all project dependencies use the repositories defined here.
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    
     repositories {
         google()
         mavenCentral()
         
-        // FIXED: Adding the Datahop Maven repository. 
-        // This repo hosts pre-compiled P2P libraries, bypassing the 
-        // build-on-demand failures and 401 errors from JitPack.
-        maven { url "https://dl.bintray.com/datahop/ipfs-lite" }
-        
-        // Keeping JitPack as a secondary for other standard libraries
+        // FIXED: Using JitPack to host the Datahop P2P library.
+        // I removed the old Bintray link because that service has been shut down.
         maven { url 'https://jitpack.io' }
     }
 }
