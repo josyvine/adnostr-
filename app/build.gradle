@@ -51,9 +51,18 @@ android {
 
     packagingOptions {
         // MANDATORY FOR IPFS LITE:
-        // Prevents build errors caused by duplicate native libraries in the P2P packages.
+        // Prevents build errors caused by duplicate native libraries and 
+        // metadata properties files found in the P2P Go-mobile packages.
         resources {
-            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/io.netty.versions.properties', 'META-INF/INDEX.LIST']
+            excludes += [
+                'META-INF/DEPENDENCIES', 
+                'META-INF/LICENSE', 
+                'META-INF/LICENSE.txt', 
+                'META-INF/notice.txt', 
+                'META-INF/ASL2.0', 
+                'META-INF/io.netty.versions.properties', 
+                'META-INF/INDEX.LIST'
+            ]
         }
         pickFirst 'lib/x86/libc++_shared.so'
         pickFirst 'lib/x86_64/libc++_shared.so'
@@ -93,9 +102,9 @@ dependencies {
     // =========================================================================
     // TRUE DECENTRALIZED STORAGE: IPFS LITE (P2P)
     // =========================================================================
-    // This provides the embedded Go-IPFS node logic for Android.
-    // It enables add(), cat(), and pin() without a central gateway/registration.
-    implementation 'com.github.berty:ipfs-lite-android:1.0.0' 
+    // FIXED: Using 'v1.0.0' with the 'v' prefix matches the GitHub release tag,
+    // which allows JitPack to correctly locate and serve the build artifacts.
+    implementation 'com.github.berty:ipfs-lite-android:v1.0.0' 
 
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
