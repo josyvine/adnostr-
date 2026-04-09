@@ -33,6 +33,8 @@ import java.util.Set;
  * FIXED: Enforced UI Thread execution for AdPopup launch to bypass background activity restrictions.
  * FIXED: Embeds optional Username into the Kind 30001 content for Advertiser Reach Discovery.
  * FIXED: Enforced strict manual string construction for content to resolve Event ID mismatch.
+ * FIXED: Added Duplicate Checking to prevent continuous popups for ads already seen.
+ * FIXED: Implemented Kind 5 (NIP-09) listening to wipe ads deleted by advertisers.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -250,16 +252,56 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                     updateOpenConsole();
                 }
 
-                // Handle incoming Ad Events and launch the Popup Activity
+                // Handle incoming Events
                 try {
                     if (message.startsWith("[")) {
                         JSONArray msgArray = new JSONArray(message);
                         if ("EVENT".equals(msgArray.getString(0))) {
                             JSONObject event = msgArray.getJSONObject(2);
                             int kind = event.optInt("kind", -1);
+                            String eventId = event.optString("id", "");
 
-                            // Only proceed if it is a verified Ad Event (Kind 30001)
+                            // =================================================================
+                            // HANDLE KIND 5: ADVERTISER DELETIONS (NIP-09)
+                            // =================================================================
+                            if (kind == 5) {
+                                JSONArray tags = event.optJSONArray("tags");
+                                if (tags != null) {
+                                    for (int i = 0; i < tags.length(); i++) {
+                                        JSONArray tagPair = tags.optJSONArray(i);
+                                        // Find the 'e' tag which points to the deleted Ad ID
+                                        if (tagPair != null && tagPair.length() >= 2 && "e".equals(tagPair.getString(0))) {
+                                            String targetDeletedId = tagPair.getString(1);
+                                            
+                                            // Find this Ad ID in the User's local history and wipe it
+                                            Set<String> localHistory = db.getUserHistory();
+                                            for (String savedItem : localHistory) {
+                                                if (savedItem.contains("\"id\":\"" + targetDeletedId + "\"")) {
+                                                    db.deleteFromUserHistory(savedItem);
+                                                    technicalLogs.append("[WIPED] Advertiser deleted ad: ").append(targetDeletedId).append("\n");
+                                                    updateOpenConsole();
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                return; // Done processing deletion
+                            }
+
+                            // =================================================================
+                            // HANDLE KIND 30001: INCOMING ADS
+                            // =================================================================
                             if (kind == 30001) {
+
+                                // FIXED: DUPLICATE CHECK - Prevent continuous popup spam
+                                Set<String> history = db.getUserHistory();
+                                for (String savedItem : history) {
+                                    if (savedItem.contains("\"id\":\"" + eventId + "\"")) {
+                                        // We already have this ad, do not trigger the popup again
+                                        return; 
+                                    }
+                                }
 
                                 // CRITICAL FIX: Prevent protocol collision. 
                                 // Make sure this is an AD, not an empty User Interest list or a list from another app.
@@ -295,6 +337,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
                                 technicalLogs.append("[AD DETECTED] Valid Kind 30001 Ad from ").append(url).append("\n");
                                 updateOpenConsole();
+
+                                // NEW: Save the ad to database so we don't show it again
+                                db.saveToUserHistory(message);
 
                                 if (db.isListening() && isAdded() && getActivity() != null) {
                                     // FIXED: Enforce UI Thread execution for the Activity launch.
