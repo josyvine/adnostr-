@@ -1,4 +1,5 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.  
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
 buildscript {
     repositories {
         // Use the modern, required repositories. jcenter is shut down.
@@ -6,24 +7,20 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // --- THIS IS THE FIX ---
         // Upgrade the Android Gradle Plugin to a version compatible with modern libraries and SDK 34.
-        classpath 'com.android.tools.build:gradle:8.1.4' // <<< THIS LINE HAS BEEN UPDATED
-        // Add the Google services classpath for Firebase integration
+        classpath 'com.android.tools.build:gradle:8.1.4'
+        
+        // Add the Google services classpath for Firebase integration or Location services
         classpath 'com.google.gms:google-services:4.4.1'
+
+        // NOTE: P2P native libraries like IPFS-Lite require a modern Gradle plugin (8.0+)
+        // to handle the native Go-compiled code properly.
     }
 }
 
-allprojects {
-    repositories {
-        // Ensure all parts of the project use the modern repositories.
-        google()
-        mavenCentral()
-        // Jitpack is sometimes needed for other libraries.
-        maven { url "https://jitpack.io" }
-        // Removed FrostWire repo - use Maven Central instead
-    }
-}
+// FIXED: The 'allprojects' block has been removed entirely.
+// In Gradle 8.0, repository management is now strictly handled in the 'settings.gradle' file.
+// Keeping repositories here would cause a conflict with the 'FAIL_ON_PROJECT_REPOS' setting.
 
 task clean(type: Delete) {
     delete rootProject.buildDir
