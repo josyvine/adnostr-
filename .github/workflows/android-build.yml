@@ -18,7 +18,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Decode the Keystore file from your GitHub Secrets (ensure KEYSTORE_BASE64 is set)
+      # NEW STEP: Download the large AAR file directly to the build server
+      # This fixes the "package io.datahop.ipfslite does not exist" error
+      - name: Download Datahop AAR
+        run: |
+          mkdir -p app/libs
+          curl -L https://github.com/datahop/ipfs-lite/releases/download/v0.0.15/datahop.aar -o app/libs/datahop.aar
+
+      # Decode the Keystore file from your GitHub Secrets
       - name: Decode Keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
 
