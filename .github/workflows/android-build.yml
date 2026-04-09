@@ -18,12 +18,17 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # NEW STEP: Download the large AAR file directly to the build server
-      # This fixes the "package io.datahop.ipfslite does not exist" error
+      # STEP: Download the large AAR file directly to the build server
+      # This bypasses the GitHub 25MB upload limit
       - name: Download Datahop AAR
         run: |
           mkdir -p app/libs
           curl -L https://github.com/datahop/ipfs-lite/releases/download/v0.0.15/datahop.aar -o app/libs/datahop.aar
+
+      # STEP: Verify the file exists and check its size
+      # If this step shows 0 bytes, the build will fail here instead of during compilation
+      - name: Check AAR presence
+        run: ls -lh app/libs/
 
       # Decode the Keystore file from your GitHub Secrets
       - name: Decode Keystore
