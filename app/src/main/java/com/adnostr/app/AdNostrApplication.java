@@ -13,6 +13,7 @@ import java.io.StringWriter;
 /**
  * Global Application class for AdNostr.
  * Handles notification channel initialization and the Global Uncaught Exception Handler.
+ * UPDATED: Automatically starts the IPFS P2P Node Service on app launch.
  */
 public class AdNostrApplication extends Application {
 
@@ -29,8 +30,30 @@ public class AdNostrApplication extends Application {
 
         // 2. Initialize Notification Channels for Ad Alerts
         createNotificationChannels();
+
+        // 3. START DECENTRALIZED P2P NODE
+        // This ensures the device is part of the IPFS swarm the moment the app opens.
+        startIPFSNode();
         
         Log.i(TAG, "AdNostr Application Started and Protected by Crash Watchdog.");
+    }
+
+    /**
+     * Triggers the IPFSNodeService which hosts the embedded Go-IPFS node.
+     */
+    private void startIPFSNode() {
+        try {
+            Intent serviceIntent = new Intent(this, IPFSNodeService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Required for Android 8.0+ background service compliance
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+            Log.i(TAG, "IPFS Node Service launch requested.");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start IPFS Node Service: " + e.getMessage());
+        }
     }
 
     /**
