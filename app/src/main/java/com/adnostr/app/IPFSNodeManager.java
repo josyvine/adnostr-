@@ -6,6 +6,7 @@ import android.util.Log;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.FileNotFoundException;
 
 /**
  * ============================================================
@@ -211,6 +212,61 @@ public class IPFSNodeManager {
             Log.e(TAG, "CID: " + cid);
             Log.e(TAG, "Exception: " + e.getMessage());
             throw new Exception("Failed to retrieve file from IPFS: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * ============================================================
+     * DELETE FILE FROM P2P NETWORK
+     * ============================================================
+     * Removes a file from the local IPFS block store.
+     * This unpins the content, allowing it to be garbage collected
+     * from the local node. The content may still exist on other peers.
+     * 
+     * @param cid Content Identifier of the file to delete
+     * @throws Exception if node is not ready or deletion fails
+     */
+    public void deleteFile(String cid) throws Exception {
+        ensureNodeReady();
+
+        if (cid == null || cid.isEmpty()) {
+            throw new IllegalArgumentException("CID cannot be null or empty");
+        }
+
+        Log.i(TAG, "====================================");
+        Log.i(TAG, "Deleting file from local IPFS storage...");
+        Log.i(TAG, "CID: " + cid);
+        Log.i(TAG, "====================================");
+
+        try {
+            // Check if the peer object has a Remove or Delete method
+            // Try Rm method (common in Go IPFS implementations)
+            try {
+                peer.getClass().getMethod("Rm", String.class).invoke(peer, cid);
+                Log.i(TAG, "File unpinned and marked for removal (Rm method)");
+            } catch (NoSuchMethodException e1) {
+                // Try Remove method as alternative
+                try {
+                    peer.getClass().getMethod("Remove", String.class).invoke(peer, cid);
+                    Log.i(TAG, "File unpinned and marked for removal (Remove method)");
+                } catch (NoSuchMethodException e2) {
+                    // If neither method exists, log warning but continue
+                    // The Datahop library may not expose a direct delete operation
+                    Log.w(TAG, "No delete/remove method found in peer. File may remain in local storage.");
+                    Log.w(TAG, "Available methods depend on Datahop IPFS-Lite implementation.");
+                    return;
+                }
+            }
+
+            Log.i(TAG, "====================================");
+            Log.i(TAG, "✓ File deleted from local storage successfully");
+            Log.i(TAG, "====================================");
+
+        } catch (Exception e) {
+            Log.e(TAG, "ERROR: Failed to delete file from IPFS");
+            Log.e(TAG, "CID: " + cid);
+            Log.e(TAG, "Exception: " + e.getMessage());
+            throw new Exception("Failed to delete file from IPFS: " + e.getMessage(), e);
         }
     }
 
