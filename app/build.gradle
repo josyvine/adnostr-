@@ -64,6 +64,9 @@ android {
                 'META-INF/INDEX.LIST'
             ]
         }
+        
+        // These 'pickFirst' rules prevent the "Duplicate File" build error
+        // caused by Go-native code conflicting with Android system libraries.
         pickFirst 'lib/x86/libc++_shared.so'
         pickFirst 'lib/x86_64/libc++_shared.so'
         pickFirst 'lib/armeabi-v7a/libc++_shared.so'
@@ -102,9 +105,9 @@ dependencies {
     // =========================================================================
     // TRUE DECENTRALIZED STORAGE: IPFS LITE (P2P)
     // =========================================================================
-    // FIXED: Using 'v1.0.0' with the 'v' prefix matches the GitHub release tag,
-    // which allows JitPack to correctly locate and serve the build artifacts.
-    implementation 'com.github.berty:ipfs-lite-android:v1.0.0' 
+    // FIXED: Replaced 'v1.0.0' with the verified commit hash '3c5938d69f'.
+    // This bypasses the broken build on JitPack's server and fixes the 401 error.
+    implementation 'com.github.berty:ipfs-lite-android:3c5938d69f' 
 
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
