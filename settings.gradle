@@ -1,1 +1,20 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        // FIXED: Adding JitPack here allows Gradle 8.0 to find the P2P libraries 
+        // without requiring a login or GitHub token.
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+rootProject.name = "AdNostr"
 include ':app'
