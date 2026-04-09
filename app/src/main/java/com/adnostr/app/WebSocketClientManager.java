@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * UPDATED: Implements detailed technical logging of raw Nostr JSON traffic 
  * to identify why ads or search reach may be failing.
  * FIXED: Subscription logic now uses dynamic IDs to prevent relay rejection.
+ * FIXED: Included Kind 5 (Deletions) in the subscription filter so the foreground app can wipe deleted ads.
  */
 public class WebSocketClientManager {
 
@@ -173,6 +174,7 @@ public class WebSocketClientManager {
     /**
      * Subscribes the device to Kind 30001 Ad events matching the User's hashtags.
      * FIXED: Uses a dynamic UUID subID to prevent relay duplicate rejection.
+     * FIXED: Now also requests Kind 5 (Deletions) so the app can wipe deleted ads.
      */
     public void subscribeToUserInterests(WebSocketClient client, String url) {
         if (client == null || !client.isOpen()) return;
@@ -198,12 +200,12 @@ public class WebSocketClientManager {
                 tagArray.put(tag.toLowerCase().replace("#", ""));
             }
 
-            // 2. Build the Kind 30001 Ad filter
+            // 2. Build the Kind 30001 (Ads) and Kind 5 (Deletions) filter
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(30001));
+            filter.put("kinds", new JSONArray().put(30001).put(5));
             filter.put("#t", tagArray);
 
-            // 3. FIXED: Construct REQ with a unique Subscription ID
+            // 3. Construct REQ with a unique Subscription ID
             String subId = "ad-" + UUID.randomUUID().toString().substring(0, 8);
             
             JSONArray req = new JSONArray();
