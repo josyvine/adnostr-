@@ -7,18 +7,25 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    // FIXED: Enforces that all project dependencies use the repositories defined here.
+    // FIXED: FAIL_ON_PROJECT_REPOS ensures that all modules (app and ipfslite)
+    // use these centralized repositories for their own internal dependencies.
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     
     repositories {
         google()
         mavenCentral()
         
-        // FIXED: Using JitPack to host the Datahop P2P library.
-        // I removed the old Bintray link because that service has been shut down.
+        // Keeping JitPack here for any other standard GitHub libraries
+        // your app might need in the future.
         maven { url 'https://jitpack.io' }
     }
 }
 
 rootProject.name = "AdNostr"
+
+// Main App Module
 include ':app'
+
+// FIXED: Local P2P Module. 
+// This refers to the 'ipfs-lite-android' folder you renamed to 'ipfslite'.
+include ':ipfslite'
