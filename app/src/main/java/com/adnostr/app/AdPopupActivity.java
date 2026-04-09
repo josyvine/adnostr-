@@ -30,9 +30,8 @@ import coil.request.ImageRequest;
 
 /**
  * Professional Ad Delivery Overlay.
- * FIXED: Implemented ViewPager2 Adapter for "Slide to left or right" image viewing.
- * FIXED: Supports both single image (String) and multiple images (JSONArray) in Ad content.
- * FIXED: Removed generic Toast. Pipes raw Java stack traces to ErrorDisplayActivity.
+ * UPDATED: Integrated IPFSFallbackResolver for the Image Swipe Slider.
+ * Each image in the slider now attempts a P2P fetch before falling back to HTTP.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -62,7 +61,7 @@ public class AdPopupActivity extends AppCompatActivity {
         try {
             parseAndPopulateAd(adJsonString);
         } catch (Exception e) {
-            // CRITICAL: Extract raw Java exception for the diagnostic screen
+            // Extract raw Java exception for the diagnostic screen
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
             e.printStackTrace(pw);
@@ -99,21 +98,21 @@ public class AdPopupActivity extends AppCompatActivity {
         binding.tvPopupTitle.setText(title);
         binding.tvPopupDesc.setText(content.optString("desc", "No description provided."));
 
-        // FIXED: Handle Image Slider (Supports String or Array)
-        List<String> imageUrls = new ArrayList<>();
+        // Handle Image Slider (Extract CIDs from JSON)
+        List<String> imageCIDs = new ArrayList<>();
         Object imageObj = content.opt("image");
         
         if (imageObj instanceof JSONArray) {
             JSONArray arr = (JSONArray) imageObj;
             for (int i = 0; i < arr.length(); i++) {
-                imageUrls.add(arr.getString(i));
+                imageCIDs.add(arr.getString(i));
             }
         } else if (imageObj instanceof String && !((String) imageObj).isEmpty()) {
-            imageUrls.add((String) imageObj);
+            imageCIDs.add((String) imageObj);
         }
 
-        if (!imageUrls.isEmpty()) {
-            setupImageSlider(imageUrls);
+        if (!imageCIDs.isEmpty()) {
+            setupImageSlider(imageCIDs);
         } else {
             binding.vpAdImages.setVisibility(View.GONE);
         }
@@ -121,8 +120,8 @@ public class AdPopupActivity extends AppCompatActivity {
         setupActionButtons(content);
     }
 
-    private void setupImageSlider(List<String> urls) {
-        ImageSliderAdapter adapter = new ImageSliderAdapter(urls);
+    private void setupImageSlider(List<String> cids) {
+        ImageSliderAdapter adapter = new ImageSliderAdapter(cids);
         binding.vpAdImages.setAdapter(adapter);
 
         // Connect the dots (Page Indicator)
@@ -169,11 +168,12 @@ public class AdPopupActivity extends AppCompatActivity {
 
     /**
      * Internal Adapter for the Image ViewPager slider.
+     * UPDATED: Now uses IPFSFallbackResolver to source images from P2P or Gateway.
      */
     private class ImageSliderAdapter extends RecyclerView.Adapter<ImageSliderAdapter.ViewHolder> {
-        private final List<String> images;
+        private final List<String> cids;
 
-        ImageSliderAdapter(List<String> images) { this.images = images; }
+        ImageSliderAdapter(List<String> cids) { this.cids = cids; }
 
         @NonNull
         @Override
@@ -187,17 +187,33 @@ public class AdPopupActivity extends AppCompatActivity {
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            String url = images.get(position).replace("ipfs://", "https://cloudflare-ipfs.com/ipfs/");
-            ImageRequest request = new ImageRequest.Builder(AdPopupActivity.this)
-                    .data(url)
-                    .crossfade(true)
-                    .target((ImageView) holder.itemView)
-                    .build();
-            Coil.imageLoader(AdPopupActivity.this).enqueue(request);
+            String cid = cids.get(position);
+            ImageView targetView = (ImageView) holder.itemView;
+
+            // USE THE RESOLVER: Race between P2P Node and HTTP Gateway
+            IPFSFallbackResolver.resolveImage(AdPopupActivity.this, cid, new IPFSFallbackResolver.ResolveCallback() {
+                @Override
+                public void onSourceReady(Object source) {
+                    // source is either byte[] (from P2P) or String URL (from Gateway)
+                    // Coil handles both data types perfectly.
+                    ImageRequest request = new ImageRequest.Builder(AdPopupActivity.this)
+                            .data(source)
+                            .crossfade(true)
+                            .target(targetView)
+                            .build();
+                    Coil.imageLoader(AdPopupActivity.this).enqueue(request);
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    Log.e(TAG, "Failed to resolve image for swipe gallery: " + e.getMessage());
+                    targetView.setImageResource(android.R.drawable.ic_menu_report_image);
+                }
+            });
         }
 
         @Override
-        public int getItemCount() { return images.size(); }
+        public int getItemCount() { return cids.size(); }
 
         class ViewHolder extends RecyclerView.ViewHolder {
             ViewHolder(@NonNull View itemView) { super(itemView); }
