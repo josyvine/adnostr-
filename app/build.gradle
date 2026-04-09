@@ -16,7 +16,8 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // MANDATORY FOR NATIVE AAR:
-        // Ensures the build only includes architectures supported by the Go-compiled binary
+        // This ensures the APK includes the correct native libraries 
+        // for the Datahop IPFS Go-binary.
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
         }
@@ -60,7 +61,7 @@ android {
         }
         
         // MANDATORY FOR DATAHOP AAR:
-        // Resolves conflicts between the embedded Go libraries and Android system libraries
+        // Prevents build crashes caused by duplicate native SO files.
         pickFirst 'lib/x86/libc++_shared.so'
         pickFirst 'lib/x86_64/libc++_shared.so'
         pickFirst 'lib/armeabi-v7a/libc++_shared.so'
@@ -68,14 +69,15 @@ android {
     }
 }
 
-// NOTE: flatDir block removed to fix "package does not exist" error in Gradle 8.0+
+// CRITICAL: The 'repositories' block has been removed from here. 
+// It is now handled centrally in settings.gradle to fix the Gradle 8.0 conflict.
 
 dependencies {
     // =========================================================================
     // TRUE DECENTRALIZED STORAGE: DATAHOP BINARY
     // =========================================================================
-    // FIXED: Using files() ensures the AAR is added to the compilation classpath.
-    // This allows the compiler to find 'io.datahop.ipfslite.IPFS'
+    // FIXED: Using files() ensures the compiler finds the io.datahop.ipfslite package.
+    // This resolves the "package does not exist" failure on the CI runner.
     implementation files('libs/datahop.aar')
 
     // Android Core & UI
