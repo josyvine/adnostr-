@@ -8,19 +8,17 @@ buildscript {
     }
     dependencies {
         // Upgrade the Android Gradle Plugin to a version compatible with modern libraries and SDK 34.
+        // This is necessary for native Go-mobile libraries to link correctly.
         classpath 'com.android.tools.build:gradle:8.1.4'
         
         // Add the Google services classpath for Firebase integration or Location services
         classpath 'com.google.gms:google-services:4.4.1'
-
-        // NOTE: P2P native libraries like IPFS-Lite require a modern Gradle plugin (8.0+)
-        // to handle the native Go-compiled code properly.
     }
 }
 
 // FIXED: The 'allprojects' block has been removed entirely.
 // In Gradle 8.0, repository management is now strictly handled in the 'settings.gradle' file.
-// Keeping repositories here would cause a conflict with the 'FAIL_ON_PROJECT_REPOS' setting.
+// Deleting this block resolves the repository conflict that leads to the "Unauthorized" error.
 
 task clean(type: Delete) {
     delete rootProject.buildDir
