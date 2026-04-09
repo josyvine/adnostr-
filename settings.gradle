@@ -1,1 +1,21 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+        // We define the libs folder here as a backup for the whole project
+        flatDir {
+            dirs 'app/libs'
+        }
+    }
+}
+rootProject.name = "AdNostr"
 include ':app'
