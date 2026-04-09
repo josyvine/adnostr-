@@ -5,17 +5,26 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    // This setting forces Gradle to use these repositories and ignore 
+    // any conflicting ones in build.gradle, fixing the log warning.
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    
     repositories {
         google()
         mavenCentral()
+        
+        // Required for external decentralized networking libraries
         maven { url 'https://jitpack.io' }
-        // We define the libs folder here as a backup for the whole project
+        
+        // This tells Gradle exactly where to look for the datahop.aar file 
+        // downloaded by your GitHub Action.
         flatDir {
             dirs 'app/libs'
         }
     }
 }
+
 rootProject.name = "AdNostr"
 include ':app'
