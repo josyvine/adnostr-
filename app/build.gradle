@@ -14,14 +14,6 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-        // MANDATORY FOR LOCAL P2P MODULE:
-        // Since we are now compiling the 'ipfslite' module locally, we must
-        // define these filters so the Go-mobile tool knows which native 
-        // CPU architectures to build for.
-        ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-        }
     }
 
     signingConfigs {
@@ -51,28 +43,9 @@ android {
     }
 
     packagingOptions {
-        // MANDATORY FOR IPFS:
-        // Prevents build errors caused by duplicate native libraries and 
-        // metadata properties files generated during the local Go-compilation.
         resources {
-            excludes += [
-                'META-INF/DEPENDENCIES', 
-                'META-INF/LICENSE', 
-                'META-INF/LICENSE.txt', 
-                'META-INF/notice.txt', 
-                'META-INF/ASL2.0', 
-                'META-INF/io.netty.versions.properties', 
-                'META-INF/INDEX.LIST'
-            ]
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/notice.txt', 'META-INF/ASL2.0']
         }
-        
-        // These 'pickFirst' rules prevent the "Duplicate File" build error
-        // when the local ':ipfslite' module and standard Android libraries
-        // both try to include the C++ shared runtime.
-        pickFirst 'lib/x86/libc++_shared.so'
-        pickFirst 'lib/x86_64/libc++_shared.so'
-        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
-        pickFirst 'lib/arm64-v8a/libc++_shared.so'
     }
 }
 
@@ -85,7 +58,7 @@ dependencies {
     // Flexbox Layout (Required for Ad Popup Card)
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
     
-    // SwipeRefreshLayout (Needed for Marketplace list refresh)
+    // SwipeRefreshLayout (REQUIRED FIX: Needed for Marketplace list refresh)
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
 
     // Navigation
@@ -98,19 +71,11 @@ dependencies {
     // Cryptography (For Nostr Secp256k1/Schnorr keys)
     implementation 'org.bouncycastle:bcprov-jdk15to18:1.77'
 
-    // JSON Parsing
+    // JSON Parsing (Using Gson for perfect Java compatibility instead of Kotlinx)
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // Image Loading
+    // Image Loading (From IPFS HTTP Gateways)
     implementation 'io.coil-kt:coil:2.6.0'
-
-    // =========================================================================
-    // TRUE DECENTRALIZED STORAGE: LOCAL P2P MODULE
-    // =========================================================================
-    // FIXED: Removed external JitPack coordinate.
-    // The app now links directly to the source code in your '/ipfslite' folder.
-    // This completely bypasses the 401 Unauthorized server error.
-    implementation project(":ipfslite")
 
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
