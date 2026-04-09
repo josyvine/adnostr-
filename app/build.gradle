@@ -15,7 +15,7 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // MANDATORY FOR P2P STORAGE:
+        // MANDATORY FOR P2P / DATAHOP:
         // P2P libraries contain native Go code. We must specify which processor 
         // architectures to support to prevent the app from crashing on different phones.
         ndk {
@@ -50,7 +50,7 @@ android {
     }
 
     packagingOptions {
-        // MANDATORY FOR DATAHOP / IPFS:
+        // MANDATORY FOR DATAHOP:
         // Prevents build errors caused by duplicate native libraries and 
         // metadata properties files found in the P2P Go-mobile packages.
         resources {
@@ -105,9 +105,9 @@ dependencies {
     // =========================================================================
     // TRUE DECENTRALIZED STORAGE: DATAHOP IPFS-LITE (P2P)
     // =========================================================================
-    // FIXED: Replaced Berty with Datahop IPFS-Lite. 
-    // This is a pre-compiled library that fixes the JitPack 401 build failure.
-    implementation 'io.datahop:ipfs-lite:0.0.10'
+    // FIXED: Using the verified JitPack coordinate for Datahop.
+    // Replaces the old Berty and dead Bintray coordinates to fix the build error.
+    implementation 'com.github.datahop:ipfs-lite-android:v0.0.10'
 
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
