@@ -7,16 +7,17 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    // FIXED: This ensures that all libraries (including P2P ones) 
-    // are looked up using the central settings below.
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    
     repositories {
         google()
         mavenCentral()
         
-        // FIXED: Adding JitPack here allows the app to find the IPFS-Lite 
-        // library without requiring a login or token.
+        // FIXED: Adding the Datahop Maven repository. 
+        // This repo hosts pre-compiled P2P libraries, bypassing the 
+        // build-on-demand failures and 401 errors from JitPack.
+        maven { url "https://dl.bintray.com/datahop/ipfs-lite" }
+        
+        // Keeping JitPack as a secondary for other standard libraries
         maven { url 'https://jitpack.io' }
     }
 }
