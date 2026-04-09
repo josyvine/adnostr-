@@ -33,6 +33,8 @@ import java.util.concurrent.TimeUnit;
  * FIXED: Implemented Kind 30001 filtering and dynamic hashtag matching.
  * FIXED: Added content peeking to ignore empty interest lists in background.
  * FIXED: Added strict 'd' tag validation to prevent crashes from adnostr_interests.
+ * FIXED: Implemented Duplicate Checking to stop notification spam for already saved ads.
+ * FIXED: Added Kind 5 (NIP-09) listening to honor Advertiser deletions and wipe local history.
  * NEW: Saves verified Ads to local User History Database.
  */
 public class NostrListenerWorker extends Worker {
@@ -91,9 +93,9 @@ public class NostrListenerWorker extends Worker {
         final CountDownLatch latch = new CountDownLatch(1);
 
         try {
-            // FIXED: Change filter to Kind 30001 to match the advertiser logic (was 1)
+            // FIXED: Request both Kind 30001 (Ads) AND Kind 5 (Deletions) to honor Advertiser wipes
             JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(30001));
+            filter.put("kinds", new JSONArray().put(30001).put(5));
 
             JSONArray tags = new JSONArray();
             for (String tag : interests) {
@@ -156,7 +158,8 @@ public class NostrListenerWorker extends Worker {
     }
 
     /**
-     * Parses the relay packet and triggers a notification if it's a valid ad.
+     * Parses the relay packet and triggers a notification if it's a valid ad,
+     * or processes deletions if it's a Kind 5 wipe.
      */
     private void processRelayEvent(String rawMessage) {
         try {
@@ -167,56 +170,100 @@ public class NostrListenerWorker extends Worker {
 
             // Extract event object from the 3rd index of the Nostr message array
             JSONObject event = msgArray.getJSONObject(2);
-            
-            // CRITICAL FIX: Peek at the content string before attempting to parse as Ad JSON
-            // This prevents background crashes when receiving empty User Interest List events.
-            String contentStr = event.optString("content", "");
-            if (contentStr.isEmpty()) {
-                return; // Silently ignore events that contain no Ad payload
-            }
+            int kind = event.optInt("kind", -1);
+            String eventId = event.optString("id", "");
 
-            // STRICT PROTOCOL FILTERING: Verify the 'd' tag to ensure it's a real Ad Broadcast
-            boolean isAdNostrBroadcast = false;
-            JSONArray tags = event.optJSONArray("tags");
-            if (tags != null) {
-                for (int i = 0; i < tags.length(); i++) {
-                    JSONArray tagPair = tags.optJSONArray(i);
-                    if (tagPair != null && tagPair.length() >= 2) {
-                        String tagName = tagPair.optString(0);
-                        String tagValue = tagPair.optString(1);
-                        
-                        if ("d".equals(tagName)) {
-                            if (tagValue.startsWith("adnostr_ad_")) {
-                                isAdNostrBroadcast = true;
-                                break;
-                            } else if ("adnostr_interests".equals(tagValue)) {
-                                return; // STRICT FIX: Ignore user interest lists to prevent crash
+            // =================================================================
+            // HANDLE KIND 5: ADVERTISER DELETIONS (NIP-09)
+            // =================================================================
+            if (kind == 5) {
+                JSONArray tags = event.optJSONArray("tags");
+                if (tags != null) {
+                    for (int i = 0; i < tags.length(); i++) {
+                        JSONArray tagPair = tags.optJSONArray(i);
+                        // Find the 'e' tag which points to the deleted Ad ID
+                        if (tagPair != null && tagPair.length() >= 2 && "e".equals(tagPair.getString(0))) {
+                            String targetDeletedId = tagPair.getString(1);
+                            
+                            // Find this Ad ID in the User's local history and wipe it
+                            Set<String> localHistory = db.getUserHistory();
+                            for (String savedItem : localHistory) {
+                                if (savedItem.contains("\"id\":\"" + targetDeletedId + "\"")) {
+                                    db.deleteFromUserHistory(savedItem);
+                                    Log.i(TAG, "Honored Advertiser Kind 5 Wipe: Removed Ad " + targetDeletedId);
+                                    break;
+                                }
                             }
                         }
                     }
                 }
+                return; // Finished processing Kind 5, exit method
             }
 
-            // If it's not a verified Ad, discard it
-            if (!isAdNostrBroadcast) {
-                return;
+            // =================================================================
+            // HANDLE KIND 30001: INCOMING ADS
+            // =================================================================
+            if (kind == 30001) {
+                // FIXED: DUPLICATE CHECK - Prevent Notification Spam
+                Set<String> history = db.getUserHistory();
+                for (String savedItem : history) {
+                    // Check if the exact event ID is already in our database
+                    if (savedItem.contains("\"id\":\"" + eventId + "\"")) {
+                        Log.d(TAG, "Ad " + eventId + " already exists in history. Dropping duplicate.");
+                        return; // Halt processing, do not show notification!
+                    }
+                }
+
+                // CRITICAL FIX: Peek at the content string before attempting to parse as Ad JSON
+                // This prevents background crashes when receiving empty User Interest List events.
+                String contentStr = event.optString("content", "");
+                if (contentStr.isEmpty()) {
+                    return; // Silently ignore events that contain no Ad payload
+                }
+
+                // STRICT PROTOCOL FILTERING: Verify the 'd' tag to ensure it's a real Ad Broadcast
+                boolean isAdNostrBroadcast = false;
+                JSONArray tags = event.optJSONArray("tags");
+                if (tags != null) {
+                    for (int i = 0; i < tags.length(); i++) {
+                        JSONArray tagPair = tags.optJSONArray(i);
+                        if (tagPair != null && tagPair.length() >= 2) {
+                            String tagName = tagPair.optString(0);
+                            String tagValue = tagPair.optString(1);
+                            
+                            if ("d".equals(tagName)) {
+                                if (tagValue.startsWith("adnostr_ad_")) {
+                                    isAdNostrBroadcast = true;
+                                    break;
+                                } else if ("adnostr_interests".equals(tagValue)) {
+                                    return; // STRICT FIX: Ignore user interest lists to prevent crash
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If it's not a verified Ad, discard it
+                if (!isAdNostrBroadcast) {
+                    return;
+                }
+
+                JSONObject content = new JSONObject(contentStr);
+
+                // Crash Prevention: Ensure title actually exists
+                if (!content.has("title")) {
+                    return;
+                }
+
+                String title = content.optString("title", "Local Deal Found");
+                String desc = content.optString("desc", "A new ad matches your interests.");
+
+                // NEW: Save the verified, non-duplicate Ad to the Local User History Database
+                db.saveToUserHistory(rawMessage);
+
+                // Launch system notification
+                showAdNotification(title, desc, rawMessage);
             }
-
-            JSONObject content = new JSONObject(contentStr);
-
-            // Crash Prevention: Ensure title actually exists
-            if (!content.has("title")) {
-                return;
-            }
-
-            String title = content.optString("title", "Local Deal Found");
-            String desc = content.optString("desc", "A new ad matches your interests.");
-
-            // NEW: Save the verified Ad to the Local User History Database
-            db.saveToUserHistory(rawMessage);
-
-            // Launch system notification
-            showAdNotification(title, desc, rawMessage);
 
         } catch (Exception e) {
             Log.e(TAG, "Error parsing incoming ad relay packet: " + e.getMessage());
