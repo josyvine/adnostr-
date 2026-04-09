@@ -62,7 +62,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- NEW: USERNAME SETUP SECTION -->
+        <!-- USERNAME SETUP SECTION (Hidden automatically for Advertisers) -->
         <TextView
             android:id="@+id/tvProfileHeader"
             android:layout_width="wrap_content"
@@ -101,21 +101,24 @@
                     app:hintTextColor="#666666"
                     app:boxStrokeColor="#666666">
 
+                    <!-- FIXED: Added singleLine and maxLines to prevent network search breaks -->
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etUsername"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:textColor="#FFFFFF"
-                        android:inputType="textPersonName"/>
+                        android:inputType="textPersonName"
+                        android:maxLines="1"
+                        android:singleLine="true"/>
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSaveUsername"
                     style="@style/Widget.MaterialComponents.Button"
                     android:layout_width="match_parent"
-                    android:layout_height="55dp"
+                    android:layout_height="60dp"
                     android:layout_marginTop="12dp"
-                    android:text="SAVE USERNAME"
+                    android:text="CLAIM USERNAME"
                     android:textColor="#FFFFFF"
                     app:cornerRadius="8dp" />
             </LinearLayout>
