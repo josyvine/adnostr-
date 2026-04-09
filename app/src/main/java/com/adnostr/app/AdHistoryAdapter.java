@@ -31,6 +31,8 @@ import coil.request.ImageRequest;
  * FEATURE: Renders history cards with thumbnails, titles, and timestamps.
  * FEATURE: Supports multi-selection for bulk deletion.
  * FEATURE: Handles both single-string and JSONArray image payloads from IPFS.
+ * 
+ * FIXED: IndexOutOfBoundsException by validating list size before selection retrieval.
  */
 public class AdHistoryAdapter extends RecyclerView.Adapter<AdHistoryAdapter.AdHistoryViewHolder> {
 
@@ -62,6 +64,8 @@ public class AdHistoryAdapter extends RecyclerView.Adapter<AdHistoryAdapter.AdHi
 
     @Override
     public void onBindViewHolder(@NonNull AdHistoryViewHolder holder, int position) {
+        if (adJsonList == null || position >= adJsonList.size()) return;
+        
         String fullPayload = adJsonList.get(position);
         boolean isSelected = selectedPositions.contains(position);
         holder.bind(fullPayload, position, isSelected);
@@ -89,17 +93,23 @@ public class AdHistoryAdapter extends RecyclerView.Adapter<AdHistoryAdapter.AdHi
 
     /**
      * Returns the full JSON payloads of all currently selected ads.
+     * FIXED: Added boundary check to prevent IndexOutOfBoundsException.
      */
     public List<String> getSelectedItems() {
         List<String> selected = new ArrayList<>();
+        int currentSize = adJsonList.size();
+        
         for (Integer pos : selectedPositions) {
-            selected.add(adJsonList.get(pos));
+            // CRITICAL FIX: Only attempt to get if the position is still valid
+            if (pos >= 0 && pos < currentSize) {
+                selected.add(adJsonList.get(pos));
+            }
         }
         return selected;
     }
 
     /**
-     * Clears all selections.
+     * Clears all selections and updates the UI.
      */
     public void clearSelection() {
         selectedPositions.clear();
