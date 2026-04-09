@@ -8,14 +8,17 @@ buildscript {
     dependencies {
         // Upgrade the Android Gradle Plugin to a version compatible with modern libraries and SDK 34.
         classpath 'com.android.tools.build:gradle:8.1.4'
+        
         // Add the Google services classpath for Firebase integration
         classpath 'com.google.gms:google-services:4.4.1'
     }
 }
 
-// CRITICAL FIX: The 'allprojects' block has been REMOVED. 
-// Repositories are now declared in settings.gradle to comply with Gradle 8.0 
-// and fix the "package does not exist" error.
+/**
+ * CRITICAL FIX: The 'allprojects' repository block has been REMOVED from here.
+ * In Gradle 8.0, declaring repositories here while also having them in 
+ * settings.gradle causes the build to ignore local AAR files.
+ */
 
 task clean(type: Delete) {
     delete rootProject.buildDir
