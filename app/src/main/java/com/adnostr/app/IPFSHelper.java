@@ -15,7 +15,7 @@ import org.json.JSONObject;
 public class IPFSHelper {
 
     private static final String TAG = "AdNostr_IPFSHelper";
-    
+
     // Public Read-Only Gateways (Used for the Automatic Fallback Safety Net)
     // Uploading to these is restricted, but viewing/downloading is free and anonymous.
     private static final String FALLBACK_GATEWAY_1 = "https://cloudflare-ipfs.com/ipfs/";
@@ -34,6 +34,9 @@ public class IPFSHelper {
      * The file stays on the phone and is announced to the network. 
      * No data is sent to a central server.
      * 
+     * FIXED: Implemented a retry-loop to wait for the P2P engine to warm up 
+     * instead of throwing an exception immediately.
+     * 
      * @param imageFile The local image file selected by the advertiser.
      * @param callback The result listener.
      */
@@ -44,6 +47,18 @@ public class IPFSHelper {
 
                 // 1. Get instance of the Datahop Node Manager
                 IPFSNodeManager nodeManager = IPFSNodeManager.getInstance(null);
+
+                // --- START FIX: RETRY LOGIC ---
+                int maxRetries = 10; // Wait up to 10 seconds total
+                while (!nodeManager.isNodeReady() && maxRetries > 0) {
+                    Log.d(TAG, "P2P Engine warming up... waiting 1s. Retries left: " + maxRetries);
+                    try {
+                        Thread.sleep(1000); // Wait 1 second before checking again
+                    } catch (InterruptedException ignored) {
+                    }
+                    maxRetries--;
+                }
+                // --- END FIX ---
 
                 if (!nodeManager.isNodeReady()) {
                     throw new Exception("P2P Engine is still warming up. Please try again in 5 seconds.");
@@ -82,10 +97,10 @@ public class IPFSHelper {
      */
     public static String getFallbackUrl(String cid) {
         if (cid == null || cid.isEmpty()) return "";
-        
+
         // Remove the ipfs:// prefix to get the raw CID string
         String cleanCid = cid.replace("ipfs://", "");
-        
+
         // Return the fastest public mirror (Cloudflare)
         return FALLBACK_GATEWAY_1 + cleanCid;
     }
