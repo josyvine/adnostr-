@@ -18,11 +18,6 @@ dependencyResolutionManagement {
 
         // Required for external decentralized networking libraries
         maven { url 'https://jitpack.io' }
-        
-        // ✅ CRITICAL FIX: Local directory for Datahop AAR
-        flatDir {
-            dirs 'libs'
-        }
     }
 }
 
