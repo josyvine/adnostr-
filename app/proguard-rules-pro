@@ -24,6 +24,13 @@
 # Keep Go mobile bindings (generated JNI bridge)
 -keep class go.** { *; }
 
+# --- THIS IS THE FIX ---
+# This prevents ProGuard/R8 from stripping the 'mobile.Mobile' class
+# which is loaded via reflection and is the entry point for the Go P2P engine.
+-keep class mobile.** { *; }
+-keep interface mobile.** { *; }
+# --- END FIX ---
+
 # Prevent stripping of native JNI methods
 -keepclasseswithmembernames class * {
     native <methods>;
