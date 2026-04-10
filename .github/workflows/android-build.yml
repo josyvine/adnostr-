@@ -31,7 +31,11 @@ jobs:
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.0
 
-      # Download the 65MB Datahop AAR
+      # Clean build (now wrapper exists) - MOVED HERE
+      - name: Gradle Clean
+        run: ./gradlew clean
+
+      # Download the 65MB Datahop AAR - AFTER CLEAN
       - name: Download Datahop AAR
         run: |
           mkdir -p app/libs
@@ -43,10 +47,6 @@ jobs:
       # Decode signing keystore
       - name: Decode Keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
-
-      # Clean build (now wrapper exists)
-      - name: Gradle Clean
-        run: ./gradlew clean
 
       # Build release APK
       - name: Build Release APK
