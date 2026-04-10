@@ -71,14 +71,15 @@ android {
 }
 
 /**
- * Repositories are centrally defined in settings.gradle
- * Do NOT add repositories here when using FAIL_ON_PROJECT_REPOS mode
+ * ✅ WORKING FIX: fileTree for local AAR files
+ * This scans libs folder at build time and includes all .aar files
+ * No repositories block needed - uses settings.gradle configuration
  */
 
 dependencies {
 
-    // ✅ FIXED: Datahop AAR from local libs folder (defined in settings.gradle)
-    implementation(name: 'datahop', ext: 'aar')
+    // ✅ FIXED: Use fileTree to dynamically load AAR files from libs folder
+    implementation fileTree(dir: 'libs', include: ['*.aar'])
 
     // Android Core & UI
     implementation 'androidx.appcompat:appcompat:1.6.1'
