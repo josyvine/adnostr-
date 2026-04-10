@@ -59,7 +59,7 @@ public class IPFSHelper {
                 while (!nodeManager.isNodeReady() && attempts < maxAttempts) {
                     attempts++;
                     Log.d(TAG, "P2P Engine status: WARMING UP (Attempt " + attempts + "/" + maxAttempts + ")");
-                    
+
                     // Attempt to kickstart the node if it's dead
                     if (attempts == 1) {
                          nodeManager.startNode();
@@ -89,10 +89,12 @@ public class IPFSHelper {
                     callback.onSuccess(cid, ipfsProtocolLink);
                 }
 
-            } catch (Exception e) {
-                Log.e(TAG, "P2P Hosting Failed");
+            } catch (Throwable t) { // CHANGED: Catch Throwable to capture OutOfMemoryError and NoClassDefFoundError
+                Log.e(TAG, "P2P Hosting Failed: ", t);
+                t.printStackTrace();
                 if (callback != null) {
-                    callback.onFailure(e);
+                    // Wrap the Throwable in an Exception so the callback can handle it
+                    callback.onFailure(new Exception("REAL GO ENGINE CRASH: " + t.getMessage(), t));
                 }
             }
         }).start();
@@ -143,7 +145,7 @@ public class IPFSHelper {
             report.append(">> File Exists: ").append(targetFile.exists()).append("\n");
             report.append(">> File Can Read: ").append(targetFile.canRead()).append("\n");
             report.append(">> File Size: ").append(targetFile.length() / 1024).append(" KB\n");
-            
+
             if (!targetFile.exists() || !targetFile.canRead()) {
                 report.append(">> FAIL: The app does not have permission to read the selected file, or the file path is a virtual URI.\n");
             } else {
