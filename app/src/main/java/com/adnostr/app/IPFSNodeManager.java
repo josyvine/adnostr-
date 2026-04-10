@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.FileNotFoundException;
+import java.lang.reflect.Method;
 
 /**
  * ============================================================
@@ -27,6 +28,7 @@ public class IPFSNodeManager {
     private Object peer;
     private final Context context;
     private boolean isStarted = false;
+    private String lastError = "";
 
     /**
      * Private constructor for singleton pattern
@@ -81,30 +83,52 @@ public class IPFSNodeManager {
                 Log.i(TAG, "IPFS Repository path: " + repoDirPath);
 
                 // Initialize Datahop IPFS peer
-                // This is the Go gomobile binding that manages the embedded IPFS node
+                Class<?> mobileClass;
                 try {
-                    // Attempt to create peer using Datahop mobile bindings
-                    // Note: The actual class name depends on what Datahop exports
-                    Class<?> mobileClass = Class.forName("mobile.Mobile");
-                    Object newNodeMethod = mobileClass.getMethod("NewNode", Context.class, String.class)
-                            .invoke(null, context, repoDirPath);
-                    
-                    peer = newNodeMethod;
-                    
-                    Log.i(TAG, "IPFS Peer object created successfully");
-
-                    // Start the peer node
-                    peer.getClass().getMethod("Start").invoke(peer);
-                    Log.i(TAG, "IPFS Peer started successfully");
-
+                    // FIXED: Using the verified class name from the diagnostic report
+                    mobileClass = Class.forName("datahop.Datahop");
                 } catch (ClassNotFoundException e) {
-                    Log.e(TAG, "Mobile.Mobile class not found - checking alternative imports");
-                    // Fallback: Try alternative initialization if gomobile structure differs
-                    Log.e(TAG, "Make sure datahop.aar is properly included in libs/");
-                    throw new Exception("Datahop IPFS-Lite library not found in classpath", e);
+                    try {
+                        mobileClass = Class.forName("io.datahop.Datahop");
+                    } catch (ClassNotFoundException e2) {
+                        throw new Exception("CRITICAL: Datahop classes completely missing from classpath.");
+                    }
                 }
 
+                Log.i(TAG, "Datahop class found! Attempting to initialize node...");
+
+                // Attempt to invoke the method. We wrap this in a deep scanner just in case 
+                // the GoMobile method name is slightly different (e.g., newNode, Init, startNode).
+                Method newNodeMethod;
+                try {
+                    newNodeMethod = mobileClass.getMethod("NewNode", Context.class, String.class);
+                } catch (NoSuchMethodException e) {
+                    // SCANNER: If NewNode doesn't exist, dump all available methods so we can see what to call!
+                    StringBuilder availableMethods = new StringBuilder("Available methods in Datahop:\n");
+                    for (Method m : mobileClass.getMethods()) {
+                        availableMethods.append(" - ").append(m.getName()).append("(");
+                        for (Class<?> p : m.getParameterTypes()) {
+                            availableMethods.append(p.getSimpleName()).append(", ");
+                        }
+                        availableMethods.append(")\n");
+                    }
+                    throw new Exception("Method 'NewNode' not found in Datahop library! " + availableMethods.toString());
+                }
+
+                peer = newNodeMethod.invoke(null, context, repoDirPath);
+                Log.i(TAG, "IPFS Peer object created successfully");
+
+                // Start the peer node
+                try {
+                    peer.getClass().getMethod("Start").invoke(peer);
+                } catch (NoSuchMethodException e) {
+                    Log.w(TAG, "Warning: 'Start' method not found on peer. It may auto-start.");
+                }
+                
+                Log.i(TAG, "IPFS Peer started successfully");
                 isStarted = true;
+                lastError = "";
+
                 Log.i(TAG, "====================================");
                 Log.i(TAG, "✓ IPFS Node is ONLINE");
                 Log.i(TAG, "====================================");
@@ -113,6 +137,7 @@ public class IPFSNodeManager {
                 Log.e(TAG, "CRITICAL: Failed to start IPFS node");
                 Log.e(TAG, "Error message: " + e.getMessage());
                 Log.e(TAG, "Stack trace: ", e);
+                lastError = e.getMessage();
                 isStarted = false;
             }
         }).start();
@@ -327,7 +352,7 @@ public class IPFSNodeManager {
      */
     private void ensureNodeReady() throws Exception {
         if (!isStarted || peer == null) {
-            String errorMsg = "IPFS node is not running yet. Call startNode() first.";
+            String errorMsg = "IPFS node is not running yet. Call startNode() first. Background Error: " + lastError;
             Log.e(TAG, errorMsg);
             throw new Exception(errorMsg);
         }
@@ -366,7 +391,7 @@ public class IPFSNodeManager {
 
             while (totalBytesRead < bytes.length) {
                 bytesRead = fis.read(bytes, totalBytesRead, bytes.length - totalBytesRead);
-                
+
                 if (bytesRead == -1) {
                     break;
                 }
