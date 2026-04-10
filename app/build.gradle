@@ -76,9 +76,9 @@ android {
 
 dependencies {
 
-    // ✅ FIXED — THIS IS THE CRITICAL LINE
-    // This makes Gradle 8 correctly load the AAR classes during compilation
-    implementation files("libs/datahop.aar")
+    // ✅ FIXED — THIS IS THE CRITICAL CHANGE
+    // This tells Gradle to use the flatDir repository from settings.gradle
+    implementation(name: 'datahop', ext: 'aar')
 
     // Android Core & UI
     implementation 'androidx.appcompat:appcompat:1.6.1'
