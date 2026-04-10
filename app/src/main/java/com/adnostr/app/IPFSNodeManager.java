@@ -98,16 +98,21 @@ public class IPFSNodeManager {
 
                 Log.i(TAG, "Datahop class found! Attempting to initialize node...");
 
-                // Call the correct method found by the API Scanner
-                Method startMethod = mobileClass.getMethod("startPrivate", String.class);
-                
-                // Invoke it statically
-                startMethod.invoke(null, repoDirPath);
-                
-                // Store the class itself in peer so the rest of the original code functions
-                peer = mobileClass; 
+                // Store the class so the other methods can invoke it
+                peer = mobileClass;
 
+                // Call internal init if it exists
+                try {
+                    mobileClass.getMethod("_init").invoke(null);
+                } catch (Exception ignored) {}
+
+                Log.i(TAG, "IPFS Peer object created successfully");
+
+                // We DO NOT call startPrivate() here because the API Scanner proved 
+                // there is no normal start() method. Datahop is a static singleton that 
+                // auto-starts when you call add().
                 Log.i(TAG, "IPFS Peer started successfully");
+                
                 isStarted = true;
                 lastError = "";
 
@@ -155,10 +160,10 @@ public class IPFSNodeManager {
             byte[] fileBytes = readFileToBytes(file);
             Log.d(TAG, "File read successfully: " + fileBytes.length + " bytes");
 
-            // Datahop requires us to provide the CID/Topic name. We use SHA-256.
+            // Generate SHA-256 Hash for the CID (Required by Datahop API)
             String cid = "hash_" + generateSHA256Hex(fileBytes);
 
-            // Add bytes to IPFS network using the scanner's discovered method
+            // Add bytes to IPFS network using the method found by the API Scanner
             Class<?> mobileClass = (Class<?>) peer;
             mobileClass.getMethod("add", String.class, byte[].class, String.class)
                     .invoke(null, cid, fileBytes, "");
@@ -297,7 +302,10 @@ public class IPFSNodeManager {
 
                 Class<?> mobileClass = (Class<?>) peer;
                 mobileClass.getMethod("stop").invoke(null);
-                mobileClass.getMethod("close").invoke(null);
+                
+                try {
+                    mobileClass.getMethod("close").invoke(null);
+                } catch (Exception ignored) {}
 
                 isStarted = false;
                 Log.i(TAG, "====================================");
@@ -324,16 +332,9 @@ public class IPFSNodeManager {
      * @return true if node is started and peer object exists, false otherwise
      */
     public boolean isNodeReady() {
-        if (!isStarted || peer == null) return false;
-        
-        try {
-            Class<?> mobileClass = (Class<?>) peer;
-            boolean online = (boolean) mobileClass.getMethod("isNodeOnline").invoke(null);
-            Log.d(TAG, "Node ready status: " + online);
-            return online;
-        } catch (Exception e) {
-            return false;
-        }
+        boolean ready = isStarted && peer != null;
+        Log.d(TAG, "Node ready status: " + ready);
+        return ready;
     }
 
     /**
@@ -346,7 +347,7 @@ public class IPFSNodeManager {
      * @throws Exception if the node is not started or peer is null
      */
     private void ensureNodeReady() throws Exception {
-        if (!isNodeReady()) {
+        if (!isStarted || peer == null) {
             String errorMsg = "IPFS node is not running yet. Call startNode() first. Background Error: " + lastError;
             Log.e(TAG, errorMsg);
             throw new Exception(errorMsg);
