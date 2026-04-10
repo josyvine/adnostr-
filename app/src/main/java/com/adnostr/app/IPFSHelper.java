@@ -57,18 +57,46 @@ public class IPFSHelper {
             try {
                 Log.i(TAG, "Initializing Datahop P2P Engine...");
 
-                // ✅ Get the app's cache directory for Datahop storage
-                String storagePath = context.getCacheDir().getAbsolutePath();
+                // ✅ STEP 1: Call _init() first to initialize the Go package
+                Log.d(TAG, "Calling Datahop._init()...");
+                try {
+                    java.lang.reflect.Method initMethod = datahop.Datahop.class.getMethod("_init");
+                    initMethod.invoke(null);
+                    Log.d(TAG, "✅ Datahop._init() completed");
+                } catch (NoSuchMethodException e) {
+                    Log.d(TAG, "_init() method not found, trying direct startPrivate()");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error calling _init(): ", e);
+                }
+
+                // ✅ STEP 2: Get the app's files directory for Datahop storage
+                String storagePath = context.getFilesDir().getAbsolutePath();
                 Log.d(TAG, "Storage path: " + storagePath);
 
-                // ✅ CALL STATIC METHOD: startPrivate() with the storage path
-                // This is what initializes the Go engine
+                // ✅ STEP 3: Create storage directory if it doesn't exist
+                File storageDir = new File(storagePath);
+                if (!storageDir.exists()) {
+                    storageDir.mkdirs();
+                    Log.d(TAG, "Created storage directory");
+                }
+
+                // ✅ STEP 4: Call startPrivate() with the storage path
                 Log.d(TAG, "Calling Datahop.startPrivate() with path: " + storagePath);
                 Datahop.startPrivate(storagePath);
 
+                // ✅ STEP 5: Wait a bit for initialization to complete
+                Log.d(TAG, "Waiting for engine to initialize...");
+                Thread.sleep(2000);
+
                 engineInitialized = true;
                 Log.i(TAG, "✅ Datahop P2P Engine initialized successfully!");
-                Log.i(TAG, "Node ID: " + Datahop.id());
+
+                try {
+                    String nodeId = Datahop.id();
+                    Log.i(TAG, "Node ID: " + nodeId);
+                } catch (Exception e) {
+                    Log.d(TAG, "Could not retrieve node ID immediately (may initialize later)");
+                }
 
             } catch (Exception e) {
                 Log.e(TAG, "Failed to initialize Datahop engine: ", e);
