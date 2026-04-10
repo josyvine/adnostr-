@@ -108,9 +108,11 @@ public class IPFSNodeManager {
 
                 Log.i(TAG, "IPFS Peer object created successfully");
 
-                // We DO NOT call startPrivate() here because the API Scanner proved 
-                // there is no normal start() method. Datahop is a static singleton that 
-                // auto-starts when you call add().
+                // ============================================================
+                // THIS IS THE FIX: Turn on the Go Engine using startPrivate
+                // ============================================================
+                mobileClass.getMethod("startPrivate", String.class).invoke(null, repoDirPath);
+
                 Log.i(TAG, "IPFS Peer started successfully");
                 
                 isStarted = true;
