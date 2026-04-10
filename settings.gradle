@@ -11,19 +11,13 @@ dependencyResolutionManagement {
     // and ignore any conflicting declarations in the build files.
     // This resolves the warning: "Build was configured to prefer settings repositories..."
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    
+
     repositories {
         google()
         mavenCentral()
-        
+
         // Required for external decentralized networking libraries
         maven { url 'https://jitpack.io' }
-        
-        // This tells Gradle exactly where to find the datahop.aar file 
-        // downloaded by your curl command in the GitHub Action.
-        flatDir {
-            dirs 'app/libs'
-        }
     }
 }
 
