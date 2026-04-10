@@ -22,8 +22,7 @@ public class IPFSHelper {
 
     private static final String TAG = "AdNostr_IPFSHelper";
 
-    // ✅ CRITICAL: Static reference to Datahop engine (singleton pattern)
-    private static Datahop datahopEngine = null;
+    // ✅ FIXED: Datahop is a static utility, not an instance
     private static boolean engineInitialized = false;
     private static final Object engineLock = new Object();
 
@@ -50,7 +49,7 @@ public class IPFSHelper {
      */
     public static void initializeDatahopEngine(Context context) throws Exception {
         synchronized (engineLock) {
-            if (engineInitialized && datahopEngine != null) {
+            if (engineInitialized) {
                 Log.d(TAG, "Datahop engine already initialized");
                 return;
             }
@@ -62,24 +61,19 @@ public class IPFSHelper {
                 String storagePath = context.getCacheDir().getAbsolutePath();
                 Log.d(TAG, "Storage path: " + storagePath);
 
-                // ✅ CREATE a new Datahop instance
-                datahopEngine = new Datahop();
-                Log.d(TAG, "Datahop instance created");
-
-                // ✅ INITIALIZE with the storage path (CRITICAL!)
-                // This is what calls the Go engine initialization
-                Log.d(TAG, "Calling startPrivate() with path: " + storagePath);
-                datahopEngine.startPrivate(storagePath);
+                // ✅ CALL STATIC METHOD: startPrivate() with the storage path
+                // This is what initializes the Go engine
+                Log.d(TAG, "Calling Datahop.startPrivate() with path: " + storagePath);
+                Datahop.startPrivate(storagePath);
 
                 engineInitialized = true;
                 Log.i(TAG, "✅ Datahop P2P Engine initialized successfully!");
-                Log.i(TAG, "Node ID: " + datahopEngine.id());
+                Log.i(TAG, "Node ID: " + Datahop.id());
 
             } catch (Exception e) {
                 Log.e(TAG, "Failed to initialize Datahop engine: ", e);
                 e.printStackTrace();
                 engineInitialized = false;
-                datahopEngine = null;
                 throw new Exception("Datahop initialization failed: " + e.getMessage(), e);
             }
         }
@@ -92,11 +86,11 @@ public class IPFSHelper {
      */
     public static boolean isDatahopReady() {
         synchronized (engineLock) {
-            if (datahopEngine == null || !engineInitialized) {
+            if (!engineInitialized) {
                 return false;
             }
             try {
-                return datahopEngine.isNodeOnline();
+                return Datahop.isNodeOnline();
             } catch (Exception e) {
                 Log.e(TAG, "Error checking node status: ", e);
                 return false;
@@ -120,7 +114,7 @@ public class IPFSHelper {
 
                 // ✅ FIRST: Initialize the engine if not already done
                 synchronized (engineLock) {
-                    if (!engineInitialized || datahopEngine == null) {
+                    if (!engineInitialized) {
                         Log.d(TAG, "Engine not initialized. Initializing now...");
                         try {
                             initializeDatahopEngine(context);
@@ -131,14 +125,14 @@ public class IPFSHelper {
                 }
 
                 // ✅ Check if engine is ready (node is online)
-                if (!datahopEngine.isNodeOnline()) {
+                if (!Datahop.isNodeOnline()) {
                     Log.d(TAG, "Node is offline, waiting for it to come online...");
 
                     // Wait up to 15 seconds for the node to come online
                     int attempts = 0;
                     int maxAttempts = 15;
 
-                    while (!datahopEngine.isNodeOnline() && attempts < maxAttempts) {
+                    while (!Datahop.isNodeOnline() && attempts < maxAttempts) {
                         attempts++;
                         Log.d(TAG, "Waiting for node to come online... Attempt " + attempts + "/" + maxAttempts);
 
@@ -147,7 +141,7 @@ public class IPFSHelper {
                         } catch (InterruptedException ignored) {}
                     }
 
-                    if (!datahopEngine.isNodeOnline()) {
+                    if (!Datahop.isNodeOnline()) {
                         String diagnosticReport = generateDeepDiagnosticReport(imageFile);
                         throw new Exception("P2P Engine timeout: Node did not come online after 15 seconds\n" + diagnosticReport);
                     }
@@ -173,13 +167,13 @@ public class IPFSHelper {
 
                 Log.d(TAG, "Adding file to DHT: " + fileName + " (" + fileBytes.length + " bytes)");
 
-                // This adds the file to the DHT
-                datahopEngine.add(fileName, fileBytes, mimeType);
+                // ✅ CALL STATIC METHOD: add file to the DHT
+                Datahop.add(fileName, fileBytes, mimeType);
 
                 Log.d(TAG, "File added successfully");
 
                 // Get the peer ID as the identifier
-                String peerId = datahopEngine.id();
+                String peerId = Datahop.id();
                 String cid = peerId;
 
                 String ipfsProtocolLink = "ipfs://" + cid;
@@ -224,11 +218,10 @@ public class IPFSHelper {
      */
     public static void stopDatahopEngine() {
         synchronized (engineLock) {
-            if (datahopEngine != null) {
+            if (engineInitialized) {
                 try {
                     Log.d(TAG, "Stopping Datahop P2P Engine...");
-                    datahopEngine.stop();
-                    datahopEngine = null;
+                    Datahop.stop();
                     engineInitialized = false;
                     Log.i(TAG, "✅ Datahop engine stopped successfully");
                 } catch (Exception e) {
