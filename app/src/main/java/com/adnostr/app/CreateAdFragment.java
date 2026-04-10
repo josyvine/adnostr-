@@ -150,7 +150,7 @@ public class CreateAdFragment extends Fragment {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
                             binding.tvImageCount.setText("P2P Hosting Failed");
-                            
+
                             // Extract raw Java exception for the Network Console
                             StringWriter sw = new StringWriter();
                             PrintWriter pw = new PrintWriter(sw);
@@ -223,12 +223,25 @@ public class CreateAdFragment extends Fragment {
             public void onReachCalculated(int totalUsers, List<String> usernames) {
                 if (isAdded() && binding != null) {
                     requireActivity().runOnUiThread(() -> {
+                        // FIX: Logic restored to show count + names in brackets
                         String resultText = totalUsers + " Active Users Found";
+                        if (usernames != null && !usernames.isEmpty()) {
+                            StringBuilder names = new StringBuilder(" (");
+                            for (int i = 0; i < usernames.size(); i++) {
+                                names.append(usernames.get(i));
+                                if (i < usernames.size() - 1) names.append(", ");
+                            }
+                            names.append(")");
+                            resultText += names.toString();
+                        }
                         binding.tvActiveWatchers.setText(resultText);
 
                         RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
                         if (existing != null) {
                             discoveryLogs.append("\n[SUCCESS] Found ").append(totalUsers).append(" unique users.");
+                            if (usernames != null && !usernames.isEmpty()) {
+                                discoveryLogs.append("\nIdentified Usernames: ").append(usernames.toString());
+                            }
                             existing.updateTechnicalLogs("Scan Complete", discoveryLogs.toString());
                         }
                     });
@@ -327,7 +340,7 @@ public class CreateAdFragment extends Fragment {
                 fullMsg.put("EVENT");
                 fullMsg.put(""); 
                 fullMsg.put(signedEvent);
-                
+
                 db.saveToAdvertiserHistory(fullMsg.toString());
                 broadcastToNetwork(signedEvent);
             } else {
@@ -350,7 +363,7 @@ public class CreateAdFragment extends Fragment {
 
         NostrPublisher.publishToPool(relayPool, signedEvent, (relayUrl, success, message) -> {
             finishedNodes[0]++;
-            
+
             technicalLogs.append(success ? "[OK] " : "[FAIL] ").append(relayUrl).append("\n");
             if (message != null && !message.isEmpty()) {
                 technicalLogs.append(" > ").append(message).append("\n\n");
