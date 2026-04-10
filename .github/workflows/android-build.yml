@@ -10,16 +10,14 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.1.7
 
-      # Install Java
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.2.1
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # Install Gradle CLI (needed to generate wrapper)
       - name: Install Gradle
         run: |
           wget https://services.gradle.org/distributions/gradle-8.0-bin.zip
@@ -27,113 +25,45 @@ jobs:
           sudo mv gradle-8.0 /opt/gradle
           echo "/opt/gradle/bin" >> $GITHUB_PATH
 
-      # Generate Gradle Wrapper automatically
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.0
 
-      # Clean build
       - name: Gradle Clean
         run: ./gradlew clean
 
-      # Download the 65MB Datahop AAR
       - name: Download Datahop AAR
         run: |
           mkdir -p app/libs
           curl -L https://github.com/datahop/ipfs-lite/releases/download/v0.0.15/datahop.aar -o app/libs/datahop.aar
-          echo "Download status: $?"
 
-      # ✅ DETAILED VERIFICATION STEP 1: Check file exists
       - name: Verify AAR Downloaded
-        run: |
-          echo "=== Checking app/libs directory ==="
-          ls -lh app/libs/
-          echo ""
-          echo "=== Checking file size ==="
-          stat app/libs/datahop.aar
-          echo ""
-          echo "=== Checking if readable ==="
-          file app/libs/datahop.aar
+        run: ls -lh app/libs/
 
-      # ✅ DETAILED VERIFICATION STEP 2: Check build.gradle files
-      - name: Verify Gradle Configuration
-        run: |
-          echo "=== Checking settings.gradle ==="
-          cat settings.gradle
-          echo ""
-          echo "=== Checking app/build.gradle (dependencies section) ==="
-          cat app/build.gradle | grep -A 30 "dependencies {"
-
-      # ✅ DETAILED VERIFICATION STEP 3: Check Gradle can see the AAR
-      - name: Check Gradle Dependency Resolution
-        run: |
-          echo "=== Running Gradle dependencies task with --info ==="
-          ./gradlew app:dependencies --info 2>&1 | head -100
-          echo ""
-          echo "=== Searching for datahop in dependencies ==="
-          ./gradlew app:dependencies 2>&1 | grep -i "datahop" || echo "WARNING: datahop not found in dependencies"
-
-      # ✅ DETAILED VERIFICATION STEP 4: List all JAR/AAR files Gradle knows about
-      - name: List All Dependencies
-        run: |
-          echo "=== All Gradle dependencies ==="
-          ./gradlew app:dependencies 2>&1 | grep -E "(aar|jar|datahop)" | head -50
-
-      # Decode signing keystore
       - name: Decode Keystore
-        run: |
-          echo "=== Decoding keystore ==="
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
-          ls -lh app/release.jks
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
 
-      # ✅ BUILD STEP WITH DETAILED LOGGING
       - name: Build Release APK with Detailed Logging
         run: |
-          echo "=== Starting build with --info flag ==="
           ./gradlew app:assembleRelease --no-build-cache --refresh-dependencies --info 2>&1 | tee build.log
-          echo ""
-          echo "=== Build completed. Checking for errors ==="
-          if grep -i "error\|failed" build.log; then
-            echo "ERRORS FOUND:"
-            grep -i "error\|failed" build.log
-          else
-            echo "No obvious errors in build log"
-          fi
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # ✅ VERIFICATION STEP 5: Check if APK was created
       - name: Verify APK Created
         run: |
-          echo "=== Checking if APK exists ==="
           ls -lh app/build/outputs/apk/release/app-release.apk || echo "ERROR: APK not found!"
-          echo ""
-          echo "=== APK contents (checking for native libraries) ==="
-          unzip -l app/build/outputs/apk/release/app-release.apk | grep -E "\.so|libgojni" || echo "WARNING: No .so files found in APK"
-          echo ""
-          echo "=== All lib files in APK ==="
-          unzip -l app/build/outputs/apk/release/app-release.apk | grep "lib/" | head -20
 
-      # ✅ VERIFICATION STEP 6: Check build log for AAR merging
-      - name: Check Build Log for AAR Processing
-        run: |
-          echo "=== Searching build log for AAR/library processing ==="
-          if [ -f build.log ]; then
-            grep -i "aar\|mergeRelease\|datahop" build.log || echo "No AAR references found in build log"
-          fi
-
-      # Upload APK
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        if: success()
+        uses: actions/upload-artifact@v4.3.6
         with:
           name: AdNostr-Release.apk
           path: app/build/outputs/apk/release/app-release.apk
 
-      # ✅ Upload build log for inspection
       - name: Upload Build Log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.3.6
         with:
           name: build-debug.log
           path: build.log
