@@ -19,8 +19,7 @@ dependencyResolutionManagement {
         // Required for external decentralized networking libraries
         maven { url 'https://jitpack.io' }
         
-        // CRITICAL FIX: Added for local AAR files (Datahop library)
-        // This allows Gradle 8 to recognize and include .aar files from app/libs folder
+        // ✅ CRITICAL FIX: Local directory for Datahop AAR
         flatDir {
             dirs 'libs'
         }
