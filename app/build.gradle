@@ -76,9 +76,9 @@ android {
 
 dependencies {
 
-    // ✅ FIXED — THIS IS THE CRITICAL CHANGE
-    // This tells Gradle to use the flatDir repository from settings.gradle
-    implementation(name: 'datahop', ext: 'aar')
+    // ✅ PROPER GRADLE 8 FIX: Point directly to the file path
+    // This forces Gradle to include BOTH the native .so and the Java classes
+    implementation files('libs/datahop.aar')
 
     // Android Core & UI
     implementation 'androidx.appcompat:appcompat:1.6.1'
