@@ -76,9 +76,10 @@ android {
 
 dependencies {
 
-    // ✅ PROPER GRADLE 8 FIX: Point directly to the file path
-    // This forces Gradle to include BOTH the native .so and the Java classes
-    implementation files('libs/datahop.aar')
+    // ✅ PROPER GRADLE 8 FIX: Use fileTree instead of files() for lazy loading
+    // This scans the libs folder DURING BUILD, not during configuration
+    // so the dynamically downloaded AAR will be found
+    implementation fileTree(dir: 'libs', include: ['*.aar'])
 
     // Android Core & UI
     implementation 'androidx.appcompat:appcompat:1.6.1'
