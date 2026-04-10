@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.FileNotFoundException;
 import java.lang.reflect.Method;
+import java.security.MessageDigest;
 
 /**
  * ============================================================
@@ -97,34 +98,15 @@ public class IPFSNodeManager {
 
                 Log.i(TAG, "Datahop class found! Attempting to initialize node...");
 
-                // Attempt to invoke the method. We wrap this in a deep scanner just in case 
-                // the GoMobile method name is slightly different (e.g., newNode, Init, startNode).
-                Method newNodeMethod;
-                try {
-                    newNodeMethod = mobileClass.getMethod("NewNode", Context.class, String.class);
-                } catch (NoSuchMethodException e) {
-                    // SCANNER: If NewNode doesn't exist, dump all available methods so we can see what to call!
-                    StringBuilder availableMethods = new StringBuilder("Available methods in Datahop:\n");
-                    for (Method m : mobileClass.getMethods()) {
-                        availableMethods.append(" - ").append(m.getName()).append("(");
-                        for (Class<?> p : m.getParameterTypes()) {
-                            availableMethods.append(p.getSimpleName()).append(", ");
-                        }
-                        availableMethods.append(")\n");
-                    }
-                    throw new Exception("Method 'NewNode' not found in Datahop library! " + availableMethods.toString());
-                }
-
-                peer = newNodeMethod.invoke(null, context, repoDirPath);
-                Log.i(TAG, "IPFS Peer object created successfully");
-
-                // Start the peer node
-                try {
-                    peer.getClass().getMethod("Start").invoke(peer);
-                } catch (NoSuchMethodException e) {
-                    Log.w(TAG, "Warning: 'Start' method not found on peer. It may auto-start.");
-                }
+                // Call the correct method found by the API Scanner
+                Method startMethod = mobileClass.getMethod("startPrivate", String.class);
                 
+                // Invoke it statically
+                startMethod.invoke(null, repoDirPath);
+                
+                // Store the class itself in peer so the rest of the original code functions
+                peer = mobileClass; 
+
                 Log.i(TAG, "IPFS Peer started successfully");
                 isStarted = true;
                 lastError = "";
@@ -173,10 +155,13 @@ public class IPFSNodeManager {
             byte[] fileBytes = readFileToBytes(file);
             Log.d(TAG, "File read successfully: " + fileBytes.length + " bytes");
 
-            // Add bytes to IPFS network
-            // This returns a CID (Content Identifier) that uniquely identifies the file
-            String cid = (String) peer.getClass().getMethod("Add", byte[].class)
-                    .invoke(peer, (Object) fileBytes);
+            // Datahop requires us to provide the CID/Topic name. We use SHA-256.
+            String cid = "hash_" + generateSHA256Hex(fileBytes);
+
+            // Add bytes to IPFS network using the scanner's discovered method
+            Class<?> mobileClass = (Class<?>) peer;
+            mobileClass.getMethod("add", String.class, byte[].class, String.class)
+                    .invoke(null, cid, fileBytes, "");
 
             Log.i(TAG, "====================================");
             Log.i(TAG, "✓ File added to IPFS successfully");
@@ -217,9 +202,9 @@ public class IPFSNodeManager {
 
         try {
             // Retrieve file data from IPFS using CID
-            // The peer will search the network if the block is not in local storage
-            byte[] fileData = (byte[]) peer.getClass().getMethod("Cat", String.class)
-                    .invoke(peer, cid);
+            Class<?> mobileClass = (Class<?>) peer;
+            byte[] fileData = (byte[]) mobileClass.getMethod("get", String.class, String.class)
+                    .invoke(null, cid, "");
 
             if (fileData == null || fileData.length == 0) {
                 throw new Exception("Retrieved file data is empty for CID: " + cid);
@@ -264,15 +249,16 @@ public class IPFSNodeManager {
         Log.i(TAG, "====================================");
 
         try {
+            Class<?> mobileClass = (Class<?>) peer;
             // Check if the peer object has a Remove or Delete method
             // Try Rm method (common in Go IPFS implementations)
             try {
-                peer.getClass().getMethod("Rm", String.class).invoke(peer, cid);
+                mobileClass.getMethod("Rm", String.class).invoke(null, cid);
                 Log.i(TAG, "File unpinned and marked for removal (Rm method)");
             } catch (NoSuchMethodException e1) {
                 // Try Remove method as alternative
                 try {
-                    peer.getClass().getMethod("Remove", String.class).invoke(peer, cid);
+                    mobileClass.getMethod("Remove", String.class).invoke(null, cid);
                     Log.i(TAG, "File unpinned and marked for removal (Remove method)");
                 } catch (NoSuchMethodException e2) {
                     // If neither method exists, log warning but continue
@@ -309,7 +295,9 @@ public class IPFSNodeManager {
                 Log.i(TAG, "Stopping IPFS node...");
                 Log.i(TAG, "====================================");
 
-                peer.getClass().getMethod("Stop").invoke(peer);
+                Class<?> mobileClass = (Class<?>) peer;
+                mobileClass.getMethod("stop").invoke(null);
+                mobileClass.getMethod("close").invoke(null);
 
                 isStarted = false;
                 Log.i(TAG, "====================================");
@@ -336,9 +324,16 @@ public class IPFSNodeManager {
      * @return true if node is started and peer object exists, false otherwise
      */
     public boolean isNodeReady() {
-        boolean ready = isStarted && peer != null;
-        Log.d(TAG, "Node ready status: " + ready);
-        return ready;
+        if (!isStarted || peer == null) return false;
+        
+        try {
+            Class<?> mobileClass = (Class<?>) peer;
+            boolean online = (boolean) mobileClass.getMethod("isNodeOnline").invoke(null);
+            Log.d(TAG, "Node ready status: " + online);
+            return online;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
@@ -351,7 +346,7 @@ public class IPFSNodeManager {
      * @throws Exception if the node is not started or peer is null
      */
     private void ensureNodeReady() throws Exception {
-        if (!isStarted || peer == null) {
+        if (!isNodeReady()) {
             String errorMsg = "IPFS node is not running yet. Call startNode() first. Background Error: " + lastError;
             Log.e(TAG, errorMsg);
             throw new Exception(errorMsg);
@@ -417,6 +412,23 @@ public class IPFSNodeManager {
             Log.e(TAG, "Error reading file to bytes: " + e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * ============================================================
+     * GENERATE SHA-256 HASH (Helper for P2P CID Generation)
+     * ============================================================
+     */
+    private String generateSHA256Hex(byte[] data) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(data);
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
     }
 
     /**
