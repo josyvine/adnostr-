@@ -10,14 +10,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.1.7
+        uses: actions/checkout@v4
 
+      # Install Java
       - name: Set up JDK 17
-        uses: actions/setup-java@v4.2.1
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
+      # Install Gradle CLI (needed to generate wrapper)
       - name: Install Gradle
         run: |
           wget https://services.gradle.org/distributions/gradle-8.0-bin.zip
@@ -25,45 +27,38 @@ jobs:
           sudo mv gradle-8.0 /opt/gradle
           echo "/opt/gradle/bin" >> $GITHUB_PATH
 
+      # Generate Gradle Wrapper automatically
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.0
 
+      # Clean build
       - name: Gradle Clean
         run: ./gradlew clean
 
+      # Download the 65MB Datahop AAR
       - name: Download Datahop AAR
         run: |
           mkdir -p app/libs
           curl -L https://github.com/datahop/ipfs-lite/releases/download/v0.0.15/datahop.aar -o app/libs/datahop.aar
 
-      - name: Verify AAR Downloaded
+      - name: Verify AAR
         run: ls -lh app/libs/
 
+      # Decode signing keystore
       - name: Decode Keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.jks
 
-      - name: Build Release APK with Detailed Logging
-        run: |
-          ./gradlew app:assembleRelease --no-build-cache --refresh-dependencies --info 2>&1 | tee build.log
+      # Build release APK
+      - name: Build Release APK
+        run: ./gradlew app:assembleRelease --no-build-cache --refresh-dependencies
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Verify APK Created
-        run: |
-          ls -lh app/build/outputs/apk/release/app-release.apk || echo "ERROR: APK not found!"
-
+      # Upload APK
       - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4.3.6
+        uses: actions/upload-artifact@v4
         with:
           name: AdNostr-Release.apk
           path: app/build/outputs/apk/release/app-release.apk
-
-      - name: Upload Build Log
-        if: always()
-        uses: actions/upload-artifact@v4.3.6
-        with:
-          name: build-debug.log
-          path: build.log
