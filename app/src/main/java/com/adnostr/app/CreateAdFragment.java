@@ -132,7 +132,8 @@ public class CreateAdFragment extends Fragment {
             binding.tvImageCount.setText("Preparing P2P Host...");
 
             // Use the P2P version of uploadImage (local 'Add' & 'Pin')
-            IPFSHelper.uploadImage(file, new IPFSHelper.IPFSUploadCallback() {
+            // FIXED: Added requireContext() here to resolve the build error!
+            IPFSHelper.uploadImage(requireContext(), file, new IPFSHelper.IPFSUploadCallback() {
                 @Override
                 public void onSuccess(String cid, String ipfsUrl) {
                     if (isAdded() && getActivity() != null) {
