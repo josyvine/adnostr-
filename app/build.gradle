@@ -71,19 +71,13 @@ android {
 }
 
 /**
- * CRITICAL: Local repository for Datahop AAR
- * This MUST come BEFORE dependencies block in Gradle 8
+ * Repositories are centrally defined in settings.gradle
+ * Do NOT add repositories here when using FAIL_ON_PROJECT_REPOS mode
  */
-repositories {
-    flatDir {
-        dirs 'libs'
-    }
-}
 
 dependencies {
 
-    // ✅ FIXED: Explicit Datahop AAR dependency with local flatDir repository
-    // This explicitly tells Gradle to find 'datahop.aar' in the libs folder
+    // ✅ FIXED: Datahop AAR from local libs folder (defined in settings.gradle)
     implementation(name: 'datahop', ext: 'aar')
 
     // Android Core & UI
