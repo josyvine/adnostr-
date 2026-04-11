@@ -23,6 +23,7 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * and local database management.
  * FIXED: Username section is now hidden for Advertisers.
  * NEW: Implements Decentralized Username checks, claiming, and releasing via UsernameManager.
+ * NEW ENHANCEMENT: Added Custom Media Relay (Blossom/NIP-96) configuration.
  */
 public class SettingsFragment extends Fragment {
 
@@ -58,6 +59,9 @@ public class SettingsFragment extends Fragment {
 
         // 4. Setup Username Logic (Exclusive to USER role)
         configureProfileSectionVisibility();
+
+        // 5. NEW: Setup Media Relay (Blossom/NIP-96) settings
+        setupMediaRelaySettings();
     }
 
     /**
@@ -162,6 +166,38 @@ public class SettingsFragment extends Fragment {
                         refreshUsernameUIState(); // Reset failure
                     }
                 });
+            });
+        }
+    }
+
+    /**
+     * NEW: Configures the Media Relay (Blossom) settings section.
+     * Allows Advertisers/Users to set a custom upload/download server.
+     */
+    private void setupMediaRelaySettings() {
+        if (binding == null) return;
+
+        // Retrieve current saved server from database
+        String savedServer = db.getCustomMediaServer();
+        
+        // If your XML layout has etMediaServer and btnSaveMediaServer
+        if (binding.etMediaServer != null) {
+            binding.etMediaServer.setText(savedServer);
+        }
+
+        if (binding.btnSaveMediaServer != null) {
+            binding.btnSaveMediaServer.setOnClickListener(v -> {
+                String newServer = binding.etMediaServer.getText().toString().trim();
+                
+                // Basic URL validation
+                if (!newServer.isEmpty() && !newServer.startsWith("http")) {
+                    Toast.makeText(getContext(), "Invalid URL. Must start with http/https", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                db.saveCustomMediaServer(newServer);
+                Toast.makeText(getContext(), "Media Relay Configuration Saved", Toast.LENGTH_SHORT).show();
+                Log.i(TAG, "Custom Blossom Server updated to: " + newServer);
             });
         }
     }
