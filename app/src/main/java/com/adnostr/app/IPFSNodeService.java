@@ -45,7 +45,15 @@ public class IPFSNodeService extends Service {
         }
 
         // 3. Initialize the actual P2P Node
-        IPFSNodeManager.getInstance(this).startNode();
+        // FIX APPLIED: Wrapped in a background thread and try-catch block.
+        // This prevents native Go Engine crashes from killing the entire app process.
+        new Thread(() -> {
+            try {
+                IPFSNodeManager.getInstance(this).startNode();
+            } catch (Exception e) {
+                Log.e(TAG, "CRITICAL: P2P Node failed to start in background: " + e.getMessage());
+            }
+        }).start();
 
         return START_STICKY;
     }
