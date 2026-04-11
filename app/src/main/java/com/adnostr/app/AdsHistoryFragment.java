@@ -27,9 +27,9 @@ import java.util.Set;
  * FEATURE: Handles local history viewing and decentralized deletion (NIP-09).
  * USER MODE: Displays received ads; performs local device deletion only.
  * ADVERTISER MODE: Displays broadcasted ads; performs local deletion, 
- * generates Nostr Kind 5 Deletion events, AND physically wipes IPFS P2P storage.
+ * generates Nostr Kind 5 Deletion events, AND sends HTTP DELETE requests to media servers.
  * 
- * FIXED: Implemented IPFS P2P local file deletion to prevent storage bloat.
+ * UPDATED: Replaced IPFS physical wipe with Blossom/NIP-96 HTTP deletion requests.
  */
 public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnAdHistoryClickListener {
 
@@ -138,8 +138,8 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
             }
             Toast.makeText(getContext(), "Selected ads removed locally.", Toast.LENGTH_SHORT).show();
         } else {
-            // Logic for Advertisers: Local Deletion + Nostr Wipe + IPFS P2P Storage Wipe
-            broadcastNostrDeletionAndWipeP2P(selectedItems);
+            // Logic for Advertisers: Local Deletion + Nostr Wipe + Media Server Wipes
+            broadcastNostrDeletionAndWipeMedia(selectedItems);
         }
 
         // 4. FIX: Clear selection immediately to hide the FAB and prevent double-clicks
@@ -150,11 +150,11 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
     }
 
     /**
-     * ADVERTISER ONLY: Implements NIP-09 (Event Deletion) and P2P Storage Cleanup.
+     * ADVERTISER ONLY: Implements NIP-09 (Event Deletion) and HTTP Media Server Cleanup.
      */
-    private void broadcastNostrDeletionAndWipeP2P(List<String> adsToDelete) {
+    private void broadcastNostrDeletionAndWipeMedia(List<String> adsToDelete) {
         try {
-            IPFSNodeManager nodeManager = IPFSNodeManager.getInstance(requireContext());
+            MediaUploadHelper mediaHelper = new MediaUploadHelper();
 
             for (String fullPayload : adsToDelete) {
                 JSONArray msgArray = new JSONArray(fullPayload);
@@ -186,26 +186,26 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
                     db.deleteFromAdvertiserHistory(fullPayload);
                 }
 
-                // --- PART 2: WIPE PHYSICAL IPFS STORAGE ---
-                // Parse content to find CIDs that need to be unpinned
-                String contentRaw = adEvent.optString("content", "");
-                if (!contentRaw.isEmpty()) {
-                    JSONObject content = new JSONObject(contentRaw);
-                    Object imageObj = content.opt("image");
-                    
-                    if (imageObj instanceof JSONArray) {
-                        JSONArray imgArr = (JSONArray) imageObj;
-                        for (int i = 0; i < imgArr.length(); i++) {
-                            String cid = imgArr.getString(i).replace("ipfs://", "");
-                            nodeManager.deleteFile(cid);
-                        }
-                    } else if (imageObj instanceof String) {
-                        String cid = ((String) imageObj).replace("ipfs://", "");
-                        nodeManager.deleteFile(cid);
+                // --- PART 2: WIPE CLOUD MEDIA STORAGE (NIP-96 / Blossom) ---
+                // Retrieve the deletion URLs stored during the ad creation process
+                String deletionUrlsJson = db.getDeletionData(adEventId);
+                if (deletionUrlsJson != null && !deletionUrlsJson.isEmpty()) {
+                    JSONArray urls = new JSONArray(deletionUrlsJson);
+                    for (int i = 0; i < urls.length(); i++) {
+                        String deleteUrl = urls.getString(i);
+                        
+                        // Send HTTP DELETE request to the media server
+                        mediaHelper.deleteMedia(deleteUrl, new MediaUploadHelper.MediaUploadCallback() {
+                            @Override public void onStatusUpdate(String log) { Log.d(TAG, "Deletion Status: " + log); }
+                            @Override public void onSuccess(String u, String d) {}
+                            @Override public void onFailure(Exception e) { Log.e(TAG, "Cloud Wipe Failed: " + e.getMessage()); }
+                        });
                     }
+                    // Clean up the stored deletion mapping from database
+                    db.removeDeletionData(adEventId);
                 }
             }
-            Toast.makeText(getContext(), "Ads deleted and storage space freed.", Toast.LENGTH_LONG).show();
+            Toast.makeText(getContext(), "Ads deleted and cloud storage space freed.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             Log.e(TAG, "Deletion/Wipe Failure: " + e.getMessage());
             Toast.makeText(getContext(), "Error during wipe: " + e.getMessage(), Toast.LENGTH_SHORT).show();
