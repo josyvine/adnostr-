@@ -56,80 +56,83 @@ public class IPFSNodeManager {
      * START EMBEDDED IPFS NODE
      * ============================================================
      * Initializes and starts the embedded IPFS peer node.
-     * This runs on a background thread to avoid blocking the UI.
+     * FIX APPLIED: Removed the background thread wrapper. IPFSHelper already 
+     * calls this on a background thread. Removing this thread prevents Native 
+     * Go crashes from being silently swallowed.
      */
-    public synchronized void startNode() {
+    public synchronized void startNode() throws Exception {
         if (isStarted) {
             Log.w(TAG, "IPFS node is already running.");
             return;
         }
 
-        new Thread(() -> {
-            try {
-                Log.i(TAG, "====================================");
-                Log.i(TAG, "Initializing embedded IPFS node...");
-                Log.i(TAG, "====================================");
+        try {
+            Log.i(TAG, "====================================");
+            Log.i(TAG, "Initializing embedded IPFS node...");
+            Log.i(TAG, "====================================");
 
-                // Create directory where IPFS stores blocks, keys, and configuration
-                File repoDir = new File(context.getFilesDir(), "ipfs_repo");
-                if (!repoDir.exists()) {
-                    boolean created = repoDir.mkdirs();
-                    if (!created) {
-                        throw new IOException("Failed to create IPFS repository directory");
-                    }
-                    Log.i(TAG, "Created IPFS repository directory: " + repoDir.getAbsolutePath());
+            // Create directory where IPFS stores blocks, keys, and configuration
+            File repoDir = new File(context.getFilesDir(), "ipfs_repo");
+            if (!repoDir.exists()) {
+                boolean created = repoDir.mkdirs();
+                if (!created) {
+                    throw new IOException("Failed to create IPFS repository directory");
                 }
-
-                String repoDirPath = repoDir.getAbsolutePath();
-                Log.i(TAG, "IPFS Repository path: " + repoDirPath);
-
-                // Initialize Datahop IPFS peer
-                Class<?> mobileClass;
-                try {
-                    // FIXED: Using the verified class name from the diagnostic report
-                    mobileClass = Class.forName("datahop.Datahop");
-                } catch (ClassNotFoundException e) {
-                    try {
-                        mobileClass = Class.forName("io.datahop.Datahop");
-                    } catch (ClassNotFoundException e2) {
-                        throw new Exception("CRITICAL: Datahop classes completely missing from classpath.");
-                    }
-                }
-
-                Log.i(TAG, "Datahop class found! Attempting to initialize node...");
-
-                // Store the class so the other methods can invoke it
-                peer = mobileClass;
-
-                // Call internal init if it exists
-                try {
-                    mobileClass.getMethod("_init").invoke(null);
-                } catch (Exception ignored) {}
-
-                Log.i(TAG, "IPFS Peer object created successfully");
-
-                // ============================================================
-                // THIS IS THE FIX: Turn on the Go Engine using startPrivate
-                // ============================================================
-                mobileClass.getMethod("startPrivate", String.class).invoke(null, repoDirPath);
-
-                Log.i(TAG, "IPFS Peer started successfully");
-                
-                isStarted = true;
-                lastError = "";
-
-                Log.i(TAG, "====================================");
-                Log.i(TAG, "✓ IPFS Node is ONLINE");
-                Log.i(TAG, "====================================");
-
-            } catch (Exception e) {
-                Log.e(TAG, "CRITICAL: Failed to start IPFS node");
-                Log.e(TAG, "Error message: " + e.getMessage());
-                Log.e(TAG, "Stack trace: ", e);
-                lastError = e.getMessage();
-                isStarted = false;
+                Log.i(TAG, "Created IPFS repository directory: " + repoDir.getAbsolutePath());
             }
-        }).start();
+
+            String repoDirPath = repoDir.getAbsolutePath();
+            Log.i(TAG, "IPFS Repository path: " + repoDirPath);
+
+            // Initialize Datahop IPFS peer
+            Class<?> mobileClass;
+            try {
+                // FIXED: Using the verified class name from the diagnostic report
+                mobileClass = Class.forName("datahop.Datahop");
+            } catch (ClassNotFoundException e) {
+                try {
+                    mobileClass = Class.forName("io.datahop.Datahop");
+                } catch (ClassNotFoundException e2) {
+                    throw new Exception("CRITICAL: Datahop classes completely missing from classpath.");
+                }
+            }
+
+            Log.i(TAG, "Datahop class found! Attempting to initialize node...");
+
+            // Store the class so the other methods can invoke it
+            peer = mobileClass;
+
+            // Call internal init if it exists
+            try {
+                mobileClass.getMethod("_init").invoke(null);
+            } catch (Exception ignored) {}
+
+            Log.i(TAG, "IPFS Peer object created successfully");
+
+            // ============================================================
+            // THIS IS THE FIX: Turn on the Go Engine using startPrivate
+            // ============================================================
+            mobileClass.getMethod("startPrivate", String.class).invoke(null, repoDirPath);
+
+            Log.i(TAG, "IPFS Peer started successfully");
+            
+            isStarted = true;
+            lastError = "";
+
+            Log.i(TAG, "====================================");
+            Log.i(TAG, "✓ IPFS Node is ONLINE");
+            Log.i(TAG, "====================================");
+
+        } catch (Exception e) {
+            Log.e(TAG, "CRITICAL: Failed to start IPFS node");
+            Log.e(TAG, "Error message: " + e.getMessage());
+            Log.e(TAG, "Stack trace: ", e);
+            lastError = e.getMessage();
+            isStarted = false;
+            
+            // CRITICAL FIX: Throw the error so the UI diagnostic tool actually catches it!
+            throw new Exception("Native Engine Crash during Start: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -326,7 +329,7 @@ public class IPFSNodeManager {
 
     /**
      * ============================================================
-     * CHECK NODE STATUS
+     * CHECK NODE STATUS (FIXED: TRUE NATIVE POLLING)
      * ============================================================
      * Determines whether the IPFS node is currently running and ready
      * to handle file operations.
@@ -334,9 +337,21 @@ public class IPFSNodeManager {
      * @return true if node is started and peer object exists, false otherwise
      */
     public boolean isNodeReady() {
-        boolean ready = isStarted && peer != null;
-        Log.d(TAG, "Node ready status: " + ready);
-        return ready;
+        if (!isStarted || peer == null) return false;
+
+        try {
+            Class<?> mobileClass = (Class<?>) peer;
+            // Native poll to Go Engine to confirm it actually started successfully
+            Boolean isOnline = (Boolean) mobileClass.getMethod("isNodeOnline").invoke(null);
+            
+            boolean ready = (isOnline != null && isOnline);
+            Log.d(TAG, "Node ready status (Native Polling): " + ready);
+            return ready;
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Native Status Check Failed: " + e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -349,7 +364,7 @@ public class IPFSNodeManager {
      * @throws Exception if the node is not started or peer is null
      */
     private void ensureNodeReady() throws Exception {
-        if (!isStarted || peer == null) {
+        if (!isNodeReady()) {
             String errorMsg = "IPFS node is not running yet. Call startNode() first. Background Error: " + lastError;
             Log.e(TAG, errorMsg);
             throw new Exception(errorMsg);
