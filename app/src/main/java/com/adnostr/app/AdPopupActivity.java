@@ -20,6 +20,7 @@ import com.google.android.material.tabs.TabLayoutMediator;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -27,16 +28,23 @@ import java.util.List;
 
 import coil.Coil;
 import coil.request.ImageRequest;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 /**
  * Professional Ad Delivery Overlay.
- * UPDATED: Integrated IPFSFallbackResolver for the Image Swipe Slider.
- * Each image in the slider now attempts a P2P fetch before falling back to HTTP.
+ * UPDATED: Replaced IPFS P2P resolution with Encrypted Media Relay (HTTPS) logic.
+ * Logic: Download Encrypted Bytes -> Decrypt with AES Key from Nostr JSON -> Render Image.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_AdPopup";
     private ActivityAdPopupBinding binding;
+    private final OkHttpClient httpClient = new OkHttpClient();
+    private String adDecryptionKeyHex = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,21 +106,24 @@ public class AdPopupActivity extends AppCompatActivity {
         binding.tvPopupTitle.setText(title);
         binding.tvPopupDesc.setText(content.optString("desc", "No description provided."));
 
-        // Handle Image Slider (Extract CIDs from JSON)
-        List<String> imageCIDs = new ArrayList<>();
+        // ENHANCEMENT: Extract the AES Decryption Key
+        adDecryptionKeyHex = content.optString("key", "");
+
+        // Handle Image Slider (Extract HTTPS URLs from JSON)
+        List<String> imageUrls = new ArrayList<>();
         Object imageObj = content.opt("image");
         
         if (imageObj instanceof JSONArray) {
             JSONArray arr = (JSONArray) imageObj;
             for (int i = 0; i < arr.length(); i++) {
-                imageCIDs.add(arr.getString(i));
+                imageUrls.add(arr.getString(i));
             }
         } else if (imageObj instanceof String && !((String) imageObj).isEmpty()) {
-            imageCIDs.add((String) imageObj);
+            imageUrls.add((String) imageObj);
         }
 
-        if (!imageCIDs.isEmpty()) {
-            setupImageSlider(imageCIDs);
+        if (!imageUrls.isEmpty()) {
+            setupImageSlider(imageUrls);
         } else {
             binding.vpAdImages.setVisibility(View.GONE);
         }
@@ -120,8 +131,8 @@ public class AdPopupActivity extends AppCompatActivity {
         setupActionButtons(content);
     }
 
-    private void setupImageSlider(List<String> cids) {
-        ImageSliderAdapter adapter = new ImageSliderAdapter(cids);
+    private void setupImageSlider(List<String> urls) {
+        ImageSliderAdapter adapter = new ImageSliderAdapter(urls);
         binding.vpAdImages.setAdapter(adapter);
 
         // Connect the dots (Page Indicator)
@@ -168,12 +179,12 @@ public class AdPopupActivity extends AppCompatActivity {
 
     /**
      * Internal Adapter for the Image ViewPager slider.
-     * UPDATED: Now uses IPFSFallbackResolver to source images from P2P or Gateway.
+     * UPDATED: Downloads encrypted bytes from HTTP Media Relay and decrypts locally.
      */
     private class ImageSliderAdapter extends RecyclerView.Adapter<ImageSliderAdapter.ViewHolder> {
-        private final List<String> cids;
+        private final List<String> urls;
 
-        ImageSliderAdapter(List<String> cids) { this.cids = cids; }
+        ImageSliderAdapter(List<String> urls) { this.urls = urls; }
 
         @NonNull
         @Override
@@ -187,33 +198,66 @@ public class AdPopupActivity extends AppCompatActivity {
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            String cid = cids.get(position);
+            String url = urls.get(position);
             ImageView targetView = (ImageView) holder.itemView;
 
-            // USE THE RESOLVER: Race between P2P Node and HTTP Gateway
-            IPFSFallbackResolver.resolveImage(AdPopupActivity.this, cid, new IPFSFallbackResolver.ResolveCallback() {
+            // Start Secure Image Resolution Flow
+            fetchAndDecryptMedia(url, targetView);
+        }
+
+        /**
+         * Secure Fetch Flow: Download -> Decrypt -> Display.
+         */
+        private void fetchAndDecryptMedia(String url, ImageView imageView) {
+            Request request = new Request.Builder().url(url).build();
+
+            httpClient.newCall(request).enqueue(new Callback() {
                 @Override
-                public void onSourceReady(Object source) {
-                    // source is either byte[] (from P2P) or String URL (from Gateway)
-                    // Coil handles both data types perfectly.
-                    ImageRequest request = new ImageRequest.Builder(AdPopupActivity.this)
-                            .data(source)
-                            .crossfade(true)
-                            .target(targetView)
-                            .build();
-                    Coil.imageLoader(AdPopupActivity.this).enqueue(request);
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    Log.e(TAG, "Failed to download encrypted media: " + e.getMessage());
+                    runOnUiThread(() -> imageView.setImageResource(android.R.drawable.ic_menu_report_image));
                 }
 
                 @Override
-                public void onFailure(Exception e) {
-                    Log.e(TAG, "Failed to resolve image for swipe gallery: " + e.getMessage());
-                    targetView.setImageResource(android.R.drawable.ic_menu_report_image);
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                    if (!response.isSuccessful()) {
+                        runOnUiThread(() -> imageView.setImageResource(android.R.drawable.ic_menu_report_image));
+                        return;
+                    }
+
+                    try {
+                        byte[] encryptedBytes = response.body().bytes();
+
+                        // Decrypt only if a key is provided in the Ad
+                        byte[] finalImageData;
+                        if (!adDecryptionKeyHex.isEmpty()) {
+                            byte[] aesKey = EncryptionUtils.hexToBytes(adDecryptionKeyHex);
+                            finalImageData = EncryptionUtils.decrypt(encryptedBytes, aesKey);
+                        } else {
+                            // Fallback to raw if no key (unencrypted ad support)
+                            finalImageData = encryptedBytes;
+                        }
+
+                        // Display via Coil on UI Thread
+                        runOnUiThread(() -> {
+                            ImageRequest imageRequest = new ImageRequest.Builder(AdPopupActivity.this)
+                                    .data(finalImageData)
+                                    .crossfade(true)
+                                    .target(imageView)
+                                    .build();
+                            Coil.imageLoader(AdPopupActivity.this).enqueue(imageRequest);
+                        });
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Decryption Error for " + url + ": " + e.getMessage());
+                        runOnUiThread(() -> imageView.setImageResource(android.R.drawable.ic_menu_report_image));
+                    }
                 }
             });
         }
 
         @Override
-        public int getItemCount() { return cids.size(); }
+        public int getItemCount() { return urls.size(); }
 
         class ViewHolder extends RecyclerView.ViewHolder {
             ViewHolder(@NonNull View itemView) { super(itemView); }
