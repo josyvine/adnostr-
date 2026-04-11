@@ -14,13 +14,8 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-        // MANDATORY FOR NATIVE AAR:
-        // This ensures the build includes the architectures supported by 
-        // the Datahop Go-compiled binary.
-        ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-        }
+        
+        // Removed NDK abiFilters as we are now using 100% Java/Kotlin HTTP stack
     }
 
     signingConfigs {
@@ -59,39 +54,18 @@ android {
                 'META-INF/ASL2.0'
             ]
         }
-
-        // MANDATORY FOR DATAHOP AAR:
-        // Prevents build failures caused by duplicate native .so files 
-        // within the library and the Android system.
-        pickFirst 'lib/x86/libc++_shared.so'
-        pickFirst 'lib/x86_64/libc++_shared.so'
-        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
-        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+        // Native .so pickFirst rules removed as they are no longer required
     }
 }
 
-/**
- * ✅ WORKING FIX: fileTree for local AAR files
- * This scans libs folder at build time and includes all .aar files
- * No repositories block needed - uses settings.gradle configuration
- */
-
 dependencies {
-
-    // ✅ FIXED: Use fileTree to dynamically load AAR files from libs folder
-    implementation fileTree(dir: 'libs', include: ['*.aar'])
-
-    // ========================================================
-    // ✅ NEW CRITICAL FIX: Official Datahop Android SDK 
-    // This replaces the crashing raw Go .aar file and natively 
-    // handles all Android Wi-Fi Direct and BLE drivers!
-    // ========================================================
-    implementation 'com.github.datahop:datahop-android:0.0.7'
-
     // Android Core & UI
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // HTTP Client for NIP-96 / Blossom Media Relays
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
     // Flexbox Layout (Required for Ad Popup Card)
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
@@ -106,7 +80,7 @@ dependencies {
     // Nostr Protocol & WebSockets
     implementation 'org.java-websocket:Java-WebSocket:1.5.3'
 
-    // Cryptography (For Nostr Secp256k1/Schnorr keys)
+    // Cryptography (For Nostr Secp256k1/Schnorr keys and AES-GCM)
     implementation 'org.bouncycastle:bcprov-jdk15to18:1.77'
 
     // JSON Parsing
@@ -118,7 +92,7 @@ dependencies {
     // Google Play Services - Location (For Advertiser Map Links)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
 
-    // Background Tasks (For listening to relays in background)
+    // Background Tasks
     implementation "androidx.work:work-runtime:2.9.0"
 
     // Local Storage (Room Database)
