@@ -15,6 +15,7 @@ import java.util.Set;
  * and fixed default hashtag visibility.
  * FIXED: Added Username saving capabilities for Reach Discovery identification.
  * NEW: Implemented Ad History storage for both User and Advertiser roles.
+ * NEW ENHANCEMENT: Added support for Blossom/NIP-96 Media Server settings and Deletion URLs.
  */
 public class AdNostrDatabaseHelper {
 
@@ -35,7 +36,11 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_USER_INTERESTS = "ad_interest_hashtags"; 
     private static final String KEY_AVAILABLE_HASHTAGS = "available_hashtag_pool";
 
-    // NEW: History Keys
+    // Media Relay (Blossom / NIP-96)
+    private static final String KEY_CUSTOM_MEDIA_SERVER = "custom_blossom_server_url";
+    private static final String KEY_ADVERTISER_DELETION_MAP = "local_deletion_urls_map";
+
+    // History Keys
     private static final String KEY_USER_HISTORY = "local_user_ad_history";
     private static final String KEY_ADVERTISER_HISTORY = "local_advertiser_ad_history";
 
@@ -189,7 +194,35 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // NEW: AD HISTORY MANAGEMENT (USER & ADVERTISER)
+    // MEDIA RELAY & DELETION SETTINGS (NEW)
+    // =========================================================================
+
+    public void saveCustomMediaServer(String url) {
+        prefs.edit().putString(KEY_CUSTOM_MEDIA_SERVER, url).apply();
+    }
+
+    public String getCustomMediaServer() {
+        return prefs.getString(KEY_CUSTOM_MEDIA_SERVER, "");
+    }
+
+    /**
+     * Stores the deletion URL returned by a Blossom server for a specific Ad.
+     * key: Event ID, value: Deletion URL/Token
+     */
+    public void saveDeletionData(String eventId, String deletionUrl) {
+        prefs.edit().putString(KEY_ADVERTISER_DELETION_MAP + "_" + eventId, deletionUrl).apply();
+    }
+
+    public String getDeletionData(String eventId) {
+        return prefs.getString(KEY_ADVERTISER_DELETION_MAP + "_" + eventId, null);
+    }
+
+    public void removeDeletionData(String eventId) {
+        prefs.edit().remove(KEY_ADVERTISER_DELETION_MAP + "_" + eventId).apply();
+    }
+
+    // =========================================================================
+    // AD HISTORY MANAGEMENT (USER & ADVERTISER)
     // =========================================================================
 
     /**
