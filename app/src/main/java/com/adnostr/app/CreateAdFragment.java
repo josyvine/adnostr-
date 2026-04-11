@@ -43,6 +43,7 @@ import java.util.Set;
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * FIXED: Enforced manual string construction for content JSON to resolve "invalid: bad event id".
  * NEW: Every image is AES-GCM encrypted locally before upload; Key is shared in the Nostr Event.
+ * FIXED: Detailed Forensic Logs are now piped to the UI console in real-time.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -52,7 +53,7 @@ public class CreateAdFragment extends Fragment {
     private FusedLocationProviderClient fusedLocationClient;
 
     private String capturedMapsUrl = "";
-    
+
     // Core state for new Media system
     private final List<String> uploadedMediaUrls = new ArrayList<>();
     private final List<String> deletionUrlsForSession = new ArrayList<>();
@@ -126,6 +127,7 @@ public class CreateAdFragment extends Fragment {
     /**
      * ENHANCED MEDIA LOGIC: 
      * Reads image -> Encrypts via AES-GCM -> Uploads via MediaUploadHelper (OkHttp).
+     * FIXED: Forensic logs are now accumulated and displayed in real-time.
      */
     private void handleSelectedImage(Uri uri) {
         try {
@@ -135,7 +137,7 @@ public class CreateAdFragment extends Fragment {
                 currentAdAesKeyHex = EncryptionUtils.bytesToHex(key);
             }
 
-            binding.tvImageCount.setText("Encrypting Media...");
+            binding.tvImageCount.setText("Preparing Secure Tunnel...");
 
             // 2. Read Uri bytes
             byte[] rawBytes = getBytesFromUri(uri);
@@ -145,16 +147,34 @@ public class CreateAdFragment extends Fragment {
             byte[] aesKey = EncryptionUtils.hexToBytes(currentAdAesKeyHex);
             byte[] encryptedBytes = EncryptionUtils.encrypt(rawBytes, aesKey);
 
-            // 4. Upload via NIP-96/Blossom Helper
+            // 4. LAUNCH FORENSIC CONSOLE IMMEDIATELY
+            final StringBuilder sessionLogs = new StringBuilder();
+            sessionLogs.append("SECURE ENCRYPTION COMPLETE.\nINITIATING NIP-96 UPLOAD LOOP...\n\n");
+
+            RelayReportDialog forensicDialog = RelayReportDialog.newInstance(
+                    "MEDIA UPLOAD CONSOLE",
+                    "Connecting to Blossom Network...",
+                    sessionLogs.toString()
+            );
+            forensicDialog.showSafe(getChildFragmentManager(), "MEDIA_CONSOLE");
+
+            // 5. Upload via NIP-96/Blossom Helper
             MediaUploadHelper uploadHelper = new MediaUploadHelper();
             uploadHelper.uploadEncryptedMedia(requireContext(), encryptedBytes, "ad_image.enc", new MediaUploadHelper.MediaUploadCallback() {
-                
+
                 @Override
                 public void onStatusUpdate(String log) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            binding.tvImageCount.setText("Uploading...");
-                            Log.d(TAG, "Media Server Status: " + log);
+                            binding.tvImageCount.setText("Checking Node...");
+                            
+                            // PIPE LOG TO CONSOLE
+                            sessionLogs.append(log).append("\n");
+                            RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
+                            if (dialog != null) {
+                                dialog.updateTechnicalLogs("Upload in progress...", sessionLogs.toString());
+                            }
+                            Log.d(TAG, "Forensic Status: " + log);
                         });
                     }
                 }
@@ -168,6 +188,13 @@ public class CreateAdFragment extends Fragment {
                                 deletionUrlsForSession.add(deletionUrl);
                             }
                             binding.tvImageCount.setText(uploadedMediaUrls.size() + " Encrypted Items Ready");
+                            
+                            sessionLogs.append("\n[FINAL SUCCESS] Hosted at: ").append(uploadedUrl);
+                            RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
+                            if (dialog != null) {
+                                dialog.updateTechnicalLogs("Upload Success", sessionLogs.toString());
+                            }
+                            
                             Toast.makeText(getContext(), "Secure Upload Complete", Toast.LENGTH_SHORT).show();
                         });
                     }
@@ -184,12 +211,12 @@ public class CreateAdFragment extends Fragment {
                             e.printStackTrace(pw);
                             String rawStackTrace = sw.toString();
 
-                            RelayReportDialog dialog = RelayReportDialog.newInstance(
-                                    "SECURE UPLOAD FAILURE",
-                                    "Encryption or Server Error detected.",
-                                    "RAW EXCEPTION:\n" + rawStackTrace
-                            );
-                            dialog.showSafe(getChildFragmentManager(), "MEDIA_ERROR_CONSOLE");
+                            sessionLogs.append("\n\n!!! CRITICAL FAILURE !!!\n").append(rawStackTrace);
+                            
+                            RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
+                            if (dialog != null) {
+                                dialog.updateTechnicalLogs("UPLOAD FAILED", sessionLogs.toString());
+                            }
                         });
                     }
                 }
