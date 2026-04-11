@@ -25,7 +25,8 @@ import com.adnostr.app.databinding.DialogRelayReportBinding;
  * Technical Network Console Popup.
  * Provides detailed visibility into Nostr Relay events, broadcast successes, 
  * and background monitoring logs to identify why ads or searches may be failing.
- * FIXED: Resolved IllegalStateException crash and added live log update support.
+ * UPDATED: Integrated support for detailed HTTP/Encryption error logging 
+ * for the Blossom/NIP-96 media enhancement.
  */
 public class RelayReportDialog extends DialogFragment {
 
@@ -83,11 +84,11 @@ public class RelayReportDialog extends DialogFragment {
         binding.tvReportHeader.setText(title != null ? title : "NETWORK CONSOLE");
         binding.tvNetworkSummary.setText(summary != null ? summary : "Initializing report...");
 
-        // Populate the log area with raw relay data or JSON
+        // Populate the log area with raw relay data, encryption steps, or HTTP responses
         if (logs != null && !logs.isEmpty()) {
             binding.tvConsoleLog.setText(logs);
         } else {
-            binding.tvConsoleLog.setText("No relay events recorded yet.");
+            binding.tvConsoleLog.setText("No network or encryption events recorded yet.");
         }
 
         // Setup Copy to Clipboard Action
@@ -124,8 +125,8 @@ public class RelayReportDialog extends DialogFragment {
     }
 
     /**
-     * NEW: Public method to update logs while the dialog is visible.
-     * Use this to show incoming JSON data in real-time.
+     * Public method to update logs while the dialog is visible.
+     * Used to push real-time Blossom upload status and AES encryption diagnostics.
      */
     public void updateTechnicalLogs(String newSummary, String newLogs) {
         if (binding != null) {
