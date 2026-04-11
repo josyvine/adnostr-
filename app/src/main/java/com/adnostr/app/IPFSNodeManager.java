@@ -60,7 +60,7 @@ public class IPFSNodeManager {
      * calls this on a background thread. Removing this thread prevents Native 
      * Go crashes from being silently swallowed.
      */
-    public synchronized void startNode() throws Exception {
+    public synchronized void startNode() {
         if (isStarted) {
             Log.w(TAG, "IPFS node is already running.");
             return;
@@ -130,8 +130,8 @@ public class IPFSNodeManager {
             lastError = e.getMessage();
             isStarted = false;
             
-            // CRITICAL FIX: Throw the error so the UI diagnostic tool actually catches it!
-            throw new Exception("Native Engine Crash during Start: " + e.getMessage(), e);
+            // CRITICAL FIX: Throw RuntimeException instead of Exception so it doesn't break IPFSNodeService.java compilation!
+            throw new RuntimeException("Native Engine Crash during Start: " + e.getMessage(), e);
         }
     }
 
