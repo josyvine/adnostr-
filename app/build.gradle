@@ -81,6 +81,13 @@ dependencies {
     // ✅ FIXED: Use fileTree to dynamically load AAR files from libs folder
     implementation fileTree(dir: 'libs', include: ['*.aar'])
 
+    // ========================================================
+    // ✅ NEW CRITICAL FIX: Official Datahop Android SDK 
+    // This replaces the crashing raw Go .aar file and natively 
+    // handles all Android Wi-Fi Direct and BLE drivers!
+    // ========================================================
+    implementation 'com.github.datahop:datahop-android:0.0.7'
+
     // Android Core & UI
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
