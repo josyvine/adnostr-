@@ -134,6 +134,17 @@ public class CreateAdFragment extends Fragment {
             // Use the P2P version of uploadImage (local 'Add' & 'Pin')
             // FIXED: Added requireContext() here to resolve the build error!
             IPFSHelper.uploadImage(requireContext(), file, new IPFSHelper.IPFSUploadCallback() {
+                
+                // NEW: Connects the engine status directly to your UI text field!
+                @Override
+                public void onStatusUpdate(String status) {
+                    if (isAdded() && getActivity() != null) {
+                        getActivity().runOnUiThread(() -> {
+                            binding.tvImageCount.setText(status);
+                        });
+                    }
+                }
+
                 @Override
                 public void onSuccess(String cid, String ipfsUrl) {
                     if (isAdded() && getActivity() != null) {
