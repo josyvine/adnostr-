@@ -25,18 +25,21 @@ import okhttp3.Response;
 
 /**
  * NIP-96 / Blossom Media Upload Engine.
- * FORENSIC DIAGNOSTIC VERSION: Produces detailed logs for debugging 500/401 errors.
+ * UPDATED: Fixed NIP-98 Slash-Escaping bug causing 500/401 errors.
+ * UPDATED: Corrected Node 4 and Node 5 Blossom Endpoints.
+ * FORENSIC VERSION: Full diagnostic logging for protocol verification.
  */
 public class MediaUploadHelper {
 
     private static final String TAG = "AdNostr_MediaForensics";
 
+    // UPDATED: Verified active endpoints for the Blossom Protocol
     private static final String[] DEFAULT_SERVERS = {
             "https://nostr.build/api/v2/upload/files",
-            "https://void.cat/api/v1/upload",
-            "https://pixel.buzz/api/v1/upload",
+            "https://void.cat/upload",
+            "https://pixel.buzz/upload",
             "https://nostrcheck.me/api/v2/upload",
-            "https://files.sovbit.host/api/v1/upload"
+            "https://files.sovbit.host/upload"
     };
 
     private final OkHttpClient client;
@@ -61,12 +64,9 @@ public class MediaUploadHelper {
         attemptUploadWithFallback(context, encryptedData, 0, callback);
     }
 
-    /**
-     * Diagnostic Fallback Loop.
-     */
     private void attemptUploadWithFallback(Context context, byte[] encryptedData, int serverIndex, MediaUploadCallback callback) {
         if (serverIndex >= DEFAULT_SERVERS.length) {
-            postFailure(callback, new Exception("FORENSIC REPORT: All 5 nodes rejected the request. Inspect the logs above for 'RAW SERVER BODY' to find the rejection reason."));
+            postFailure(callback, new Exception("PROTOCOL FAILURE: All servers rejected the request. Inspect the 'RAW SERVER BODY' in the logs above."));
             return;
         }
 
@@ -75,29 +75,32 @@ public class MediaUploadHelper {
         String targetServer = (serverIndex == 0 && customServer != null && !customServer.isEmpty()) 
                 ? customServer : DEFAULT_SERVERS[serverIndex];
 
-        // START FORENSIC LOG ACCUMULATION
         StringBuilder forensicLog = new StringBuilder();
-        forensicLog.append("=== INITIATING FORENSIC UPLOAD attempt ").append(serverIndex + 1).append(" ===\n");
+        forensicLog.append("=== INITIATING UPLOAD Node ").append(serverIndex + 1).append(" ===\n");
         forensicLog.append("URL: ").append(targetServer).append("\n");
 
         try {
-            // 1. Calculate SHA256 of the encrypted blob for NIP-98
+            // 1. Calculate Payload Hash for NIP-98
             String payloadHash = calculateSha256(encryptedData);
-            forensicLog.append("ENCRYPTED PAYLOAD HASH: ").append(payloadHash).append("\n");
+            forensicLog.append("SHA256: ").append(payloadHash).append("\n");
 
-            // 2. Generate and Log Raw NIP-98 Event
+            // 2. Generate NIP-98 Event
             JSONObject n98Event = createNip98Event(context, targetServer, "POST", payloadHash);
-            forensicLog.append("RAW NIP-98 JSON (PRE-SIGN):\n").append(n98Event.toString(2)).append("\n");
-
-            // 3. Sign and Base64 Encode
-            JSONObject signedN98 = NostrEventSigner.signEvent(db.getPrivateKey(), n98Event);
-            if (signedN98 == null) throw new Exception("Nostr Signer returned NULL event.");
             
-            String base64Auth = Base64.encodeToString(signedN98.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-            String authHeader = "Nostr " + base64Auth;
-            forensicLog.append("BIP-340 SIGNATURE: ").append(signedN98.getString("sig")).append("\n");
+            // 3. Sign the Event
+            JSONObject signedN98 = NostrEventSigner.signEvent(db.getPrivateKey(), n98Event);
+            if (signedN98 == null) throw new Exception("Nostr Signer returned NULL.");
 
-            // 4. Prepare Multipart with strict MIME
+            // 4. CRITICAL FIX: ToCanonicalString
+            // Standard JSONObject.toString() escapes slashes (e.g. https:\/\/nostr.build).
+            // This causes signature mismatches on the server. We must strip the backslashes.
+            String canonicalJson = signedN98.toString().replace("\\/", "/");
+            forensicLog.append("CANONICAL NIP-98 AUTH (Slashes Unescaped):\n").append(canonicalJson).append("\n");
+
+            String base64Auth = Base64.encodeToString(canonicalJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+            String authHeader = "Nostr " + base64Auth;
+
+            // 5. Prepare Multipart with strict MIME masquerade
             RequestBody fileBody = RequestBody.create(encryptedData, MediaType.parse("image/jpeg"));
             MultipartBody requestBody = new MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
@@ -108,29 +111,27 @@ public class MediaUploadHelper {
                     .url(targetServer)
                     .post(requestBody)
                     .addHeader("Authorization", authHeader)
-                    .addHeader("User-Agent", "AdNostr-Forensic-Client/1.1")
+                    .addHeader("User-Agent", "AdNostr-Forensic-Client/1.2")
                     .build();
 
-            forensicLog.append("REQUEST HEADERS:\n").append(request.headers().toString()).append("\n");
-            
-            // Push diagnostic chunk to UI Console
+            forensicLog.append("HTTP Authorization sent.\n");
             postLog(callback, forensicLog.toString());
 
-            // 5. Execute Async Request
+            // 6. Execute Async Request
             client.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    postLog(callback, "!!! NETWORK FAILURE (Server " + (serverIndex + 1) + "): " + e.getMessage());
+                    postLog(callback, "!!! Node " + (serverIndex + 1) + " Network Failure: " + e.getMessage());
                     attemptUploadWithFallback(context, encryptedData, serverIndex + 1, callback);
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
-                    String rawBody = response.body() != null ? response.body().string() : "EMPTY_RESPONSE_BODY";
+                    String rawBody = response.body() != null ? response.body().string() : "EMPTY_BODY";
                     int code = response.code();
 
                     StringBuilder responseLog = new StringBuilder();
-                    responseLog.append("--- SERVER RESPONSE (Node ").append(serverIndex + 1).append(") ---\n");
+                    responseLog.append("--- Node ").append(serverIndex + 1).append(" Server Response ---\n");
                     responseLog.append("HTTP CODE: ").append(code).append("\n");
                     responseLog.append("RAW SERVER BODY:\n").append(rawBody).append("\n");
                     responseLog.append("-------------------------------------------\n");
@@ -142,7 +143,7 @@ public class MediaUploadHelper {
                             JSONObject json = new JSONObject(rawBody);
                             String uploadedUrl = json.optString("url", "");
                             
-                            // Handle NIP-94 success fallback
+                            // NIP-94 success handler
                             if (uploadedUrl.isEmpty() && json.has("nip94_event")) {
                                 JSONArray tags = json.getJSONObject("nip94_event").getJSONArray("tags");
                                 for (int i = 0; i < tags.length(); i++) {
@@ -159,24 +160,24 @@ public class MediaUploadHelper {
                             }
 
                             if (!uploadedUrl.isEmpty()) {
-                                postLog(callback, "[SUCCESS] MEDIA HOSTED ON NODE " + (serverIndex + 1));
+                                postLog(callback, "[SUCCESS] Media successfully hosted on Node " + (serverIndex + 1));
                                 postSuccess(callback, uploadedUrl, delUrl);
                             } else {
-                                throw new Exception("Response was 200 OK but URL was missing from JSON.");
+                                throw new Exception("Response was 200 but no URL found.");
                             }
                         } catch (Exception e) {
-                            postLog(callback, "!!! PARSE ERROR: " + e.getMessage() + ". Rotating...");
+                            postLog(callback, "!!! Node " + (serverIndex + 1) + " Parse Error. Rotating...");
                             attemptUploadWithFallback(context, encryptedData, serverIndex + 1, callback);
                         }
                     } else {
-                        postLog(callback, "!!! REJECTED (" + code + "): Rotating to next node...");
+                        postLog(callback, "!!! Node " + (serverIndex + 1) + " Rejected with " + code + ". Rotating...");
                         attemptUploadWithFallback(context, encryptedData, serverIndex + 1, callback);
                     }
                 }
             });
 
         } catch (Exception e) {
-            postLog(callback, "!!! INTERNAL PREP ERROR: " + e.getMessage());
+            postLog(callback, "!!! INTERNAL Node " + (serverIndex + 1) + " PREP ERROR: " + e.getMessage());
             attemptUploadWithFallback(context, encryptedData, serverIndex + 1, callback);
         }
     }
@@ -216,7 +217,10 @@ public class MediaUploadHelper {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
             JSONObject n98 = createNip98Event(context, deletionUrl, "DELETE", null);
             JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), n98);
-            String auth = "Nostr " + Base64.encodeToString(signed.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+            
+            // Apply Canonical fix to Deletion as well
+            String canonicalJson = signed.toString().replace("\\/", "/");
+            String auth = "Nostr " + Base64.encodeToString(canonicalJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
 
             Request req = new Request.Builder()
                     .url(deletionUrl)
@@ -226,9 +230,7 @@ public class MediaUploadHelper {
 
             client.newCall(req).enqueue(new Callback() {
                 @Override public void onFailure(Call call, IOException e) { Log.e(TAG, "DELETE Network Error"); }
-                @Override public void onResponse(Call call, Response response) throws IOException { 
-                    Log.i(TAG, "DELETE HTTP Result: " + response.code()); 
-                }
+                @Override public void onResponse(Call call, Response response) { Log.i(TAG, "DELETE Result: " + response.code()); }
             });
         } catch (Exception e) {
             Log.e(TAG, "DELETE Setup Error: " + e.getMessage());
