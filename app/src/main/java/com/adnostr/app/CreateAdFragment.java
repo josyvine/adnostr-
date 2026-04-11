@@ -28,7 +28,9 @@ import com.google.android.gms.location.LocationServices;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -37,10 +39,10 @@ import java.util.Set;
 
 /**
  * Ad Creation Interface for Advertisers.
- * UPDATED: Replaced centralized HTTP upload with local P2P IPFS Hosting.
+ * UPDATED: Replaced local P2P IPFS with Encrypted Media Relay (NIP-96/Blossom).
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * FIXED: Enforced manual string construction for content JSON to resolve "invalid: bad event id".
- * NEW: Uses the embedded IPFS node to host images directly from the phone.
+ * NEW: Every image is AES-GCM encrypted locally before upload; Key is shared in the Nostr Event.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -50,7 +52,11 @@ public class CreateAdFragment extends Fragment {
     private FusedLocationProviderClient fusedLocationClient;
 
     private String capturedMapsUrl = "";
-    private final List<String> ipfsImageCIDs = new ArrayList<>();
+    
+    // Core state for new Media system
+    private final List<String> uploadedMediaUrls = new ArrayList<>();
+    private final List<String> deletionUrlsForSession = new ArrayList<>();
+    private String currentAdAesKeyHex = "";
 
     // Launcher to handle the real system file/image picker
     private ActivityResultLauncher<Intent> imagePickerLauncher;
@@ -118,41 +124,51 @@ public class CreateAdFragment extends Fragment {
     }
 
     /**
-     * REAL P2P LOGIC: Resolves the Uri to a File and adds it to the internal IPFS Node.
+     * ENHANCED MEDIA LOGIC: 
+     * Reads image -> Encrypts via AES-GCM -> Uploads via MediaUploadHelper (OkHttp).
      */
     private void handleSelectedImage(Uri uri) {
         try {
-            File file = new File(getRealPathFromURI(uri));
-            if (!file.exists()) {
-                Toast.makeText(getContext(), "Error: Could not resolve file path.", Toast.LENGTH_SHORT).show();
-                return;
+            // 1. Generate one AES key for this ad session if not already set
+            if (currentAdAesKeyHex.isEmpty()) {
+                byte[] key = EncryptionUtils.generateAESKey();
+                currentAdAesKeyHex = EncryptionUtils.bytesToHex(key);
             }
 
-            // Update UI to reflect P2P state
-            binding.tvImageCount.setText("Preparing P2P Host...");
+            binding.tvImageCount.setText("Encrypting Media...");
 
-            // Use the P2P version of uploadImage (local 'Add' & 'Pin')
-            // FIXED: Added requireContext() here to resolve the build error!
-            IPFSHelper.uploadImage(requireContext(), file, new IPFSHelper.IPFSUploadCallback() {
+            // 2. Read Uri bytes
+            byte[] rawBytes = getBytesFromUri(uri);
+            if (rawBytes == null) return;
+
+            // 3. Encrypt the data locally
+            byte[] aesKey = EncryptionUtils.hexToBytes(currentAdAesKeyHex);
+            byte[] encryptedBytes = EncryptionUtils.encrypt(rawBytes, aesKey);
+
+            // 4. Upload via NIP-96/Blossom Helper
+            MediaUploadHelper uploadHelper = new MediaUploadHelper();
+            uploadHelper.uploadEncryptedMedia(requireContext(), encryptedBytes, "ad_image.enc", new MediaUploadHelper.MediaUploadCallback() {
                 
-                // NEW: Connects the engine status directly to your UI text field!
                 @Override
-                public void onStatusUpdate(String status) {
+                public void onStatusUpdate(String log) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            binding.tvImageCount.setText(status);
+                            binding.tvImageCount.setText("Uploading...");
+                            Log.d(TAG, "Media Server Status: " + log);
                         });
                     }
                 }
 
                 @Override
-                public void onSuccess(String cid, String ipfsUrl) {
+                public void onSuccess(String uploadedUrl, String deletionUrl) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            // Collect the local ipfs:// CID
-                            ipfsImageCIDs.add(ipfsUrl);
-                            binding.tvImageCount.setText(ipfsImageCIDs.size() + " P2P Media Items Ready");
-                            Toast.makeText(getContext(), "P2P Hosting Ready", Toast.LENGTH_SHORT).show();
+                            uploadedMediaUrls.add(uploadedUrl);
+                            if (deletionUrl != null && !deletionUrl.isEmpty()) {
+                                deletionUrlsForSession.add(deletionUrl);
+                            }
+                            binding.tvImageCount.setText(uploadedMediaUrls.size() + " Encrypted Items Ready");
+                            Toast.makeText(getContext(), "Secure Upload Complete", Toast.LENGTH_SHORT).show();
                         });
                     }
                 }
@@ -161,26 +177,45 @@ public class CreateAdFragment extends Fragment {
                 public void onFailure(Exception e) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            binding.tvImageCount.setText("P2P Hosting Failed");
+                            binding.tvImageCount.setText("Media Upload Failed");
 
-                            // Extract raw Java exception for the Network Console
                             StringWriter sw = new StringWriter();
                             PrintWriter pw = new PrintWriter(sw);
                             e.printStackTrace(pw);
                             String rawStackTrace = sw.toString();
 
                             RelayReportDialog dialog = RelayReportDialog.newInstance(
-                                    "P2P HOSTING FAILURE",
-                                    "Your local IPFS node could not process this image.",
+                                    "SECURE UPLOAD FAILURE",
+                                    "Encryption or Server Error detected.",
                                     "RAW EXCEPTION:\n" + rawStackTrace
                             );
-                            dialog.showSafe(getChildFragmentManager(), "IPFS_ERROR_CONSOLE");
+                            dialog.showSafe(getChildFragmentManager(), "MEDIA_ERROR_CONSOLE");
                         });
                     }
                 }
             });
+
         } catch (Exception e) {
-            Log.e(TAG, "File resolution failed: " + e.getMessage());
+            Log.e(TAG, "Secure media handling failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Reads all bytes from a Uri InputStream.
+     */
+    private byte[] getBytesFromUri(Uri uri) {
+        try {
+            InputStream inputStream = requireContext().getContentResolver().openInputStream(uri);
+            ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+            int bufferSize = 1024;
+            byte[] buffer = new byte[bufferSize];
+            int len;
+            while ((len = inputStream.read(buffer)) != -1) {
+                byteBuffer.write(buffer, 0, len);
+            }
+            return byteBuffer.toByteArray();
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -235,7 +270,6 @@ public class CreateAdFragment extends Fragment {
             public void onReachCalculated(int totalUsers, List<String> usernames) {
                 if (isAdded() && binding != null) {
                     requireActivity().runOnUiThread(() -> {
-                        // FIX: Logic restored to show count + names in brackets
                         String resultText = totalUsers + " Active Users Found";
                         if (usernames != null && !usernames.isEmpty()) {
                             StringBuilder names = new StringBuilder(" (");
@@ -301,11 +335,11 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
-            // Construct JSON image array for swiping
+            // Construct JSON image array for swiping (using HTTPS Media URLs)
             StringBuilder imageJsonBuilder = new StringBuilder("[");
-            for (int i = 0; i < ipfsImageCIDs.size(); i++) {
-                imageJsonBuilder.append("\"").append(ipfsImageCIDs.get(i)).append("\"");
-                if (i < ipfsImageCIDs.size() - 1) imageJsonBuilder.append(",");
+            for (int i = 0; i < uploadedMediaUrls.size(); i++) {
+                imageJsonBuilder.append("\"").append(uploadedMediaUrls.get(i)).append("\"");
+                if (i < uploadedMediaUrls.size() - 1) imageJsonBuilder.append(",");
             }
             imageJsonBuilder.append("]");
             String imagePayload = imageJsonBuilder.toString();
@@ -313,11 +347,12 @@ public class CreateAdFragment extends Fragment {
             String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
             String ctaUrl = whatsapp.isEmpty() ? "" : "https://wa.me/" + cleanPhone;
 
-            // Manual string construction for SHA-256 consistency
+            // ENHANCEMENT: Included AES Key in the JSON content so authorized peers can decrypt.
             String contentStr = "{" +
                     "\"title\":\"" + title.replace("\"", "\\\"") + "\"," +
                     "\"desc\":\"" + desc.replace("\"", "\\\"") + "\"," +
                     "\"image\":" + imagePayload + "," +
+                    "\"key\":\"" + currentAdAesKeyHex + "\"," +
                     "\"cta\":\"" + ctaUrl + "\"," +
                     "\"maps\":\"" + capturedMapsUrl + "\"," +
                     "\"expiry\":\"2026-05-01\"" +
@@ -348,6 +383,14 @@ public class CreateAdFragment extends Fragment {
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
+                String eventId = signedEvent.getString("id");
+
+                // Save Deletion Data for this Ad ID before broadcasting
+                if (!deletionUrlsForSession.isEmpty()) {
+                    JSONArray delArray = new JSONArray(deletionUrlsForSession);
+                    db.saveDeletionData(eventId, delArray.toString());
+                }
+
                 JSONArray fullMsg = new JSONArray();
                 fullMsg.put("EVENT");
                 fullMsg.put(""); 
