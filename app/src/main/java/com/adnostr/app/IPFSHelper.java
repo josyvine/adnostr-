@@ -5,7 +5,6 @@ import android.content.Context;
 import android.os.Build;
 import android.util.Log;
 
-import datahop.Datahop;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -22,10 +21,6 @@ public class IPFSHelper {
 
     private static final String TAG = "AdNostr_IPFSHelper";
 
-    // ✅ FIXED: Datahop is a static utility, not an instance
-    private static boolean engineInitialized = false;
-    private static final Object engineLock = new Object();
-
     // Public Read-Only Gateways (Used for the Automatic Fallback Safety Net)
     // Uploading to these is restricted, but viewing/downloading is free and anonymous.
     private static final String FALLBACK_GATEWAY_1 = "https://cloudflare-ipfs.com/ipfs/";
@@ -37,93 +32,6 @@ public class IPFSHelper {
     public interface IPFSUploadCallback {
         void onSuccess(String cid, String gatewayUrl);
         void onFailure(Exception e);
-    }
-
-    /**
-     * ✅ NEW METHOD: Initialize the Datahop P2P Engine
-     * This MUST be called before uploading any images.
-     * Should be called once in your MainActivity or Application class.
-     * 
-     * @param context The Android Context
-     * @throws Exception if initialization fails
-     */
-    public static void initializeDatahopEngine(Context context) throws Exception {
-        synchronized (engineLock) {
-            if (engineInitialized) {
-                Log.d(TAG, "Datahop engine already initialized");
-                return;
-            }
-
-            try {
-                Log.i(TAG, "Initializing Datahop P2P Engine...");
-
-                // ✅ STEP 1: Call _init() first to initialize the Go package
-                Log.d(TAG, "Calling Datahop._init()...");
-                try {
-                    java.lang.reflect.Method initMethod = datahop.Datahop.class.getMethod("_init");
-                    initMethod.invoke(null);
-                    Log.d(TAG, "✅ Datahop._init() completed");
-                } catch (NoSuchMethodException e) {
-                    Log.d(TAG, "_init() method not found, trying direct startPrivate()");
-                } catch (Exception e) {
-                    Log.e(TAG, "Error calling _init(): ", e);
-                }
-
-                // ✅ STEP 2: Get the app's files directory for Datahop storage
-                String storagePath = context.getFilesDir().getAbsolutePath();
-                Log.d(TAG, "Storage path: " + storagePath);
-
-                // ✅ STEP 3: Create storage directory if it doesn't exist
-                File storageDir = new File(storagePath);
-                if (!storageDir.exists()) {
-                    storageDir.mkdirs();
-                    Log.d(TAG, "Created storage directory");
-                }
-
-                // ✅ STEP 4: Call startPrivate() with the storage path
-                Log.d(TAG, "Calling Datahop.startPrivate() with path: " + storagePath);
-                Datahop.startPrivate(storagePath);
-
-                // ✅ STEP 5: Wait a bit for initialization to complete
-                Log.d(TAG, "Waiting for engine to initialize...");
-                Thread.sleep(2000);
-
-                engineInitialized = true;
-                Log.i(TAG, "✅ Datahop P2P Engine initialized successfully!");
-
-                try {
-                    String nodeId = Datahop.id();
-                    Log.i(TAG, "Node ID: " + nodeId);
-                } catch (Exception e) {
-                    Log.d(TAG, "Could not retrieve node ID immediately (may initialize later)");
-                }
-
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to initialize Datahop engine: ", e);
-                e.printStackTrace();
-                engineInitialized = false;
-                throw new Exception("Datahop initialization failed: " + e.getMessage(), e);
-            }
-        }
-    }
-
-    /**
-     * Check if Datahop engine is initialized and ready
-     * 
-     * @return true if engine is ready, false otherwise
-     */
-    public static boolean isDatahopReady() {
-        synchronized (engineLock) {
-            if (!engineInitialized) {
-                return false;
-            }
-            try {
-                return Datahop.isNodeOnline();
-            } catch (Exception e) {
-                Log.e(TAG, "Error checking node status: ", e);
-                return false;
-            }
-        }
     }
 
     /**
@@ -140,80 +48,47 @@ public class IPFSHelper {
             try {
                 Log.i(TAG, "Initiating local P2P hosting for: " + imageFile.getName());
 
-                // ✅ FIRST: Initialize the engine if not already done
-                synchronized (engineLock) {
-                    if (!engineInitialized) {
-                        Log.d(TAG, "Engine not initialized. Initializing now...");
-                        try {
-                            initializeDatahopEngine(context);
-                        } catch (Exception e) {
-                            throw new Exception("Failed to initialize Datahop engine: " + e.getMessage(), e);
-                        }
-                    }
-                }
+                // 1. Pass the real Context instead of null. 
+                IPFSNodeManager nodeManager = IPFSNodeManager.getInstance(context);
 
-                // ✅ Check if engine is ready (node is online)
-                if (!Datahop.isNodeOnline()) {
-                    Log.d(TAG, "Node is offline, waiting for it to come online...");
+                // 2. WARM UP LOOP (Wait up to 15 seconds)
+                int attempts = 0;
+                int maxAttempts = 15; 
 
-                    // Wait up to 15 seconds for the node to come online
-                    int attempts = 0;
-                    int maxAttempts = 15;
+                while (!nodeManager.isNodeReady() && attempts < maxAttempts) {
+                    attempts++;
+                    Log.d(TAG, "P2P Engine status: WARMING UP (Attempt " + attempts + "/" + maxAttempts + ")");
 
-                    while (!Datahop.isNodeOnline() && attempts < maxAttempts) {
-                        attempts++;
-                        Log.d(TAG, "Waiting for node to come online... Attempt " + attempts + "/" + maxAttempts);
-
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException ignored) {}
+                    // Attempt to kickstart the node if it's dead
+                    if (attempts == 1) {
+                         nodeManager.startNode();
                     }
 
-                    if (!Datahop.isNodeOnline()) {
-                        String diagnosticReport = generateDeepDiagnosticReport(imageFile);
-                        throw new Exception("P2P Engine timeout: Node did not come online after 15 seconds\n" + diagnosticReport);
-                    }
+                    try {
+                        Thread.sleep(1000); 
+                    } catch (InterruptedException ignored) {}
                 }
 
-                Log.d(TAG, "✅ Node is online! Proceeding with file upload...");
-
-                // ✅ Verify the file exists and is readable
-                if (!imageFile.exists()) {
-                    throw new Exception("Image file does not exist: " + imageFile.getAbsolutePath());
+                // 3. IF STILL NOT READY -> GENERATE DEEP DIAGNOSTIC REPORT
+                if (!nodeManager.isNodeReady()) {
+                    String diagnosticReport = generateDeepDiagnosticReport(imageFile);
+                    throw new Exception(diagnosticReport); // This triggers the crash log
                 }
 
-                if (!imageFile.canRead()) {
-                    throw new Exception("Cannot read image file: " + imageFile.getAbsolutePath());
-                }
+                // 4. Add the file to the local P2P blockstore
+                String cid = nodeManager.addFile(imageFile);
 
-                Log.d(TAG, "File verified - Size: " + (imageFile.length() / 1024) + " KB");
-
-                // ✅ Add the file to Datahop with proper parameters
-                byte[] fileBytes = readFileToBytes(imageFile);
-                String fileName = imageFile.getName();
-                String mimeType = "image/*";
-
-                Log.d(TAG, "Adding file to DHT: " + fileName + " (" + fileBytes.length + " bytes)");
-
-                // ✅ CALL STATIC METHOD: add file to the DHT
-                Datahop.add(fileName, fileBytes, mimeType);
-
-                Log.d(TAG, "File added successfully");
-
-                // Get the peer ID as the identifier
-                String peerId = Datahop.id();
-                String cid = peerId;
-
+                // 5. Construct the protocol link for Nostr JSON
                 String ipfsProtocolLink = "ipfs://" + cid;
 
-                Log.i(TAG, "✅ P2P Hosting Success. Peer ID: " + cid);
+                Log.i(TAG, "P2P Hosting Success. CID: " + cid);
 
-                // Return success back to the caller
+                // 6. Return success back to the CreateAdFragment
                 if (callback != null) {
                     callback.onSuccess(cid, ipfsProtocolLink);
                 }
 
-            } catch (Throwable t) {
+            } catch (Throwable t) { 
                 Log.e(TAG, "P2P Hosting Failed: ", t);
                 t.printStackTrace();
                 if (callback != null) {
@@ -221,42 +96,6 @@ public class IPFSHelper {
                 }
             }
         }).start();
-    }
-
-    /**
-     * ✅ Helper: Convert file to bytes
-     * 
-     * @param file The file to read
-     * @return byte array of file contents
-     * @throws Exception if file cannot be read
-     */
-    private static byte[] readFileToBytes(File file) throws Exception {
-        try {
-            java.nio.file.Path path = file.toPath();
-            return java.nio.file.Files.readAllBytes(path);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to read file: " + file.getAbsolutePath(), e);
-            throw new Exception("Cannot read file: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Stop the Datahop engine gracefully
-     * Call this in your app's onDestroy() or when shutting down
-     */
-    public static void stopDatahopEngine() {
-        synchronized (engineLock) {
-            if (engineInitialized) {
-                try {
-                    Log.d(TAG, "Stopping Datahop P2P Engine...");
-                    Datahop.stop();
-                    engineInitialized = false;
-                    Log.i(TAG, "✅ Datahop engine stopped successfully");
-                } catch (Exception e) {
-                    Log.e(TAG, "Error stopping Datahop: ", e);
-                }
-            }
-        }
     }
 
     /**
@@ -321,7 +160,7 @@ public class IPFSHelper {
         long totalMemory = rt.totalMemory() / (1024 * 1024);
         long freeMemory = rt.freeMemory() / (1024 * 1024);
         long trueFreeMemory = (maxMemory - totalMemory) + freeMemory;
-
+        
         report.append(">> Max Heap Limit: ").append(maxMemory).append(" MB\n");
         report.append(">> Current Allocated: ").append(totalMemory).append(" MB\n");
         report.append(">> True Available Memory: ").append(trueFreeMemory).append(" MB\n");
