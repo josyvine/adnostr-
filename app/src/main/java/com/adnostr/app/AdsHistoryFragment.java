@@ -124,7 +124,7 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
     private void processDeletion() {
         // 1. Get the list of items to delete
         List<String> selectedItems = adapter.getSelectedItems();
-        
+
         // 2. CRITICAL SAFETY: If nothing is selected, hide button and exit
         if (selectedItems == null || selectedItems.isEmpty()) {
             adapter.clearSelection(); 
@@ -181,7 +181,7 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
                     NostrPublisher.publishToPool(db.getRelayPool(), signedDeletion, (relayUrl, success, message) -> {
                         // Logging handled by publisher
                     });
-                    
+
                     // Cleanup local database record
                     db.deleteFromAdvertiserHistory(fullPayload);
                 }
@@ -193,9 +193,9 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
                     JSONArray urls = new JSONArray(deletionUrlsJson);
                     for (int i = 0; i < urls.length(); i++) {
                         String deleteUrl = urls.getString(i);
-                        
-                        // Send HTTP DELETE request to the media server
-                        mediaHelper.deleteMedia(deleteUrl, new MediaUploadHelper.MediaUploadCallback() {
+
+                        // FIXED: Added requireContext() as the first parameter to support NIP-98 Auth
+                        mediaHelper.deleteMedia(requireContext(), deleteUrl, new MediaUploadHelper.MediaUploadCallback() {
                             @Override public void onStatusUpdate(String log) { Log.d(TAG, "Deletion Status: " + log); }
                             @Override public void onSuccess(String u, String d) {}
                             @Override public void onFailure(Exception e) { Log.e(TAG, "Cloud Wipe Failed: " + e.getMessage()); }
