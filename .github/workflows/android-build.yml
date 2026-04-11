@@ -27,22 +27,20 @@ jobs:
           sudo mv gradle-8.0 /opt/gradle
           echo "/opt/gradle/bin" >> $GITHUB_PATH
 
-      # Generate Gradle Wrapper automatically
+      # 🔥 Generate Gradle Wrapper automatically
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.0
 
-      # Clean build
+      # Clean build (now wrapper exists) - MOVED HERE
       - name: Gradle Clean
         run: ./gradlew clean
 
-      # Download the 65MB Datahop AAR
-      - name: Download Datahop AAR
-        run: |
-          mkdir -p app/libs
-          curl -L https://github.com/datahop/ipfs-lite/releases/download/v0.0.15/datahop.aar -o app/libs/datahop.aar
-
-      - name: Verify AAR
-        run: ls -lh app/libs/
+      # ============================================================
+      # ✅ FIXED: Manual AAR Download Removed
+      # The raw Go binary (v0.0.15) has been replaced by the official 
+      # Datahop Android SDK which is now automatically downloaded 
+      # by Gradle via JitPack.
+      # ============================================================
 
       # Decode signing keystore
       - name: Decode Keystore
