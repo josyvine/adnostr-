@@ -13,7 +13,8 @@ import java.io.StringWriter;
 /**
  * Global Application class for AdNostr.
  * Handles notification channel initialization and the Global Uncaught Exception Handler.
- * UPDATED: Removed IPFS Node Service logic to support the new Encrypted HTTP Media system.
+ * UPDATED: Removed IPFS P2P Node Service startup as part of the transition 
+ * to Encrypted Media Relays (NIP-96/Blossom).
  */
 public class AdNostrApplication extends Application {
 
@@ -31,9 +32,10 @@ public class AdNostrApplication extends Application {
         // 2. Initialize Notification Channels for Ad Alerts
         createNotificationChannels();
 
-        // 3. P2P NODE STARTUP REMOVED
-        // The Datahop/IPFS engine has been replaced with the NIP-96 Media Relay system.
-        // Direct HTTP uploads via MediaUploadHelper now handle all media functionality.
+        // 3. START DECENTRALIZED P2P NODE REMOVED
+        // This section originally started the IPFS node service.
+        // It has been removed to prevent build failures and native crashes,
+        // as the app now uses Encrypted HTTP Media Relays.
         
         Log.i(TAG, "AdNostr Application Started and Protected by Crash Watchdog.");
     }
