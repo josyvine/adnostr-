@@ -25,9 +25,9 @@ import okhttp3.Response;
 
 /**
  * NIP-96 / Blossom Media Upload Engine.
- * UPDATED: Implemented NIP-98 Authentication to fix 401 Unauthorized errors.
- * This allows "No-Signup" anonymous uploads by signing the HTTP request 
- * with the user's existing Nostr Private Key.
+ * UPDATED: Implemented Server Rotation Fallback to bypass 500 Internal Server Errors.
+ * UPDATED: Uses Image-Mime masquerading to prevent server-side processing crashes.
+ * UPDATED: Includes NIP-98 Authentication for "No-Signup" anonymous uploads and deletions.
  */
 public class MediaUploadHelper {
 
@@ -64,32 +64,46 @@ public class MediaUploadHelper {
     }
 
     /**
-     * Uploads encrypted bytes to a media relay with NIP-98 Authentication.
+     * Entry point for encrypted media upload.
      */
     public void uploadEncryptedMedia(Context context, byte[] encryptedData, String fileName, MediaUploadCallback callback) {
+        // Start the recursive upload attempt beginning with server index 0
+        attemptUploadWithFallback(context, encryptedData, 0, callback);
+    }
 
-        // 1. Determine Server (Custom or Default Pool)
+    /**
+     * Logic to rotate through servers if a 500 error or connection failure occurs.
+     */
+    private void attemptUploadWithFallback(Context context, byte[] encryptedData, int serverIndex, MediaUploadCallback callback) {
+        // 1. Check if we have exhausted all servers
+        if (serverIndex >= DEFAULT_SERVERS.length) {
+            postFailure(callback, new Exception("All available media servers failed (HTTP 500/401). Please check your internet connection."));
+            return;
+        }
+
+        // 2. Identify target (Custom server first, then the default list)
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
         String customServer = db.getCustomMediaServer();
-        String targetServer = (customServer != null && !customServer.isEmpty()) ? customServer : DEFAULT_SERVERS[0];
+        String targetServer = (serverIndex == 0 && customServer != null && !customServer.isEmpty()) 
+                ? customServer : DEFAULT_SERVERS[serverIndex];
 
-        callback.onStatusUpdate("TARGET SERVER: " + targetServer);
-        Log.i(TAG, "Starting upload to: " + targetServer);
+        postLog(callback, "ATTEMPTING UPLOAD (" + (serverIndex + 1) + "/" + DEFAULT_SERVERS.length + "): " + targetServer);
+        Log.i(TAG, "Attempting upload to: " + targetServer);
 
-        // 2. Generate NIP-98 Authorization Token (The "No-Signup" Fix)
+        // 3. Generate NIP-98 Authorization Token for this specific server
         String authHeader = "";
         try {
             authHeader = generateNip98Header(context, targetServer, "POST", encryptedData);
-            callback.onStatusUpdate("[NIP-98] Auth Token Generated Successfully.");
         } catch (Exception e) {
-            callback.onStatusUpdate("[NIP-98 ERR] Token generation failed: " + e.getMessage());
+            Log.e(TAG, "NIP-98 generation failed for " + targetServer + ": " + e.getMessage());
         }
 
-        // 3. Prepare Multipart Request
-        RequestBody fileBody = RequestBody.create(encryptedData, MediaType.parse("application/octet-stream"));
+        // 4. Prepare Multipart Request
+        // CRITICAL FIX: Use image/jpeg masquerading to bypass server-side optimize filters which cause 500 errors.
+        RequestBody fileBody = RequestBody.create(encryptedData, MediaType.parse("image/jpeg"));
         MultipartBody requestBody = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart("file", fileName, fileBody)
+                .addFormDataPart("file", "image.jpg", fileBody)
                 .build();
 
         Request.Builder requestBuilder = new Request.Builder()
@@ -97,20 +111,16 @@ public class MediaUploadHelper {
                 .post(requestBody)
                 .addHeader("User-Agent", "AdNostr-Android-App");
 
-        // Attach NIP-98 Token if generated
         if (!authHeader.isEmpty()) {
             requestBuilder.addHeader("Authorization", authHeader);
         }
 
-        Request request = requestBuilder.build();
-
-        // 4. Execute Async Network Call
-        client.newCall(request).enqueue(new Callback() {
+        // 5. Execute Call
+        client.newCall(requestBuilder.build()).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                String error = "Network Request Failed: " + e.getMessage();
-                postLog(callback, "[HTTP FAIL] " + error);
-                postFailure(callback, new Exception(error));
+                postLog(callback, "Server " + (serverIndex + 1) + " connection failed. Trying next node...");
+                attemptUploadWithFallback(context, encryptedData, serverIndex + 1, callback);
             }
 
             @Override
@@ -118,22 +128,22 @@ public class MediaUploadHelper {
                 String rawResponse = response.body() != null ? response.body().string() : "";
                 int code = response.code();
 
-                postLog(callback, "HTTP STATUS: " + code);
-
                 if (response.isSuccessful() && !rawResponse.isEmpty()) {
                     try {
                         JSONObject json = new JSONObject(rawResponse);
                         String uploadedUrl = "";
                         String deletionUrl = "";
 
-                        // Handle various NIP-96/Blossom response formats
+                        // Parse standard Blossom/NIP-96 JSON responses
                         if (json.has("url")) {
                             uploadedUrl = json.getString("url");
                         } else if (json.has("nip94_event")) {
                             JSONArray tags = json.getJSONObject("nip94_event").getJSONArray("tags");
                             for (int i = 0; i < tags.length(); i++) {
                                 JSONArray tag = tags.getJSONArray(i);
-                                if (tag.getString(0).equals("url")) uploadedUrl = tag.getString(1);
+                                if (tag.length() >= 2 && "url".equals(tag.getString(0))) {
+                                    uploadedUrl = tag.getString(1);
+                                }
                             }
                         }
 
@@ -144,21 +154,20 @@ public class MediaUploadHelper {
                         }
 
                         if (uploadedUrl.isEmpty()) {
-                            throw new Exception("Server response did not contain a valid media URL.");
+                            throw new Exception("Response contained no URL.");
                         }
 
-                        postLog(callback, "[SUCCESS] Media hosted at: " + uploadedUrl);
+                        postLog(callback, "[SUCCESS] Media hosted successfully.");
                         postSuccess(callback, uploadedUrl, deletionUrl);
 
                     } catch (Exception e) {
-                        String parseError = "Response Parse Error: " + e.getMessage() + "\nBody: " + rawResponse;
-                        postLog(callback, "[PARSE FAIL] " + parseError);
-                        postFailure(callback, new Exception(parseError));
+                        postLog(callback, "Server " + (serverIndex + 1) + " parse error. Rotating to fallback...");
+                        attemptUploadWithFallback(context, encryptedData, serverIndex + 1, callback);
                     }
                 } else {
-                    String serverError = "Server rejected upload (Code: " + code + ")\nResponse: " + rawResponse;
-                    postLog(callback, "[SERVER ERROR] " + serverError);
-                    postFailure(callback, new Exception(serverError));
+                    // This handles 500, 413 (File too large), or 403 errors by rotating
+                    postLog(callback, "Server " + (serverIndex + 1) + " returned HTTP " + code + ". Rotating to fallback...");
+                    attemptUploadWithFallback(context, encryptedData, serverIndex + 1, callback);
                 }
             }
         });
@@ -170,7 +179,6 @@ public class MediaUploadHelper {
     public void deleteMedia(Context context, String deletionUrl, MediaUploadCallback callback) {
         if (deletionUrl == null || deletionUrl.isEmpty()) return;
 
-        // Generate NIP-98 Token for DELETE method
         String authHeader = "";
         try {
             authHeader = generateNip98Header(context, deletionUrl, "DELETE", null);
@@ -186,9 +194,7 @@ public class MediaUploadHelper {
             builder.addHeader("Authorization", authHeader);
         }
 
-        Request request = builder.build();
-
-        client.newCall(request).enqueue(new Callback() {
+        client.newCall(builder.build()).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e(TAG, "Deletion Request Failed: " + e.getMessage());
@@ -211,7 +217,6 @@ public class MediaUploadHelper {
 
         if (privKey == null || pubKey == null) throw new Exception("Identity keys missing.");
 
-        // Create NIP-98 Kind 27235 Event
         JSONObject event = new JSONObject();
         event.put("kind", 27235);
         event.put("pubkey", pubKey);
@@ -219,37 +224,19 @@ public class MediaUploadHelper {
         event.put("content", "");
 
         JSONArray tags = new JSONArray();
-        
-        // Tag u: Target URL
-        JSONArray uTag = new JSONArray();
-        uTag.put("u");
-        uTag.put(url);
-        tags.put(uTag);
+        tags.put(new JSONArray().put("u").put(url));
+        tags.put(new JSONArray().put("method").put(method));
 
-        // Tag method: HTTP Method
-        JSONArray mTag = new JSONArray();
-        mTag.put("method");
-        mTag.put(method);
-        tags.put(mTag);
-
-        // Tag payload: SHA-256 of the body (Required for POST)
         if (payload != null) {
-            JSONArray pTag = new JSONArray();
-            pTag.put("payload");
-            pTag.put(calculateSha256(payload));
-            tags.put(pTag);
+            tags.put(new JSONArray().put("payload").put(calculateSha256(payload)));
         }
 
         event.put("tags", tags);
 
-        // Sign the event using the app's existing Nostr Signer
         JSONObject signedEvent = NostrEventSigner.signEvent(privKey, event);
         if (signedEvent == null) throw new Exception("Signing failed.");
 
-        // Base64 encode the signed JSON
-        String jsonString = signedEvent.toString();
-        String base64Event = Base64.encodeToString(jsonString.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-
+        String base64Event = Base64.encodeToString(signedEvent.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         return "Nostr " + base64Event;
     }
 
