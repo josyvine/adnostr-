@@ -17,7 +17,14 @@ dependencyResolutionManagement {
         mavenCentral()
 
         // Required for external decentralized networking libraries
-        maven { url 'https://jitpack.io' }
+        // 🔐 Authenticated JitPack access (fixes 401 Unauthorized)
+        maven {
+            url "https://jitpack.io"
+            credentials {
+                username = "github"
+                password = System.getenv("JITPACK_TOKEN")
+            }
+        }
     }
 }
 
