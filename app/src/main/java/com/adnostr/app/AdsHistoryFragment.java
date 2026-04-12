@@ -27,9 +27,10 @@ import java.util.Set;
  * FEATURE: Handles local history viewing and decentralized deletion (NIP-09).
  * USER MODE: Displays received ads; performs local device deletion only.
  * ADVERTISER MODE: Displays broadcasted ads; performs local deletion, 
- * generates Nostr Kind 5 Deletion events, AND sends HTTP DELETE requests to media servers.
+ * generates Nostr Kind 5 Deletion events, AND sends HTTP DELETE requests to private cloud storage.
  * 
- * UPDATED: Replaced IPFS physical wipe with Blossom/NIP-96 HTTP deletion requests.
+ * UPDATED: Replaced Blossom/NIP-96 media cleanup with Private Cloudflare R2 single-click wipes.
+ * RETAINED: Forensic console logging and multi-selection deletion logic.
  */
 public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnAdHistoryClickListener {
 
@@ -131,14 +132,14 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
             return;
         }
 
-        // 3. Perform Deletion
+        // 3. Perform Deletion based on Role
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
             for (String ad : selectedItems) {
                 db.deleteFromUserHistory(ad);
             }
             Toast.makeText(getContext(), "Selected ads removed locally.", Toast.LENGTH_SHORT).show();
         } else {
-            // Logic for Advertisers: Local Deletion + Nostr Wipe + Media Server Wipes
+            // Logic for Advertisers: Local Deletion + Nostr Wipe + Cloudflare Physical Wipes
             broadcastNostrDeletionAndWipeMedia(selectedItems);
         }
 
@@ -150,11 +151,12 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
     }
 
     /**
-     * ADVERTISER ONLY: Implements NIP-09 (Event Deletion) and HTTP Media Server Cleanup.
+     * ADVERTISER ONLY: Implements NIP-09 (Event Deletion) and Private Cloudflare Cleanup.
      */
     private void broadcastNostrDeletionAndWipeMedia(List<String> adsToDelete) {
         try {
-            MediaUploadHelper mediaHelper = new MediaUploadHelper();
+            // NEW: Using the Private CloudflareHelper for Advertiser storage management
+            CloudflareHelper cloudHelper = new CloudflareHelper();
 
             for (String fullPayload : adsToDelete) {
                 JSONArray msgArray = new JSONArray(fullPayload);
@@ -179,35 +181,43 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
 
                 if (signedDeletion != null) {
                     NostrPublisher.publishToPool(db.getRelayPool(), signedDeletion, (relayUrl, success, message) -> {
-                        // Logging handled by publisher
+                        // Detailed broadcast results handled by NostrPublisher technical hooks
                     });
 
-                    // Cleanup local database record
+                    // Cleanup local database record of the ad
                     db.deleteFromAdvertiserHistory(fullPayload);
                 }
 
-                // --- PART 2: WIPE CLOUD MEDIA STORAGE (NIP-96 / Blossom) ---
-                // Retrieve the deletion URLs stored during the ad creation process
-                String deletionUrlsJson = db.getDeletionData(adEventId);
-                if (deletionUrlsJson != null && !deletionUrlsJson.isEmpty()) {
-                    JSONArray urls = new JSONArray(deletionUrlsJson);
-                    for (int i = 0; i < urls.length(); i++) {
-                        String deleteUrl = urls.getString(i);
+                // --- PART 2: WIPE PRIVATE CLOUDFLARE R2 STORAGE ---
+                // Retrieve the File IDs stored during the ad creation process
+                String deletionIdsJson = db.getDeletionData(adEventId);
+                if (deletionIdsJson != null && !deletionIdsJson.isEmpty()) {
+                    JSONArray ids = new JSONArray(deletionIdsJson);
+                    for (int i = 0; i < ids.length(); i++) {
+                        String fileId = ids.getString(i);
 
-                        // FIXED: Added requireContext() as the first parameter to support NIP-98 Auth
-                        mediaHelper.deleteMedia(requireContext(), deleteUrl, new MediaUploadHelper.MediaUploadCallback() {
-                            @Override public void onStatusUpdate(String log) { Log.d(TAG, "Deletion Status: " + log); }
+                        // Execute physical deletion from the Advertiser's private bucket
+                        cloudHelper.deleteMedia(requireContext(), fileId, new CloudflareHelper.CloudflareCallback() {
+                            @Override 
+                            public void onStatusUpdate(String log) { 
+                                Log.d(TAG, "Private Cloud Wipe Status: " + log); 
+                            }
+                            
                             @Override public void onSuccess(String u, String d) {}
-                            @Override public void onFailure(Exception e) { Log.e(TAG, "Cloud Wipe Failed: " + e.getMessage()); }
+                            
+                            @Override 
+                            public void onFailure(Exception e) { 
+                                Log.e(TAG, "Cloud Deletion Failed for ID " + fileId + ": " + e.getMessage()); 
+                            }
                         });
                     }
                     // Clean up the stored deletion mapping from database
                     db.removeDeletionData(adEventId);
                 }
             }
-            Toast.makeText(getContext(), "Ads deleted and cloud storage space freed.", Toast.LENGTH_LONG).show();
+            Toast.makeText(getContext(), "Ads hidden from network and storage space freed.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            Log.e(TAG, "Deletion/Wipe Failure: " + e.getMessage());
+            Log.e(TAG, "Bulk Deletion Failure: " + e.getMessage());
             Toast.makeText(getContext(), "Error during wipe: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
