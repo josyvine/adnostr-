@@ -183,13 +183,13 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- NEW: MEDIA RELAY CONFIGURATION SECTION (Blossom/NIP-96) -->
+        <!-- NEW: CLOUDFLARE R2 PRIVATE STORAGE CONFIGURATION -->
         <TextView
-            android:id="@+id/tvMediaHeader"
+            android:id="@+id/tvCloudflareHeader"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
-            android:text="Media Relay Configuration"
+            android:text="Cloudflare Storage Configuration"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:textStyle="bold"
@@ -197,14 +197,14 @@
             app:layout_constraintTop_toBottomOf="@+id/cvRoleCard" />
 
         <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cvMediaCard"
+            android:id="@+id/cvCloudflareCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             app:cardBackgroundColor="#1E1E1E"
             app:cardCornerRadius="12dp"
             app:cardElevation="0dp"
-            app:layout_constraintTop_toBottomOf="@+id/tvMediaHeader"
+            app:layout_constraintTop_toBottomOf="@+id/tvCloudflareHeader"
             app:strokeColor="#333333"
             app:strokeWidth="1dp">
 
@@ -217,7 +217,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Custom Blossom / NIP-96 Server"
+                    android:text="Private Worker API URL"
                     android:textColor="#666666"
                     android:textSize="10sp"
                     android:textStyle="bold" />
@@ -227,12 +227,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:hint="https://your-server.com"
+                    android:hint="https://your-worker.workers.dev"
                     app:hintTextColor="#666666"
                     app:boxStrokeColor="#666666">
 
                     <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etMediaServer"
+                        android:id="@+id/etCloudflareUrl"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:textColor="#FFFFFF"
@@ -241,13 +241,43 @@
                         android:singleLine="true"/>
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="Secret Auth Token"
+                    android:textColor="#666666"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="Enter Secret Token"
+                    app:hintTextColor="#666666"
+                    app:boxStrokeColor="#666666"
+                    app:passwordToggleEnabled="true"
+                    app:passwordToggleTint="#666666">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etCloudflareToken"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="#FFFFFF"
+                        android:inputType="textPassword"
+                        android:maxLines="1"
+                        android:singleLine="true"/>
+                </com.google.android.material.textfield.TextInputLayout>
+
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnSaveMediaServer"
+                    android:id="@+id/btnSaveCloudflare"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="55dp"
-                    android:layout_marginTop="12dp"
-                    android:text="SAVE MEDIA CONFIG"
+                    android:layout_marginTop="20dp"
+                    android:text="SAVE CLOUDFLARE CONFIG"
                     android:textColor="#FFFFFF"
                     app:cornerRadius="8dp"
                     app:strokeColor="#404040" />
@@ -265,7 +295,7 @@
             android:textSize="18sp"
             android:textStyle="bold"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/cvMediaCard" />
+            app:layout_constraintTop_toBottomOf="@+id/cvCloudflareCard" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnResetApp"
