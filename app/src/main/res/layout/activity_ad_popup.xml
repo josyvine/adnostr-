@@ -5,7 +5,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#E6000000"
+    android:background="#CC000000"
     tools:context=".AdPopupActivity">
 
     <!-- SEMI-TRANSPARENT CLICKABLE BACKGROUND (Closes ad if tapped outside) -->
@@ -21,16 +21,16 @@
         android:id="@+id/cvAdContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginEnd="24dp"
-        app:cardBackgroundColor="#1A1A1A"
-        app:cardCornerRadius="28dp"
-        app:cardElevation="20dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        app:cardBackgroundColor="#121212"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="24dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:strokeColor="#33FFFFFF"
+        app:strokeColor="#22FFFFFF"
         app:strokeWidth="1dp">
 
         <LinearLayout
@@ -39,64 +39,90 @@
             android:orientation="vertical">
 
             <!-- IMAGE SLIDER AREA -->
-            <FrameLayout
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
-                android:layout_height="280dp">
+                android:layout_height="320dp">
 
-                <!-- FIXED: ViewPager2 for "Slide to left or right" image viewing -->
+                <!-- FIXED: ViewPager2 with black background to prevent white gaps -->
                 <androidx.viewpager2.widget.ViewPager2
                     android:id="@+id/vpAdImages"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="#000000" />
+                    android:background="#000000"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent" />
 
-                <!-- Fallback single image view if ViewPager adapter isn't used -->
+                <!-- Fallback single image view -->
                 <ImageView
                     android:id="@+id/ivAdCover"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:scaleType="centerCrop"
+                    android:scaleType="fitCenter"
                     android:visibility="gone"
                     tools:src="@android:drawable/ic_menu_gallery" />
 
                 <!-- Close Button (Top Right) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCloseAd"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:layout_gravity="end|top"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
                     android:layout_margin="16dp"
                     android:insetLeft="0dp"
                     android:insetTop="0dp"
                     android:insetRight="0dp"
                     android:insetBottom="0dp"
-                    app:backgroundTint="#AA000000"
-                    app:cornerRadius="20dp"
+                    app:backgroundTint="#80000000"
+                    app:cornerRadius="18dp"
                     app:icon="@android:drawable/ic_menu_close_clear_cancel"
                     app:iconGravity="textStart"
                     app:iconPadding="0dp"
-                    app:iconTint="#FFFFFF" />
+                    app:iconTint="#FFFFFF"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
 
-                <!-- Page Indicator (Dots for the slider) -->
+                <!-- NEW: Zoom Button (Top Left) -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnZoomImage"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_margin="16dp"
+                    android:insetLeft="0dp"
+                    android:insetTop="0dp"
+                    android:insetRight="0dp"
+                    android:insetBottom="0dp"
+                    app:backgroundTint="#80000000"
+                    app:cornerRadius="18dp"
+                    app:icon="@android:drawable/ic_menu_zoom"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconTint="#FFFFFF"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <!-- MODERN SWIPE INDICATOR (E-commerce Style Overlay) -->
                 <com.google.android.material.tabs.TabLayout
                     android:id="@+id/tabDots"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="bottom"
+                    android:layout_width="wrap_content"
+                    android:layout_height="24dp"
+                    android:layout_marginBottom="12dp"
                     android:background="@android:color/transparent"
-                    app:tabBackground="@drawable/selector_dot"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:tabBackground="@drawable/modern_dot_selector"
                     app:tabGravity="center"
                     app:tabIndicatorHeight="0dp"
-                    app:tabMaxWidth="12dp"
+                    app:tabMaxWidth="10dp"
                     app:tabRippleColor="@null" />
 
-            </FrameLayout>
+            </androidx.constraintlayout.widget.ConstraintLayout>
 
             <!-- CONTENT AREA -->
             <androidx.core.widget.NestedScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:maxHeight="300dp">
+                android:maxHeight="320dp"
+                android:overScrollMode="never">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -110,89 +136,85 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif-black"
                         android:textColor="#FFFFFF"
-                        android:textSize="22sp"
-                        tools:text="Limited Time Coffee Deal" />
+                        android:textSize="24sp"
+                        tools:text="Ad Title Here" />
 
                     <TextView
                         android:id="@+id/tvPopupDesc"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:lineSpacingExtra="5dp"
-                        android:textColor="#CCCCCC"
-                        android:textSize="15sp"
-                        tools:text="Get 50% off all lattes this weekend at Kochi Central Mall. Valid until Sunday evening!" />
+                        android:lineSpacingExtra="6dp"
+                        android:textColor="#BDBDBD"
+                        android:textSize="16sp"
+                        tools:text="Detailed description of the ad broadcast goes here." />
 
-                    <!-- PROFESSIONAL ACTION BUTTONS -->
+                    <!-- ACTION BUTTONS -->
                     <com.google.android.flexbox.FlexboxLayout
                         android:id="@+id/flexActionButtons"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="24dp"
+                        android:layout_marginTop="28dp"
                         app:flexWrap="wrap"
                         app:justifyContent="flex_start">
 
-                        <!-- WhatsApp Action -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnActionWhatsapp"
                             style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginEnd="8dp"
-                            android:layout_marginBottom="8dp"
+                            android:layout_marginBottom="10dp"
                             android:text="WhatsApp"
                             android:textAllCaps="false"
                             android:textColor="#FFFFFF"
                             android:visibility="gone"
                             app:backgroundTint="#25D366"
-                            app:cornerRadius="12dp"
+                            app:cornerRadius="14dp"
                             app:icon="@android:drawable/stat_sys_speakerphone"
                             tools:visibility="visible" />
 
-                        <!-- Map Action -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnActionMap"
                             style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginEnd="8dp"
-                            android:layout_marginBottom="8dp"
-                            android:text="Get Directions"
+                            android:layout_marginBottom="10dp"
+                            android:text="Directions"
                             android:textAllCaps="false"
                             android:visibility="gone"
                             app:backgroundTint="#4285F4"
-                            app:cornerRadius="12dp"
+                            app:cornerRadius="14dp"
                             app:icon="@android:drawable/ic_dialog_map"
                             tools:visibility="visible" />
 
-                        <!-- Website Action -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnActionWebsite"
                             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginEnd="8dp"
-                            android:layout_marginBottom="8dp"
-                            android:text="View Details"
+                            android:layout_marginBottom="10dp"
+                            android:text="Website"
                             android:textAllCaps="false"
                             android:textColor="#FFFFFF"
                             android:visibility="gone"
-                            app:cornerRadius="12dp"
+                            app:cornerRadius="14dp"
                             app:strokeColor="#FFFFFF"
                             tools:visibility="visible" />
 
-                        <!-- Call Action -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnActionCall"
                             style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginBottom="8dp"
-                            android:text="Call"
+                            android:layout_marginBottom="10dp"
+                            android:text="Call Now"
                             android:textAllCaps="false"
                             android:visibility="gone"
-                            app:backgroundTint="#FF9800"
-                            app:cornerRadius="12dp"
+                            app:backgroundTint="#F57C00"
+                            app:cornerRadius="14dp"
                             app:icon="@android:drawable/ic_menu_call"
                             tools:visibility="visible" />
 
