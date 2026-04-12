@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <!-- Semi-transparent color for unselected dots (Muted White) -->
+    <solid android:color="#80FFFFFF" />
+    
+    <!-- Size of the inactive dot (Matches active size for consistency) -->
+    <size
+        android:width="8dp"
+        android:height="8dp" />
+</shape>
