@@ -20,6 +20,7 @@ import java.io.IOException;
 
 import coil.Coil;
 import coil.request.ImageRequest;
+import coil.request.SuccessResult;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -108,7 +109,8 @@ public class ImageZoomActivity extends AppCompatActivity {
                                 .target(binding.ivZoomableContent)
                                 .listener(new ImageRequest.Listener() {
                                     @Override
-                                    public void onSuccess(@NonNull ImageRequest request, @NonNull coil.decode.DataSource dataSource) {
+                                    public void onSuccess(@NonNull ImageRequest request, @NonNull SuccessResult result) {
+                                        // FIXED: Corrected signature for Coil 2.x
                                         // Once loaded, center the image via Matrix
                                         centerImageInitially();
                                     }
@@ -129,6 +131,8 @@ public class ImageZoomActivity extends AppCompatActivity {
      */
     private void centerImageInitially() {
         binding.ivZoomableContent.post(() -> {
+            if (binding.ivZoomableContent.getDrawable() == null) return;
+            
             float viewWidth = binding.ivZoomableContent.getWidth();
             float viewHeight = binding.ivZoomableContent.getHeight();
             float drawableWidth = binding.ivZoomableContent.getDrawable().getIntrinsicWidth();
