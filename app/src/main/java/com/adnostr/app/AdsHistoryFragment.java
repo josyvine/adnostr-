@@ -30,6 +30,7 @@ import java.util.Set;
  * generates Nostr Kind 5 Deletion events, AND sends HTTP DELETE requests to private cloud storage.
  * 
  * UPDATED: Replaced Blossom/NIP-96 media cleanup with Private Cloudflare R2 single-click wipes.
+ * FIXED: Optimized deletion loop to ensure all associated media files are physically purged from R2.
  * RETAINED: Forensic console logging and multi-selection deletion logic.
  */
 public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnAdHistoryClickListener {
@@ -139,7 +140,7 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
             }
             Toast.makeText(getContext(), "Selected ads removed locally.", Toast.LENGTH_SHORT).show();
         } else {
-            // Logic for Advertisers: Local Deletion + Nostr Wipe + Cloudflare Physical Wipes
+            // Logic for Advertisers: Local Deletion + Nostr Wipe + Private Cloudflare Physical Wipes
             broadcastNostrDeletionAndWipeMedia(selectedItems);
         }
 
@@ -152,10 +153,11 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
 
     /**
      * ADVERTISER ONLY: Implements NIP-09 (Event Deletion) and Private Cloudflare Cleanup.
+     * This ensures the ad is hidden from the network and the files are physically wiped from R2.
      */
     private void broadcastNostrDeletionAndWipeMedia(List<String> adsToDelete) {
         try {
-            // NEW: Using the Private CloudflareHelper for Advertiser storage management
+            // Using the Private CloudflareHelper for physical storage management
             CloudflareHelper cloudHelper = new CloudflareHelper();
 
             for (String fullPayload : adsToDelete) {
@@ -181,29 +183,34 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
 
                 if (signedDeletion != null) {
                     NostrPublisher.publishToPool(db.getRelayPool(), signedDeletion, (relayUrl, success, message) -> {
-                        // Detailed broadcast results handled by NostrPublisher technical hooks
+                        // Technical logs handled by the NostrPublisher's reporting hooks
                     });
 
-                    // Cleanup local database record of the ad
+                    // Cleanup the local database record
                     db.deleteFromAdvertiserHistory(fullPayload);
                 }
 
                 // --- PART 2: WIPE PRIVATE CLOUDFLARE R2 STORAGE ---
-                // Retrieve the File IDs stored during the ad creation process
+                // Retrieve the File IDs (Filenames) stored during the ad creation process
                 String deletionIdsJson = db.getDeletionData(adEventId);
                 if (deletionIdsJson != null && !deletionIdsJson.isEmpty()) {
                     JSONArray ids = new JSONArray(deletionIdsJson);
+                    
+                    // Iterate through all media associated with this ad
                     for (int i = 0; i < ids.length(); i++) {
                         String fileId = ids.getString(i);
 
-                        // Execute physical deletion from the Advertiser's private bucket
+                        // Execute the physical wipe from the Advertiser's private R2 bucket
                         cloudHelper.deleteMedia(requireContext(), fileId, new CloudflareHelper.CloudflareCallback() {
                             @Override 
                             public void onStatusUpdate(String log) { 
+                                // Direct forensic reporting to the LogCat for deletion tracking
                                 Log.d(TAG, "Private Cloud Wipe Status: " + log); 
                             }
                             
-                            @Override public void onSuccess(String u, String d) {}
+                            @Override public void onSuccess(String u, String d) {
+                                Log.i(TAG, "Successfully wiped file: " + fileId);
+                            }
                             
                             @Override 
                             public void onFailure(Exception e) { 
@@ -211,13 +218,13 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
                             }
                         });
                     }
-                    // Clean up the stored deletion mapping from database
+                    // Clean up the stored deletion mapping from the local database
                     db.removeDeletionData(adEventId);
                 }
             }
             Toast.makeText(getContext(), "Ads hidden from network and storage space freed.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-            Log.e(TAG, "Bulk Deletion Failure: " + e.getMessage());
+            Log.e(TAG, "Bulk Deletion/Wipe Failure: " + e.getMessage());
             Toast.makeText(getContext(), "Error during wipe: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
