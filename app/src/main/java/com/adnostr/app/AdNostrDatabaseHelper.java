@@ -11,11 +11,8 @@ import java.util.Set;
 
 /**
  * Local Data Management Utility for AdNostr.
- * UPDATED: Added a massive bootstrap relay pool to ensure 30+ connections 
- * and fixed default hashtag visibility.
- * FIXED: Added Username saving capabilities for Reach Discovery identification.
- * NEW: Implemented Ad History storage for both User and Advertiser roles.
- * NEW ENHANCEMENT: Added support for Blossom/NIP-96 Media Server settings and Deletion URLs.
+ * UPDATED: Added keys for Private Cloudflare R2 Storage (Worker URL & Secret Token).
+ * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  */
 public class AdNostrDatabaseHelper {
 
@@ -36,8 +33,11 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_USER_INTERESTS = "ad_interest_hashtags"; 
     private static final String KEY_AVAILABLE_HASHTAGS = "available_hashtag_pool";
 
-    // Media Relay (Blossom / NIP-96)
-    private static final String KEY_CUSTOM_MEDIA_SERVER = "custom_blossom_server_url";
+    // PRIVATE CLOUDFLARE R2 STORAGE (NEW)
+    private static final String KEY_CLOUDFLARE_WORKER_URL = "cf_worker_api_url";
+    private static final String KEY_CLOUDFLARE_SECRET_TOKEN = "cf_secret_auth_token";
+
+    // Media Deletion Mapping (Stores Cloudflare File IDs against Nostr Event IDs)
     private static final String KEY_ADVERTISER_DELETION_MAP = "local_deletion_urls_map";
 
     // History Keys
@@ -47,7 +47,7 @@ public class AdNostrDatabaseHelper {
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
 
-    // BOOTSTRAP RELAY LIST (20-50 high-traffic nodes for decentralized reach)
+    // BOOTSTRAP RELAY LIST
     private final String[] BOOTSTRAP_RELAYS = {
             "wss://relay.damus.io",
             "wss://nos.lol",
@@ -182,10 +182,6 @@ public class AdNostrDatabaseHelper {
     // =========================================================================
 
     public Set<String> getRelayPool() {
-        String savedJson = prefs.getString(KEY_RELAY_LIST, null);
-        if (savedJson == null) {
-            return new HashSet<>(Arrays.asList(BOOTSTRAP_RELAYS));
-        }
         return new HashSet<>(Arrays.asList(BOOTSTRAP_RELAYS));
     }
 
@@ -194,20 +190,28 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // MEDIA RELAY & DELETION SETTINGS (NEW)
+    // CLOUDFLARE R2 PRIVATE STORAGE SETTINGS (NEW)
     // =========================================================================
 
-    public void saveCustomMediaServer(String url) {
-        prefs.edit().putString(KEY_CUSTOM_MEDIA_SERVER, url).apply();
+    public void saveCloudflareWorkerUrl(String url) {
+        prefs.edit().putString(KEY_CLOUDFLARE_WORKER_URL, url).apply();
     }
 
-    public String getCustomMediaServer() {
-        return prefs.getString(KEY_CUSTOM_MEDIA_SERVER, "");
+    public String getCloudflareWorkerUrl() {
+        return prefs.getString(KEY_CLOUDFLARE_WORKER_URL, "");
+    }
+
+    public void saveCloudflareSecretToken(String token) {
+        prefs.edit().putString(KEY_CLOUDFLARE_SECRET_TOKEN, token).apply();
+    }
+
+    public String getCloudflareSecretToken() {
+        return prefs.getString(KEY_CLOUDFLARE_SECRET_TOKEN, "");
     }
 
     /**
-     * Stores the deletion URL returned by a Blossom server for a specific Ad.
-     * key: Event ID, value: Deletion URL/Token
+     * Stores the file IDs/URLs returned by Cloudflare for a specific Ad.
+     * key: Event ID, value: Deletion JSON array
      */
     public void saveDeletionData(String eventId, String deletionUrl) {
         prefs.edit().putString(KEY_ADVERTISER_DELETION_MAP + "_" + eventId, deletionUrl).apply();
@@ -222,62 +226,40 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // AD HISTORY MANAGEMENT (USER & ADVERTISER)
+    // AD HISTORY MANAGEMENT
     // =========================================================================
 
-    /**
-     * Saves a received ad payload to the local user history.
-     */
     public void saveToUserHistory(String eventJson) {
         Set<String> history = new HashSet<>(prefs.getStringSet(KEY_USER_HISTORY, new HashSet<>()));
         history.add(eventJson);
         prefs.edit().putStringSet(KEY_USER_HISTORY, history).apply();
     }
 
-    /**
-     * Retrieves all locally saved ads received by the user.
-     */
     public Set<String> getUserHistory() {
         return prefs.getStringSet(KEY_USER_HISTORY, new HashSet<>());
     }
 
-    /**
-     * Removes a specific ad from local user history.
-     */
     public void deleteFromUserHistory(String eventJson) {
         Set<String> history = new HashSet<>(prefs.getStringSet(KEY_USER_HISTORY, new HashSet<>()));
         history.remove(eventJson);
         prefs.edit().putStringSet(KEY_USER_HISTORY, history).apply();
     }
 
-    /**
-     * Saves a broadcasted ad payload to the advertiser's local record.
-     */
     public void saveToAdvertiserHistory(String eventJson) {
         Set<String> history = new HashSet<>(prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>()));
         history.add(eventJson);
         prefs.edit().putStringSet(KEY_ADVERTISER_HISTORY, history).apply();
     }
 
-    /**
-     * Retrieves all ads broadcasted by this advertiser.
-     */
     public Set<String> getAdvertiserHistory() {
         return prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>());
     }
 
-    /**
-     * Removes a specific ad from the advertiser's local record.
-     */
     public void deleteFromAdvertiserHistory(String eventJson) {
         Set<String> history = new HashSet<>(prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>()));
         history.remove(eventJson);
         prefs.edit().putStringSet(KEY_ADVERTISER_HISTORY, history).apply();
     }
-
-    // =========================================================================
-    // UTILITIES
-    // =========================================================================
 
     public void clearAllData() {
         prefs.edit().clear().apply();
