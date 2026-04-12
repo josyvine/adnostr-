@@ -36,7 +36,8 @@ import okhttp3.Response;
 
 /**
  * Professional Ad Delivery Overlay.
- * UPDATED: Replaced IPFS P2P resolution with Encrypted Media Relay (HTTPS) logic.
+ * UPDATED: Fixed Image Scaling (FIT_CENTER) to prevent cropping.
+ * UPDATED: Integrated Fullscreen Zoom trigger.
  * Logic: Download Encrypted Bytes -> Decrypt with AES Key from Nostr JSON -> Render Image.
  */
 public class AdPopupActivity extends AppCompatActivity {
@@ -45,6 +46,7 @@ public class AdPopupActivity extends AppCompatActivity {
     private ActivityAdPopupBinding binding;
     private final OkHttpClient httpClient = new OkHttpClient();
     private String adDecryptionKeyHex = "";
+    private final List<String> imageUrls = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,6 +86,19 @@ public class AdPopupActivity extends AppCompatActivity {
 
         binding.btnCloseAd.setOnClickListener(v -> finish());
         binding.viewBackgroundOverlay.setOnClickListener(v -> finish());
+
+        // NEW: Zoom Button Listener
+        binding.btnZoomImage.setOnClickListener(v -> {
+            if (!imageUrls.isEmpty()) {
+                int currentPos = binding.vpAdImages.getCurrentItem();
+                String targetUrl = imageUrls.get(currentPos);
+                
+                Intent zoomIntent = new Intent(this, ImageZoomActivity.class);
+                zoomIntent.putExtra("ZOOM_URL", targetUrl);
+                zoomIntent.putExtra("AES_KEY", adDecryptionKeyHex);
+                startActivity(zoomIntent);
+            }
+        });
     }
 
     private void parseAndPopulateAd(String jsonStr) throws Exception {
@@ -106,11 +121,11 @@ public class AdPopupActivity extends AppCompatActivity {
         binding.tvPopupTitle.setText(title);
         binding.tvPopupDesc.setText(content.optString("desc", "No description provided."));
 
-        // ENHANCEMENT: Extract the AES Decryption Key
+        // Extract the AES Decryption Key
         adDecryptionKeyHex = content.optString("key", "");
 
         // Handle Image Slider (Extract HTTPS URLs from JSON)
-        List<String> imageUrls = new ArrayList<>();
+        imageUrls.clear();
         Object imageObj = content.opt("image");
         
         if (imageObj instanceof JSONArray) {
@@ -179,7 +194,7 @@ public class AdPopupActivity extends AppCompatActivity {
 
     /**
      * Internal Adapter for the Image ViewPager slider.
-     * UPDATED: Downloads encrypted bytes from HTTP Media Relay and decrypts locally.
+     * UPDATED: Changed ScaleType to FIT_CENTER so images are not cropped.
      */
     private class ImageSliderAdapter extends RecyclerView.Adapter<ImageSliderAdapter.ViewHolder> {
         private final List<String> urls;
@@ -192,7 +207,9 @@ public class AdPopupActivity extends AppCompatActivity {
             ImageView imageView = new ImageView(parent.getContext());
             imageView.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            
+            // FIXED: Using FIT_CENTER ensures the whole photo fits inside the box.
+            imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
             return new ViewHolder(imageView);
         }
 
