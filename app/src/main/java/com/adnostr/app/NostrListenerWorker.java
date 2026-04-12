@@ -35,6 +35,7 @@ import java.util.concurrent.TimeUnit;
  * FIXED: Added strict 'd' tag validation to prevent crashes from adnostr_interests.
  * FIXED: Implemented Duplicate Checking to stop notification spam for already saved ads.
  * FIXED: Added Kind 5 (NIP-09) listening to honor Advertiser deletions and wipe local history.
+ * UPDATED: Integrated Wiped ID Blocklist and Image Integrity checks to kill "Phantom Ads".
  * NEW: Saves verified Ads to local User History Database.
  */
 public class NostrListenerWorker extends Worker {
@@ -63,7 +64,7 @@ public class NostrListenerWorker extends Worker {
         String currentLogs = prefs.getString("background_error_logs", "");
         String time = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
         String newLog = "[" + time + "] " + message + "\n" + currentLogs;
-        
+
         // Keep only the last ~5000 characters to prevent memory bloat
         if (newLog.length() > 5000) {
             newLog = newLog.substring(0, 5000);
@@ -173,6 +174,13 @@ public class NostrListenerWorker extends Worker {
             int kind = event.optInt("kind", -1);
             String eventId = event.optString("id", "");
 
+            // --- PHANTOM AD PREVENTION: BLOCKLIST CHECK ---
+            // If the ID is in our permanent wiped list, ignore it immediately.
+            if (db.isAdWiped(eventId)) {
+                Log.d(TAG, "Dropping Phantom Ad: " + eventId + " is on the blocklist.");
+                return;
+            }
+
             // =================================================================
             // HANDLE KIND 5: ADVERTISER DELETIONS (NIP-09)
             // =================================================================
@@ -184,7 +192,10 @@ public class NostrListenerWorker extends Worker {
                         // Find the 'e' tag which points to the deleted Ad ID
                         if (tagPair != null && tagPair.length() >= 2 && "e".equals(tagPair.getString(0))) {
                             String targetDeletedId = tagPair.getString(1);
-                            
+
+                            // PHANTOM AD PREVENTION: ADD TO BLOCKLIST
+                            db.addWipedAdId(targetDeletedId);
+
                             // Find this Ad ID in the User's local history and wipe it
                             Set<String> localHistory = db.getUserHistory();
                             for (String savedItem : localHistory) {
@@ -230,7 +241,7 @@ public class NostrListenerWorker extends Worker {
                         if (tagPair != null && tagPair.length() >= 2) {
                             String tagName = tagPair.optString(0);
                             String tagValue = tagPair.optString(1);
-                            
+
                             if ("d".equals(tagName)) {
                                 if (tagValue.startsWith("adnostr_ad_")) {
                                     isAdNostrBroadcast = true;
@@ -253,6 +264,24 @@ public class NostrListenerWorker extends Worker {
                 // Crash Prevention: Ensure title actually exists
                 if (!content.has("title")) {
                     return;
+                }
+
+                // --- PHANTOM AD PREVENTION: CONTENT INTEGRITY CHECK ---
+                // If the ad has been wiped from Cloudflare, the image field will be empty or missing.
+                // We drop these events to prevent blank-thumbnail notification spam.
+                if (!content.has("image")) {
+                    Log.d(TAG, "Integrity fail: Missing image field. Dropping ghost ad.");
+                    return;
+                }
+                
+                Object imageObj = content.get("image");
+                if (imageObj instanceof JSONArray) {
+                    if (((JSONArray) imageObj).length() == 0) {
+                        Log.d(TAG, "Integrity fail: Image array empty. Dropping ghost ad.");
+                        return;
+                    }
+                } else if (imageObj instanceof String) {
+                    if (((String) imageObj).isEmpty()) return;
                 }
 
                 String title = content.optString("title", "Local Deal Found");
