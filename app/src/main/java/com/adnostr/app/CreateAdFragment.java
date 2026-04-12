@@ -39,7 +39,7 @@ import java.util.Set;
 
 /**
  * Ad Creation Interface for Advertisers.
- * UPDATED: Replaced local P2P IPFS with Encrypted Media Relay (NIP-96/Blossom).
+ * UPDATED: Replaced unstable Blossom/NIP-96 with Private Advertiser-Owned Cloudflare R2 Storage.
  * FIXED: Included mandatory 'd' tag for Kind 30001 compliance to fix relay indexing.
  * FIXED: Enforced manual string construction for content JSON to resolve "invalid: bad event id".
  * NEW: Every image is AES-GCM encrypted locally before upload; Key is shared in the Nostr Event.
@@ -126,7 +126,7 @@ public class CreateAdFragment extends Fragment {
 
     /**
      * ENHANCED MEDIA LOGIC: 
-     * Reads image -> Encrypts via AES-GCM -> Uploads via MediaUploadHelper (OkHttp).
+     * Reads image -> Encrypts via AES-GCM -> Uploads via CloudflareHelper (OkHttp).
      * FIXED: Forensic logs are now accumulated and displayed in real-time.
      */
     private void handleSelectedImage(Uri uri) {
@@ -143,33 +143,34 @@ public class CreateAdFragment extends Fragment {
             byte[] rawBytes = getBytesFromUri(uri);
             if (rawBytes == null) return;
 
-            // 3. Encrypt the data locally
+            // 3. Encrypt the data locally using AES-GCM
             byte[] aesKey = EncryptionUtils.hexToBytes(currentAdAesKeyHex);
             byte[] encryptedBytes = EncryptionUtils.encrypt(rawBytes, aesKey);
 
             // 4. LAUNCH FORENSIC CONSOLE IMMEDIATELY
             final StringBuilder sessionLogs = new StringBuilder();
-            sessionLogs.append("SECURE ENCRYPTION COMPLETE.\nINITIATING NIP-96 UPLOAD LOOP...\n\n");
+            sessionLogs.append("SECURE AES-GCM ENCRYPTION COMPLETE.\n");
+            sessionLogs.append("INITIATING PRIVATE CLOUDFLARE TUNNEL...\n\n");
 
             RelayReportDialog forensicDialog = RelayReportDialog.newInstance(
-                    "MEDIA UPLOAD CONSOLE",
-                    "Connecting to Blossom Network...",
+                    "PRIVATE MEDIA CONSOLE",
+                    "Connecting to Advertiser Cloud...",
                     sessionLogs.toString()
             );
             forensicDialog.showSafe(getChildFragmentManager(), "MEDIA_CONSOLE");
 
-            // 5. Upload via NIP-96/Blossom Helper
-            MediaUploadHelper uploadHelper = new MediaUploadHelper();
-            uploadHelper.uploadEncryptedMedia(requireContext(), encryptedBytes, "ad_image.enc", new MediaUploadHelper.MediaUploadCallback() {
+            // 5. NEW: Upload via CloudflareHelper (Private Advertiser Infrastructure)
+            CloudflareHelper uploadHelper = new CloudflareHelper();
+            uploadHelper.uploadMedia(requireContext(), encryptedBytes, "ad_image.enc", new CloudflareHelper.CloudflareCallback() {
 
                 @Override
                 public void onStatusUpdate(String log) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            binding.tvImageCount.setText("Checking Node...");
+                            binding.tvImageCount.setText("Direct Uploading...");
                             
-                            // PIPE LOG TO CONSOLE
-                            sessionLogs.append(log).append("\n");
+                            // PIPE LOG TO CONSOLE (Preserving detailed technical output)
+                            sessionLogs.append(log);
                             RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
                             if (dialog != null) {
                                 dialog.updateTechnicalLogs("Upload in progress...", sessionLogs.toString());
@@ -180,22 +181,25 @@ public class CreateAdFragment extends Fragment {
                 }
 
                 @Override
-                public void onSuccess(String uploadedUrl, String deletionUrl) {
+                public void onSuccess(String uploadedUrl, String fileId) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
                             uploadedMediaUrls.add(uploadedUrl);
-                            if (deletionUrl != null && !deletionUrl.isEmpty()) {
-                                deletionUrlsForSession.add(deletionUrl);
+                            
+                            // Store the Cloudflare File ID for single-click deletion later
+                            if (fileId != null && !fileId.isEmpty()) {
+                                deletionUrlsForSession.add(fileId);
                             }
+                            
                             binding.tvImageCount.setText(uploadedMediaUrls.size() + " Encrypted Items Ready");
                             
-                            sessionLogs.append("\n[FINAL SUCCESS] Hosted at: ").append(uploadedUrl);
+                            sessionLogs.append("\n[FINAL SUCCESS] Private Cloud Hosted at: ").append(uploadedUrl);
                             RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
                             if (dialog != null) {
                                 dialog.updateTechnicalLogs("Upload Success", sessionLogs.toString());
                             }
                             
-                            Toast.makeText(getContext(), "Secure Upload Complete", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(getContext(), "Private Storage Upload Complete", Toast.LENGTH_SHORT).show();
                         });
                     }
                 }
@@ -204,7 +208,7 @@ public class CreateAdFragment extends Fragment {
                 public void onFailure(Exception e) {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            binding.tvImageCount.setText("Media Upload Failed");
+                            binding.tvImageCount.setText("Cloudflare Upload Failed");
 
                             StringWriter sw = new StringWriter();
                             PrintWriter pw = new PrintWriter(sw);
@@ -362,7 +366,7 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
-            // Construct JSON image array for swiping (using HTTPS Media URLs)
+            // Construct JSON image array for swiping (using HTTPS Media URLs from Cloudflare)
             StringBuilder imageJsonBuilder = new StringBuilder("[");
             for (int i = 0; i < uploadedMediaUrls.size(); i++) {
                 imageJsonBuilder.append("\"").append(uploadedMediaUrls.get(i)).append("\"");
@@ -412,7 +416,7 @@ public class CreateAdFragment extends Fragment {
             if (signedEvent != null) {
                 String eventId = signedEvent.getString("id");
 
-                // Save Deletion Data for this Ad ID before broadcasting
+                // Save Deletion Data (Cloudflare File IDs) for this Ad ID before broadcasting
                 if (!deletionUrlsForSession.isEmpty()) {
                     JSONArray delArray = new JSONArray(deletionUrlsForSession);
                     db.saveDeletionData(eventId, delArray.toString());
