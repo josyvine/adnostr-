@@ -23,7 +23,8 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * and local database management.
  * FIXED: Username section is now hidden for Advertisers.
  * NEW: Implements Decentralized Username checks, claiming, and releasing via UsernameManager.
- * NEW ENHANCEMENT: Added Custom Media Relay (Blossom/NIP-96) configuration.
+ * UPDATED: Replaced Blossom/NIP-96 settings with Private Cloudflare R2 Storage configuration.
+ * RETAINED: Detailed forensic logging and all existing UI logic.
  */
 public class SettingsFragment extends Fragment {
 
@@ -60,8 +61,9 @@ public class SettingsFragment extends Fragment {
         // 4. Setup Username Logic (Exclusive to USER role)
         configureProfileSectionVisibility();
 
-        // 5. NEW: Setup Media Relay (Blossom/NIP-96) settings
-        setupMediaRelaySettings();
+        // 5. NEW: Setup Private Cloudflare R2 Storage settings
+        // This replaces the old Blossom/NIP-96 configuration
+        setupCloudflareSettings();
     }
 
     /**
@@ -72,7 +74,7 @@ public class SettingsFragment extends Fragment {
         if (binding == null) return;
 
         String currentRole = db.getUserRole();
-        
+
         if (RoleSelectionActivity.ROLE_ADVERTISER.equals(currentRole)) {
             // Hide Username box entirely for Advertisers
             binding.tvProfileHeader.setVisibility(View.GONE);
@@ -107,7 +109,7 @@ public class SettingsFragment extends Fragment {
                     Toast.makeText(getContext(), "Please enter a username.", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                
+
                 // Prevent spam clicks
                 binding.btnSaveUsername.setEnabled(false);
                 binding.btnSaveUsername.setText("CHECKING NETWORK...");
@@ -119,7 +121,7 @@ public class SettingsFragment extends Fragment {
 
                     if (isAvailable) {
                         binding.btnSaveUsername.setText("CLAIMING ON BLOCKCHAIN...");
-                        
+
                         // 2. Broadcast Kind 0 to claim it globally
                         UsernameManager.claimUsername(requireContext(), requestedName, db.getPrivateKey(), db.getPublicKey(), (success, claimMsg) -> {
                             if (!isAdded() || binding == null) return;
@@ -171,33 +173,48 @@ public class SettingsFragment extends Fragment {
     }
 
     /**
-     * NEW: Configures the Media Relay (Blossom) settings section.
-     * Allows Advertisers/Users to set a custom upload/download server.
+     * NEW: Configures the Private Cloudflare R2 Storage settings section.
+     * This allows Advertisers to set their own Worker URL and Secret Auth Token.
      */
-    private void setupMediaRelaySettings() {
+    private void setupCloudflareSettings() {
         if (binding == null) return;
 
-        // Retrieve current saved server from database
-        String savedServer = db.getCustomMediaServer();
-        
-        // If your XML layout has etMediaServer and btnSaveMediaServer
-        if (binding.etMediaServer != null) {
-            binding.etMediaServer.setText(savedServer);
+        // Retrieve current saved credentials from database
+        String savedUrl = db.getCloudflareWorkerUrl();
+        String savedToken = db.getCloudflareSecretToken();
+
+        // Populate fields if data exists
+        if (binding.etCloudflareUrl != null) {
+            binding.etCloudflareUrl.setText(savedUrl);
+        }
+        if (binding.etCloudflareToken != null) {
+            binding.etCloudflareToken.setText(savedToken);
         }
 
-        if (binding.btnSaveMediaServer != null) {
-            binding.btnSaveMediaServer.setOnClickListener(v -> {
-                String newServer = binding.etMediaServer.getText().toString().trim();
-                
-                // Basic URL validation
-                if (!newServer.isEmpty() && !newServer.startsWith("http")) {
+        if (binding.btnSaveCloudflare != null) {
+            binding.btnSaveCloudflare.setOnClickListener(v -> {
+                String newUrl = binding.etCloudflareUrl.getText().toString().trim();
+                String newToken = binding.etCloudflareToken.getText().toString().trim();
+
+                // Basic validation for the Worker URL
+                if (newUrl.isEmpty()) {
+                    Toast.makeText(getContext(), "Worker URL is required for storage.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (!newUrl.startsWith("http")) {
                     Toast.makeText(getContext(), "Invalid URL. Must start with http/https", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
-                db.saveCustomMediaServer(newServer);
-                Toast.makeText(getContext(), "Media Relay Configuration Saved", Toast.LENGTH_SHORT).show();
-                Log.i(TAG, "Custom Blossom Server updated to: " + newServer);
+                // Save to local database
+                db.saveCloudflareWorkerUrl(newUrl);
+                db.saveCloudflareSecretToken(newToken);
+
+                Toast.makeText(getContext(), "Cloudflare Configuration Saved", Toast.LENGTH_SHORT).show();
+                
+                // Print detailed forensic log for technical verification
+                Log.i(TAG, "Cloudflare Worker URL updated to: " + newUrl);
+                Log.i(TAG, "Cloudflare Secret Token updated successfully.");
             });
         }
     }
