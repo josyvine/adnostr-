@@ -12,6 +12,7 @@ import java.util.Set;
 /**
  * Local Data Management Utility for AdNostr.
  * UPDATED: Added keys for Private Cloudflare R2 Storage (Worker URL & Secret Token).
+ * UPDATED: Added KEY_WIPED_AD_IDS to prevent "Phantom Ad" re-notifications.
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  */
 public class AdNostrDatabaseHelper {
@@ -33,7 +34,7 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_USER_INTERESTS = "ad_interest_hashtags"; 
     private static final String KEY_AVAILABLE_HASHTAGS = "available_hashtag_pool";
 
-    // PRIVATE CLOUDFLARE R2 STORAGE (NEW)
+    // PRIVATE CLOUDFLARE R2 STORAGE
     private static final String KEY_CLOUDFLARE_WORKER_URL = "cf_worker_api_url";
     private static final String KEY_CLOUDFLARE_SECRET_TOKEN = "cf_secret_auth_token";
 
@@ -43,6 +44,9 @@ public class AdNostrDatabaseHelper {
     // History Keys
     private static final String KEY_USER_HISTORY = "local_user_ad_history";
     private static final String KEY_ADVERTISER_HISTORY = "local_advertiser_ad_history";
+
+    // PHANTOM AD PREVENTION (NEW)
+    private static final String KEY_WIPED_AD_IDS = "wiped_deleted_ad_ids";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -190,7 +194,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // CLOUDFLARE R2 PRIVATE STORAGE SETTINGS (NEW)
+    // CLOUDFLARE R2 PRIVATE STORAGE SETTINGS
     // =========================================================================
 
     public void saveCloudflareWorkerUrl(String url) {
@@ -209,10 +213,6 @@ public class AdNostrDatabaseHelper {
         return prefs.getString(KEY_CLOUDFLARE_SECRET_TOKEN, "");
     }
 
-    /**
-     * Stores the file IDs/URLs returned by Cloudflare for a specific Ad.
-     * key: Event ID, value: Deletion JSON array
-     */
     public void saveDeletionData(String eventId, String deletionUrl) {
         prefs.edit().putString(KEY_ADVERTISER_DELETION_MAP + "_" + eventId, deletionUrl).apply();
     }
@@ -226,7 +226,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // AD HISTORY MANAGEMENT
+    // AD HISTORY & PHANTOM PREVENTION
     // =========================================================================
 
     public void saveToUserHistory(String eventJson) {
@@ -259,6 +259,23 @@ public class AdNostrDatabaseHelper {
         Set<String> history = new HashSet<>(prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>()));
         history.remove(eventJson);
         prefs.edit().putStringSet(KEY_ADVERTISER_HISTORY, history).apply();
+    }
+
+    /**
+     * Records an ad ID as permanently wiped. Ensures phantom notifications never show.
+     */
+    public void addWipedAdId(String eventId) {
+        Set<String> wiped = new HashSet<>(prefs.getStringSet(KEY_WIPED_AD_IDS, new HashSet<>()));
+        wiped.add(eventId);
+        prefs.edit().putStringSet(KEY_WIPED_AD_IDS, wiped).apply();
+    }
+
+    /**
+     * Checks if an ad ID has been previously deleted or wiped.
+     */
+    public boolean isAdWiped(String eventId) {
+        Set<String> wiped = prefs.getStringSet(KEY_WIPED_AD_IDS, new HashSet<>());
+        return wiped.contains(eventId);
     }
 
     public void clearAllData() {
