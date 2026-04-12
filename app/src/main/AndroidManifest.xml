@@ -70,7 +70,7 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
-        <!-- Ad Delivery Card: Displays the IPFS swipe gallery popup -->
+        <!-- Ad Delivery Card: Displays the encrypted swipe gallery popup -->
         <activity
             android:name=".AdPopupActivity"
             android:excludeFromRecents="true"
@@ -78,6 +78,13 @@
             android:launchMode="singleTop"
             android:showOnLockScreen="true"
             android:theme="@style/Theme.AdNostr.Transparent" />
+
+        <!-- NEW: Image Zoom Portal (Fullscreen Secure Viewing) -->
+        <activity
+            android:name=".ImageZoomActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
 
         <!-- CRITICAL: The Global Error Display Activity -->
         <activity
@@ -90,9 +97,6 @@
         <!-- ================================================================= -->
         <!-- DECENTRALIZED P2P NODE SERVICE -->
         <!-- ================================================================= -->
-        <!-- This service runs the embedded Go-IPFS node. It is marked as 
-             'dataSync' foreground type to comply with Android 14 rules for 
-             P2P file sharing. -->
         <service
             android:name=".IPFSNodeService"
             android:enabled="true"
