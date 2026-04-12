@@ -26,6 +26,8 @@ import okhttp3.Response;
  * FEATURE: Auth via Secret-Token provided in Advertiser Settings.
  * FEATURE: Single-click physical wipe (HTTP DELETE) logic.
  * FEATURE: Detailed forensic logging for the Technical Network Console.
+ * 
+ * FIXED: Deletion logic now extracts clean IDs from full URLs to ensure R2 physical wipe success.
  */
 public class CloudflareHelper {
 
@@ -135,6 +137,8 @@ public class CloudflareHelper {
     /**
      * DELETION LOGIC: Performs a physical wipe from the Advertiser's R2 Bucket.
      * Authenticates via Secret-Token to ensure only the owner can delete.
+     * 
+     * FIXED: Added logic to extract a clean filename ID if a full URL is passed.
      */
     public void deleteMedia(Context context, String fileIdOrUrl, CloudflareCallback callback) {
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
@@ -146,17 +150,21 @@ public class CloudflareHelper {
             return;
         }
 
-        postLog(callback, "=== INITIATING CLOUDFLARE PHYSICAL WIPE ===\n");
-        postLog(callback, "TARGET ID: " + fileIdOrUrl + "\n");
-
-        // The Worker logic usually expects the file ID as a query param or part of the URL
-        // We will append it to the URL or include it in the header based on standard Worker patterns
-        String deleteEndpoint = workerUrl;
-        if (!workerUrl.contains("?")) {
-            deleteEndpoint += "?id=" + fileIdOrUrl;
-        } else {
-            deleteEndpoint += "&id=" + fileIdOrUrl;
+        // --- FIXED: CLEAN ID EXTRACTION ---
+        // If fileIdOrUrl is "https://.../123.enc", extract "123.enc"
+        String cleanFileId = fileIdOrUrl;
+        if (fileIdOrUrl.contains("/")) {
+            cleanFileId = fileIdOrUrl.substring(fileIdOrUrl.lastIndexOf("/") + 1);
         }
+
+        postLog(callback, "=== INITIATING CLOUDFLARE PHYSICAL WIPE ===\n");
+        postLog(callback, "SOURCE REF: " + fileIdOrUrl + "\n");
+        postLog(callback, "CLEAN TARGET ID: " + cleanFileId + "\n");
+
+        // Construct the deletion endpoint with the sanitized ID
+        // Ensures no double-slashes or malformed query strings
+        String baseWorker = workerUrl.endsWith("/") ? workerUrl.substring(0, workerUrl.length() - 1) : workerUrl;
+        String deleteEndpoint = baseWorker + "?id=" + cleanFileId;
 
         Request request = new Request.Builder()
                 .url(deleteEndpoint)
@@ -174,11 +182,14 @@ public class CloudflareHelper {
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 int code = response.code();
+                String rawBody = response.body() != null ? response.body().string() : "No body";
+                
                 if (response.isSuccessful()) {
                     postLog(callback, "Cloudflare Wipe Success (HTTP " + code + ")\n");
                     postLog(callback, "STORAGE FREED: Resource removed from R2 Bucket.\n");
                 } else {
-                    postLog(callback, "!!! CLOUDFLARE WIPE REJECTED (HTTP " + code + "): Check Token permissions.\n");
+                    postLog(callback, "!!! CLOUDFLARE WIPE REJECTED (HTTP " + code + ")\n");
+                    postLog(callback, "SERVER REASON: " + rawBody + "\n");
                 }
             }
         });
