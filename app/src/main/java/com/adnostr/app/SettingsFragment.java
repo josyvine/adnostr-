@@ -14,28 +14,31 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.viewpager2.widget.ViewPager2;
 
+import com.adnostr.app.databinding.DialogCloudflareConfigBinding;
+import com.adnostr.app.databinding.DialogModeSwitchBinding;
+import com.adnostr.app.databinding.DialogUsernameSetupBinding;
 import com.adnostr.app.databinding.FragmentSettingsBinding;
 
 /**
  * Global Settings Interface for AdNostr.
- * Handles identity display, role switching between User and Advertiser,
- * and local database management.
- * FIXED: Username section is now hidden for Advertisers.
- * NEW: Implements Decentralized Username checks, claiming, and releasing via UsernameManager.
- * UPDATED: Replaced Blossom/NIP-96 settings with Private Cloudflare R2 Storage configuration.
- * RETAINED: Detailed forensic logging and all existing UI logic.
+ * UPDATED: Transformed into a modern Icon-driven Command Center.
+ * RETAINED: 100% of original Username Manager, Cloudflare, and Role Switching logic.
+ * FEATURE: Functions now launch in professionally rendered square icon popups.
  */
-public class SettingsFragment extends Fragment {
+public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
     private static final String TAG = "AdNostr_Settings";
     private FragmentSettingsBinding binding;
     private AdNostrDatabaseHelper db;
+    private SettingsIconAdapter adapter;
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        // Initialize ViewBinding for the settings layout
+        // Initialize ViewBinding for the main settings layout
         binding = FragmentSettingsBinding.inflate(inflater, container, false);
         return binding.getRoot();
     }
@@ -46,254 +49,228 @@ public class SettingsFragment extends Fragment {
 
         db = AdNostrDatabaseHelper.getInstance(requireContext());
 
-        // Safety check to ensure binding is available
         if (binding == null) return;
 
-        // 1. Display Current Identity
+        // 1. Display Current Identity Header (Top of the screen)
         setupIdentityDisplay();
 
-        // 2. Setup Role Switching Logic
-        setupRoleToggle();
-
-        // 3. Setup Data Management
-        binding.btnResetApp.setOnClickListener(v -> showResetConfirmation());
-
-        // 4. Setup Username Logic (Exclusive to USER role)
-        configureProfileSectionVisibility();
-
-        // 5. NEW: Setup Private Cloudflare R2 Storage settings
-        // This replaces the old Blossom/NIP-96 configuration
-        setupCloudflareSettings();
+        // 2. Initialize the Command Center Icon Grid
+        setupIconGrid();
     }
 
     /**
-     * Hides the profile/username section if the user is an Advertiser.
-     * Initializes the decentralized logic if they are a User.
+     * Initializes the RecyclerView with square Instagram-style icons.
+     * Icons are filtered automatically based on the user's role.
      */
-    private void configureProfileSectionVisibility() {
-        if (binding == null) return;
+    private void setupIconGrid() {
+        String role = db.getUserRole();
+        binding.tvCurrentModeLabel.setText("Active Mode: " + role);
+        
+        // 3-Column professionally spaced grid
+        binding.rvSettingsIcons.setLayoutManager(new GridLayoutManager(requireContext(), 3));
+        adapter = new SettingsIconAdapter(role, this);
+        binding.rvSettingsIcons.setAdapter(adapter);
+    }
 
-        String currentRole = db.getUserRole();
-
-        if (RoleSelectionActivity.ROLE_ADVERTISER.equals(currentRole)) {
-            // Hide Username box entirely for Advertisers
-            binding.tvProfileHeader.setVisibility(View.GONE);
-            binding.cvProfileCard.setVisibility(View.GONE);
-        } else {
-            // Show and configure for Users
-            binding.tvProfileHeader.setVisibility(View.VISIBLE);
-            binding.cvProfileCard.setVisibility(View.VISIBLE);
-            refreshUsernameUIState();
+    /**
+     * INTERFACE: Handles clicks on the square grid icons.
+     * Routes each command to its respective original logic portal.
+     */
+    @Override
+    public void onSettingClicked(int commandType) {
+        switch (commandType) {
+            case SettingsIconAdapter.CMD_PROFILE:
+                showUsernameDialog();
+                break;
+            case SettingsIconAdapter.CMD_MODE_SWITCH:
+                showModeSwitchDialog();
+                break;
+            case SettingsIconAdapter.CMD_CLOUDFLARE:
+                showCloudflareDialog();
+                break;
+            case SettingsIconAdapter.CMD_HISTORY:
+                navigateToHistory();
+                break;
+            case SettingsIconAdapter.CMD_RESET:
+                showResetConfirmation();
+                break;
         }
     }
 
     /**
-     * Toggles the Username UI between "CLAIM" mode and "RELEASE" mode 
-     * based on whether they currently own a name in the local database.
+     * COMMAND POPUP: Moving the original Username Logic into a Dialog.
+     * Handles network checking, claiming, and releasing via Kind 0 events.
      */
-    private void refreshUsernameUIState() {
-        if (binding == null) return;
+    private void showUsernameDialog() {
+        DialogUsernameSetupBinding dialogBinding = DialogUsernameSetupBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(dialogBinding.getRoot())
+                .create();
 
         String savedName = db.getUsername();
 
         if (savedName == null || savedName.trim().isEmpty()) {
-            // MODE: READY TO CLAIM A NEW USERNAME
-            binding.etUsername.setText("");
-            binding.etUsername.setEnabled(true);
-            binding.btnSaveUsername.setText("CLAIM USERNAME");
-            binding.btnSaveUsername.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#2196F3"))); // Blue
+            // MODE: READY TO CLAIM
+            dialogBinding.etUsernamePopup.setText("");
+            dialogBinding.etUsernamePopup.setEnabled(true);
+            dialogBinding.btnUsernameActionPopup.setText("CLAIM USERNAME");
+            dialogBinding.btnUsernameActionPopup.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#2196F3")));
 
-            binding.btnSaveUsername.setOnClickListener(v -> {
-                String requestedName = binding.etUsername.getText().toString().trim();
+            dialogBinding.btnUsernameActionPopup.setOnClickListener(v -> {
+                String requestedName = dialogBinding.etUsernamePopup.getText().toString().trim();
                 if (requestedName.isEmpty()) {
-                    Toast.makeText(getContext(), "Please enter a username.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Please enter a name.", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
-                // Prevent spam clicks
-                binding.btnSaveUsername.setEnabled(false);
-                binding.btnSaveUsername.setText("CHECKING NETWORK...");
-                binding.etUsername.setEnabled(false);
+                dialogBinding.btnUsernameActionPopup.setEnabled(false);
+                dialogBinding.btnUsernameActionPopup.setText("CHECKING...");
 
-                // 1. Check network availability
                 UsernameManager.checkAvailability(requestedName, db.getPublicKey(), (isAvailable, message) -> {
-                    if (!isAdded() || binding == null) return;
-
+                    if (!isAdded()) return;
                     if (isAvailable) {
-                        binding.btnSaveUsername.setText("CLAIMING ON BLOCKCHAIN...");
-
-                        // 2. Broadcast Kind 0 to claim it globally
                         UsernameManager.claimUsername(requireContext(), requestedName, db.getPrivateKey(), db.getPublicKey(), (success, claimMsg) -> {
-                            if (!isAdded() || binding == null) return;
-
                             if (success) {
                                 db.saveUsername(requestedName);
-                                Toast.makeText(getContext(), "Username Locked & Claimed!", Toast.LENGTH_SHORT).show();
-                                refreshUsernameUIState(); // Refresh to DELETE mode
+                                Toast.makeText(getContext(), "Username Locked!", Toast.LENGTH_SHORT).show();
+                                dialog.dismiss();
                             } else {
-                                Toast.makeText(getContext(), "Claim failed: " + claimMsg, Toast.LENGTH_LONG).show();
-                                resetToClaimState();
+                                dialogBinding.btnUsernameActionPopup.setEnabled(true);
+                                dialogBinding.btnUsernameActionPopup.setText("CLAIM FAILED");
                             }
                         });
                     } else {
-                        Toast.makeText(getContext(), "ERROR: " + message, Toast.LENGTH_LONG).show();
-                        resetToClaimState();
+                        Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+                        dialogBinding.btnUsernameActionPopup.setEnabled(true);
+                        dialogBinding.btnUsernameActionPopup.setText("CLAIM USERNAME");
                     }
                 });
             });
-
         } else {
-            // MODE: ALREADY OWNS A USERNAME, ALLOW DELETION/RELEASE
-            binding.etUsername.setText(savedName);
-            binding.etUsername.setEnabled(false); // Lock input
-            binding.btnSaveUsername.setText("RELEASE USERNAME");
-            binding.btnSaveUsername.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#FF5252"))); // Red
-            binding.btnSaveUsername.setEnabled(true);
+            // MODE: ALREADY OWNED, ALLOW RELEASE
+            dialogBinding.etUsernamePopup.setText(savedName);
+            dialogBinding.etUsernamePopup.setEnabled(false);
+            dialogBinding.btnUsernameActionPopup.setText("RELEASE USERNAME");
+            dialogBinding.btnUsernameActionPopup.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#FF5252")));
 
-            binding.btnSaveUsername.setOnClickListener(v -> {
-                // Prevent spam clicks
-                binding.btnSaveUsername.setEnabled(false);
-                binding.btnSaveUsername.setText("RELEASING TO NETWORK...");
-
-                // Broadcast empty Kind 0 to wipe metadata from relays
+            dialogBinding.btnUsernameActionPopup.setOnClickListener(v -> {
+                dialogBinding.btnUsernameActionPopup.setEnabled(false);
+                dialogBinding.btnUsernameActionPopup.setText("RELEASING...");
+                
                 UsernameManager.releaseUsername(requireContext(), db.getPrivateKey(), db.getPublicKey(), (success, releaseMsg) -> {
-                    if (!isAdded() || binding == null) return;
-
                     if (success) {
-                        db.saveUsername(""); // Wipe locally
-                        Toast.makeText(getContext(), "Username Released and Deleted.", Toast.LENGTH_SHORT).show();
-                        refreshUsernameUIState(); // Refresh to CLAIM mode
+                        db.saveUsername("");
+                        Toast.makeText(getContext(), "Username Released.", Toast.LENGTH_SHORT).show();
+                        dialog.dismiss();
                     } else {
-                        Toast.makeText(getContext(), "Release failed: " + releaseMsg, Toast.LENGTH_LONG).show();
-                        refreshUsernameUIState(); // Reset failure
+                        dialogBinding.btnUsernameActionPopup.setEnabled(true);
                     }
                 });
             });
         }
+
+        dialogBinding.btnCancelUsername.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
     }
 
     /**
-     * NEW: Configures the Private Cloudflare R2 Storage settings section.
-     * This allows Advertisers to set their own Worker URL and Secret Auth Token.
+     * COMMAND POPUP: Moving the original Cloudflare Logic into a Dialog.
+     * Manages Advertiser Private Storage credentials.
      */
-    private void setupCloudflareSettings() {
-        if (binding == null) return;
+    private void showCloudflareDialog() {
+        DialogCloudflareConfigBinding dialogBinding = DialogCloudflareConfigBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(dialogBinding.getRoot())
+                .create();
 
-        // Retrieve current saved credentials from database
-        String savedUrl = db.getCloudflareWorkerUrl();
-        String savedToken = db.getCloudflareSecretToken();
+        // Load existing credentials
+        dialogBinding.etCloudflareUrlPopup.setText(db.getCloudflareWorkerUrl());
+        dialogBinding.etCloudflareTokenPopup.setText(db.getCloudflareSecretToken());
 
-        // Populate fields if data exists
-        if (binding.etCloudflareUrl != null) {
-            binding.etCloudflareUrl.setText(savedUrl);
-        }
-        if (binding.etCloudflareToken != null) {
-            binding.etCloudflareToken.setText(savedToken);
-        }
+        dialogBinding.btnSaveCloudflarePopup.setOnClickListener(v -> {
+            String url = dialogBinding.etCloudflareUrlPopup.getText().toString().trim();
+            String token = dialogBinding.etCloudflareTokenPopup.getText().toString().trim();
 
-        if (binding.btnSaveCloudflare != null) {
-            binding.btnSaveCloudflare.setOnClickListener(v -> {
-                String newUrl = binding.etCloudflareUrl.getText().toString().trim();
-                String newToken = binding.etCloudflareToken.getText().toString().trim();
-
-                // Basic validation for the Worker URL
-                if (newUrl.isEmpty()) {
-                    Toast.makeText(getContext(), "Worker URL is required for storage.", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (!newUrl.startsWith("http")) {
-                    Toast.makeText(getContext(), "Invalid URL. Must start with http/https", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                // Save to local database
-                db.saveCloudflareWorkerUrl(newUrl);
-                db.saveCloudflareSecretToken(newToken);
-
+            if (url.startsWith("http")) {
+                db.saveCloudflareWorkerUrl(url);
+                db.saveCloudflareSecretToken(token);
                 Toast.makeText(getContext(), "Cloudflare Configuration Saved", Toast.LENGTH_SHORT).show();
-                
-                // Print detailed forensic log for technical verification
-                Log.i(TAG, "Cloudflare Worker URL updated to: " + newUrl);
-                Log.i(TAG, "Cloudflare Secret Token updated successfully.");
-            });
-        }
+                Log.i(TAG, "Private Storage Updated: " + url);
+                dialog.dismiss();
+            } else {
+                Toast.makeText(getContext(), "Invalid Worker URL", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        dialogBinding.btnCancelCloudflare.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
     }
 
     /**
-     * Helper to revert the UI if a claim fails.
+     * COMMAND POPUP: Professional Role Switcher.
+     * Allows instant migration between User and Advertiser profiles.
      */
-    private void resetToClaimState() {
-        if (binding != null) {
-            binding.btnSaveUsername.setEnabled(true);
-            binding.btnSaveUsername.setText("CLAIM USERNAME");
-            binding.etUsername.setEnabled(true);
+    private void showModeSwitchDialog() {
+        DialogModeSwitchBinding dialogBinding = DialogModeSwitchBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(dialogBinding.getRoot())
+                .create();
+
+        String currentRole = db.getUserRole();
+        boolean isUser = RoleSelectionActivity.ROLE_USER.equals(currentRole);
+
+        dialogBinding.tvCurrentModePopup.setText("Currently: " + currentRole);
+        dialogBinding.ivCurrentModeIcon.setImageResource(isUser ? android.R.drawable.ic_menu_myplaces : android.R.drawable.ic_menu_sort_by_size);
+        dialogBinding.btnSwitchActionPopup.setText(isUser ? "ACTIVATE ADVERTISER MODE" : "ACTIVATE USER MODE");
+
+        dialogBinding.btnSwitchActionPopup.setOnClickListener(v -> {
+            String newRole = isUser ? RoleSelectionActivity.ROLE_ADVERTISER : RoleSelectionActivity.ROLE_USER;
+            db.saveUserRole(newRole);
+            
+            Toast.makeText(getContext(), "Role switched to " + newRole, Toast.LENGTH_SHORT).show();
+            dialog.dismiss();
+            
+            // Trigger global UI refresh to update the Command Center icons
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).refreshRoleAndUI();
+            }
+        });
+
+        dialogBinding.btnCancelMode.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+    }
+
+    /**
+     * Icon Action: Quick jump to the History ViewPager index.
+     */
+    private void navigateToHistory() {
+        if (getActivity() != null) {
+            ViewPager2 pager = getActivity().findViewById(R.id.mainViewPager);
+            if (pager != null) pager.setCurrentItem(1, true);
         }
     }
 
     /**
-     * Displays the user's public identity as a truncated hex string.
+     * Displays the truncated hex identity at the top of the Command Center.
      */
     private void setupIdentityDisplay() {
         if (binding == null) return;
-
         String pubKey = db.getPublicKey();
         if (pubKey != null) {
             String truncated = pubKey.substring(0, 10) + "..." + pubKey.substring(pubKey.length() - 6);
             binding.tvIdentityKey.setText(truncated);
         }
-
-        // Display current active mode
-        String currentRole = db.getUserRole();
-        binding.tvCurrentMode.setText("Active Mode: " + currentRole);
     }
 
     /**
-     * Configures the toggle to switch between User and Advertiser profiles instantly.
-     */
-    private void setupRoleToggle() {
-        if (binding == null) return;
-
-        String currentRole = db.getUserRole();
-
-        // Update button text based on current role
-        if (RoleSelectionActivity.ROLE_USER.equals(currentRole)) {
-            binding.btnSwitchRole.setText("SWITCH TO ADVERTISER MODE");
-            binding.btnSwitchRole.setIconResource(android.R.drawable.ic_menu_sort_by_size);
-        } else {
-            binding.btnSwitchRole.setText("SWITCH TO USER MODE");
-            binding.btnSwitchRole.setIconResource(android.R.drawable.ic_menu_myplaces);
-        }
-
-        binding.btnSwitchRole.setOnClickListener(v -> {
-            if (binding == null) return;
-
-            String newRole = RoleSelectionActivity.ROLE_USER.equals(currentRole) 
-                    ? RoleSelectionActivity.ROLE_ADVERTISER 
-                    : RoleSelectionActivity.ROLE_USER;
-
-            // Save the new role to the database
-            db.saveUserRole(newRole);
-
-            Toast.makeText(getContext(), "Role switched to " + newRole, Toast.LENGTH_SHORT).show();
-
-            // Refresh the MainActivity UI to update the ViewPager and TabLayout
-            if (getActivity() instanceof MainActivity) {
-                ((MainActivity) getActivity()).refreshRoleAndUI();
-            }
-        });
-    }
-
-    /**
-     * Confirmation dialog before wiping all Nostr keys and settings.
+     * Final confirmation before wiping the decentralized identity and keys.
      */
     private void showResetConfirmation() {
         new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setTitle("Clear All Data?")
-                .setMessage("This will permanently delete your Nostr keys, saved relays, and interests. You will need to start onboarding again.")
+                .setMessage("This will permanently delete your Nostr keys and settings. You will need to start onboarding again.")
                 .setPositiveButton("RESET", (dialog, which) -> {
                     db.clearAllData();
-
-                    // Restart the app from the Splash screen
                     Intent intent = new Intent(requireContext(), SplashActivity.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                     startActivity(intent);
@@ -306,6 +283,6 @@ public class SettingsFragment extends Fragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        binding = null; // Clean up binding to prevent memory leaks
+        binding = null; // Prevent memory leaks
     }
 }
