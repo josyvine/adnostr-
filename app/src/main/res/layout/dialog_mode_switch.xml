@@ -11,87 +11,99 @@
     app:strokeColor="#333333"
     app:strokeWidth="1dp">
 
-    <LinearLayout
+    <!-- FIXED: Added ScrollView to prevent buttons from being hidden on small screens -->
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="24dp">
+        android:overScrollMode="never">
 
-        <!-- DIALOG HEADER -->
-        <TextView
-            android:id="@+id/tvModeHeader"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-black"
-            android:text="Switch App Mode"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp" />
-
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Changing roles will instantly reconfigure your Command Center and network filters."
-            android:textColor="#888888"
-            android:textSize="12sp" />
+            android:orientation="vertical"
+            android:padding="24dp">
 
-        <!-- CURRENT STATUS DISPLAY -->
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            app:cardBackgroundColor="#121212"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp">
+            <!-- DIALOG HEADER -->
+            <TextView
+                android:id="@+id/tvModeHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-black"
+                android:text="Switch App Mode"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp" />
 
-            <LinearLayout
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="16dp">
+                android:layout_marginTop="4dp"
+                android:text="Changing roles will instantly reconfigure your Command Center and network filters."
+                android:textColor="#888888"
+                android:textSize="12sp" />
 
-                <ImageView
-                    android:id="@+id/ivCurrentModeIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_myplaces"
-                    app:tint="#2196F3" />
+            <!-- CURRENT STATUS DISPLAY -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                app:cardBackgroundColor="#121212"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp">
 
-                <TextView
-                    android:id="@+id/tvCurrentModePopup"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
-                    android:text="Currently: USER MODE"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
 
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    <ImageView
+                        android:id="@+id/ivCurrentModeIcon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@android:drawable/ic_menu_myplaces"
+                        app:tint="#2196F3" />
 
-        <!-- ACTION BUTTONS -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSwitchActionPopup"
-            style="@style/Widget.MaterialComponents.Button"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_marginTop="24dp"
-            android:text="ACTIVATE ADVERTISER MODE"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold"
-            app:cornerRadius="16dp" />
+                    <TextView
+                        android:id="@+id/tvCurrentModePopup"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:text="Currently: USER MODE"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnCancelMode"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:layout_marginTop="8dp"
-            android:text="CANCEL"
-            android:textColor="#666666"
-            app:cornerRadius="16dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-    </LinearLayout>
+            <!-- ACTION BUTTONS -->
+            <!-- FIXED: Changed height to wrap_content with minHeight to prevent text squashing -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSwitchActionPopup"
+                style="@style/Widget.MaterialComponents.Button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="60dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:layout_marginTop="20dp"
+                android:text="ACTIVATE ADVERTISER MODE"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                app:cornerRadius="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCancelMode"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:layout_marginTop="8dp"
+                android:text="CANCEL"
+                android:textColor="#666666"
+                app:cornerRadius="16dp" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 </com.google.android.material.card.MaterialCardView>
