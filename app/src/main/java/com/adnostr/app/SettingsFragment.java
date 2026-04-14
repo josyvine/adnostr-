@@ -27,6 +27,7 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * UPDATED: Transformed into a modern Icon-driven Command Center.
  * RETAINED: 100% of original Username Manager, Cloudflare, and Role Switching logic.
  * FEATURE: Functions now launch in professionally rendered square icon popups.
+ * ENHANCEMENT: Added My Hashtags deed registry for advertisers.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -87,6 +88,9 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 break;
             case SettingsIconAdapter.CMD_CLOUDFLARE:
                 showCloudflareDialog();
+                break;
+            case SettingsIconAdapter.CMD_MY_HASHTAGS:
+                showMyHashtagsDialog();
                 break;
             case SettingsIconAdapter.CMD_HISTORY:
                 navigateToHistory();
@@ -238,6 +242,15 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         dialogBinding.btnCancelMode.setOnClickListener(v -> dialog.dismiss());
         dialog.show();
+    }
+
+    /**
+     * NEW COMMAND: Launches the My Hashtags Registry Manager.
+     */
+    private void showMyHashtagsDialog() {
+        // Registry logic to be implemented in the specialized registry manager
+        // This launches the popup where advertisers manage their deeds.
+        HashtagRegistryManager.showRegistryDialog(requireContext(), getChildFragmentManager());
     }
 
     /**
