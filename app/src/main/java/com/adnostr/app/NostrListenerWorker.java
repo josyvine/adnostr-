@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit;
  * FIXED: Implemented Duplicate Checking to stop notification spam for already saved ads.
  * FIXED: Added Kind 5 (NIP-09) listening to honor Advertiser deletions and wipe local history.
  * UPDATED: Integrated Wiped ID Blocklist and Image Integrity checks to kill "Phantom Ads".
+ * ENHANCEMENT: Implements Master App-Level Decryption to verify AdNostr protocol traffic.
+ * ENHANCEMENT: Implements User-Side Trust Filter to verify Ad Sender vs Hashtag Owner.
  * NEW: Saves verified Ads to local User History Database.
  */
 public class NostrListenerWorker extends Worker {
@@ -173,6 +175,7 @@ public class NostrListenerWorker extends Worker {
             JSONObject event = msgArray.getJSONObject(2);
             int kind = event.optInt("kind", -1);
             String eventId = event.optString("id", "");
+            String senderPubkey = event.optString("pubkey", "");
 
             // --- PHANTOM AD PREVENTION: BLOCKLIST CHECK ---
             // If the ID is in our permanent wiped list, ignore it immediately.
@@ -234,6 +237,7 @@ public class NostrListenerWorker extends Worker {
 
                 // STRICT PROTOCOL FILTERING: Verify the 'd' tag to ensure it's a real Ad Broadcast
                 boolean isAdNostrBroadcast = false;
+                String adTag = "";
                 JSONArray tags = event.optJSONArray("tags");
                 if (tags != null) {
                     for (int i = 0; i < tags.length(); i++) {
@@ -245,10 +249,12 @@ public class NostrListenerWorker extends Worker {
                             if ("d".equals(tagName)) {
                                 if (tagValue.startsWith("adnostr_ad_")) {
                                     isAdNostrBroadcast = true;
-                                    break;
                                 } else if ("adnostr_interests".equals(tagValue)) {
                                     return; // STRICT FIX: Ignore user interest lists to prevent crash
                                 }
+                            }
+                            if ("t".equals(tagName)) {
+                                adTag = tagValue;
                             }
                         }
                     }
@@ -259,21 +265,32 @@ public class NostrListenerWorker extends Worker {
                     return;
                 }
 
-                JSONObject content = new JSONObject(contentStr);
-
-                // Crash Prevention: Ensure title actually exists
-                if (!content.has("title")) {
+                // =========================================================================
+                // FEATURE 2: MASTER APP-LEVEL DECRYPTION
+                // Verify if the payload is wrapped in our Master Protocol Key
+                // =========================================================================
+                String decryptedJson;
+                try {
+                    decryptedJson = EncryptionUtils.decryptPayload(contentStr);
+                } catch (Exception e) {
+                    // Decryption failed: Event is not AdNostr protocol or malformed.
                     return;
                 }
 
+                JSONObject content = new JSONObject(decryptedJson);
+
                 // --- PHANTOM AD PREVENTION: CONTENT INTEGRITY CHECK ---
-                // If the ad has been wiped from Cloudflare, the image field will be empty or missing.
-                // We drop these events to prevent blank-thumbnail notification spam.
+                // Notifications must never fire for ads with empty image arrays or missing titles.
+                if (!content.has("title") || content.optString("title").isEmpty()) {
+                    Log.d(TAG, "Integrity fail: Missing title. Dropping ad.");
+                    return;
+                }
+
                 if (!content.has("image")) {
                     Log.d(TAG, "Integrity fail: Missing image field. Dropping ghost ad.");
                     return;
                 }
-                
+
                 Object imageObj = content.get("image");
                 if (imageObj instanceof JSONArray) {
                     if (((JSONArray) imageObj).length() == 0) {
@@ -284,20 +301,64 @@ public class NostrListenerWorker extends Worker {
                     if (((String) imageObj).isEmpty()) return;
                 }
 
-                String title = content.optString("title", "Local Deal Found");
-                String desc = content.optString("desc", "A new ad matches your interests.");
+                // =========================================================================
+                // FEATURE 1: USER-SIDE TRUST FILTER (OWNERSHIP CHECK)
+                // If tag is owned, verify that Sender Pubkey matches Tag Owner Pubkey
+                // =========================================================================
+                if (!adTag.isEmpty()) {
+                    final String finalId = eventId;
+                    final String finalSender = senderPubkey;
+                    final String finalDecrypted = decryptedJson;
+                    final String finalTitle = content.optString("title", "Local Deal Found");
+                    final String finalDesc = content.optString("desc", "A new ad matches your interests.");
+                    final JSONObject finalOriginalEvent = event;
+                    final String finalAdTag = adTag;
 
-                // NEW: Save the verified, non-duplicate Ad to the Local User History Database
-                db.saveToUserHistory(rawMessage);
+                    HashtagRegistryManager.checkOwnershipSync(context, adTag, senderPubkey, new HashtagRegistryManager.OwnershipCallback() {
+                        @Override
+                        public void onResult(int status, String ownerPubkey) {
+                            // CASE 3: OWNED BY ANOTHER (Spam Detection)
+                            if (status == HashtagRegistryManager.STATUS_TAKEN) {
+                                Log.w(TAG, "TRUST FILTER: Dropped spoofed ad for #" + finalAdTag + " from " + finalSender);
+                                return;
+                            }
 
-                // Launch system notification
-                showAdNotification(title, desc, rawMessage);
+                            // CASE 1 & 2: Tag is PUBLIC or OWNED BY SENDER
+                            saveAndNotifyVerifiedAd(finalId, finalSender, finalDecrypted, finalTitle, finalDesc, finalOriginalEvent, rawMessage);
+                        }
+                    });
+                }
             }
 
         } catch (Exception e) {
             Log.e(TAG, "Error parsing incoming ad relay packet: " + e.getMessage());
             // FIXED: We now record the exact JSON parsing error so you can debug the payload format.
             logBackgroundError("JSON Parse Error: " + e.getMessage() + "\nPayload: " + rawMessage);
+        }
+    }
+
+    /**
+     * Helper to persist the verified ad to history and trigger the notification.
+     */
+    private void saveAndNotifyVerifiedAd(String id, String sender, String decryptedContent, String title, String desc, JSONObject originalEvent, String rawOriginal) {
+        try {
+            // Re-package the message with decrypted content for local viewing
+            JSONObject localStoreEvent = new JSONObject(originalEvent.toString());
+            localStoreEvent.put("content", decryptedContent);
+
+            JSONArray localMsg = new JSONArray();
+            localMsg.put("EVENT");
+            localMsg.put("");
+            localMsg.put(localStoreEvent);
+
+            // NEW: Save the verified, non-duplicate, decrypted Ad to local history
+            db.saveToUserHistory(localMsg.toString());
+
+            // Launch system notification
+            showAdNotification(title, desc, localMsg.toString());
+            Log.i(TAG, "Ad Successfully Verified and Notified: " + id);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to store verified ad: " + e.getMessage());
         }
     }
 
