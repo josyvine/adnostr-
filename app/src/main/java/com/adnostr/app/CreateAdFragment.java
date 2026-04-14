@@ -44,6 +44,8 @@ import java.util.Set;
  * FIXED: Enforced manual string construction for content JSON to resolve "invalid: bad event id".
  * NEW: Every image is AES-GCM encrypted locally before upload; Key is shared in the Nostr Event.
  * FIXED: Detailed Forensic Logs are now piped to the UI console in real-time.
+ * ENHANCEMENT: Master App-Level Encryption completely shields ad payloads from external clients.
+ * ENHANCEMENT: Hybrid Hashtag Registry integrated to lock/protect private discovery tags.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -107,7 +109,7 @@ public class CreateAdFragment extends Fragment {
         // 2. Location Logic (GPS capture)
         binding.btnCaptureLocation.setOnClickListener(v -> captureBusinessLocation());
 
-        // 3. Real Hashtag Reach Discovery
+        // 3. Real Hashtag Reach Discovery (NOW ROUTED THROUGH HYBRID REGISTRY)
         binding.btnDiscoverReach.setOnClickListener(v -> discoverHashtagReach());
 
         // 4. Broadcast Action
@@ -268,7 +270,8 @@ public class CreateAdFragment extends Fragment {
     }
 
     /**
-     * Calls the discovery engine to count REAL users on the network.
+     * ENHANCEMENT: Hybrid Hashtag Registry + Discovery Engine
+     * Before counting users, we now check if the tag is locked by a competitor.
      */
     private void discoverHashtagReach() {
         String tagsInput = binding.etAdTags.getText().toString().trim();
@@ -278,7 +281,10 @@ public class CreateAdFragment extends Fragment {
         }
 
         binding.cvReachDiscovery.setVisibility(View.VISIBLE);
-        binding.tvActiveWatchers.setText("Scanning Network...");
+        binding.tvActiveWatchers.setText("Verifying Ownership...");
+
+        // Ensure Lock button is initially hidden
+        if (binding.btnLockTag != null) binding.btnLockTag.setVisibility(View.GONE);
 
         List<String> tagsToSearch = new ArrayList<>();
         for (String s : tagsInput.split(",")) {
@@ -287,15 +293,71 @@ public class CreateAdFragment extends Fragment {
         }
 
         StringBuilder discoveryLogs = new StringBuilder();
-        discoveryLogs.append("INITIATING REACH DISCOVERY...\n\n");
+        discoveryLogs.append("INITIATING REGISTRY & REACH DISCOVERY...\n\n");
 
         RelayReportDialog dialog = RelayReportDialog.newInstance(
                 "DISCOVERY CONSOLE",
-                "Scanning decentralized network...",
+                "Scanning decentralized registry...",
                 discoveryLogs.toString()
         );
         dialog.showSafe(getChildFragmentManager(), "DISCOVERY_CONSOLE");
 
+        // Primary Tag for Ownership Check
+        String primaryTag = tagsToSearch.get(0);
+        discoveryLogs.append("CHECKING DEED OWNERSHIP FOR: #").append(primaryTag).append("\n");
+
+        // =========================================================================
+        // FEATURE 1: HYBRID HASHTAG DISCOVERY "PERMISSION" LOGIC
+        // =========================================================================
+        HashtagRegistryManager.checkOwnership(requireContext(), primaryTag, db.getPublicKey(), new HashtagRegistryManager.OwnershipCallback() {
+            @Override
+            public void onResult(int status, String ownerPubkey) {
+                if (!isAdded() || getActivity() == null) return;
+                
+                getActivity().runOnUiThread(() -> {
+                    RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
+                    
+                    if (status == HashtagRegistryManager.STATUS_TAKEN) {
+                        // CASE 3 (OWNED BY ANOTHER) - Block Reach Calculation
+                        discoveryLogs.append("\n!!! DECLINED !!!\nTag is securely locked by: ").append(ownerPubkey).append("\nDiscovery Blocked to prevent spam.\n");
+                        binding.tvActiveWatchers.setText("DECLINED: Tag Owned by Another Advertiser");
+                        binding.tvActiveWatchers.setTextColor(getResources().getColor(android.R.color.holo_red_light));
+                        
+                        if (existing != null) existing.updateTechnicalLogs("ACCESS DENIED", discoveryLogs.toString());
+                        
+                    } else if (status == HashtagRegistryManager.STATUS_MINE) {
+                        // CASE 2 (OWNED BY YOU) - Allow Reach Calculation
+                        discoveryLogs.append("\n[VERIFIED] You own this private tag. Proceeding with scan...\n");
+                        binding.tvActiveWatchers.setText("Scanning Network...");
+                        binding.tvActiveWatchers.setTextColor(getResources().getColor(R.color.hfs_active_blue));
+                        
+                        if (existing != null) existing.updateTechnicalLogs("OWNER VERIFIED", discoveryLogs.toString());
+                        executeReachScan(tagsToSearch, discoveryLogs);
+                        
+                    } else {
+                        // CASE 1 (NO OWNER / PUBLIC) - Allow Reach + Show Option B
+                        discoveryLogs.append("\n[PUBLIC] Tag is unclaimed. Proceeding with scan...\n");
+                        binding.tvActiveWatchers.setText("Scanning Network...");
+                        binding.tvActiveWatchers.setTextColor(getResources().getColor(R.color.hfs_active_blue));
+                        
+                        // Option B: Show Lock Button
+                        if (binding.btnLockTag != null) {
+                            binding.btnLockTag.setVisibility(View.VISIBLE);
+                            binding.btnLockTag.setOnClickListener(v -> lockHashtagDeed(primaryTag));
+                        }
+                        
+                        if (existing != null) existing.updateTechnicalLogs("PUBLIC TAG", discoveryLogs.toString());
+                        executeReachScan(tagsToSearch, discoveryLogs);
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * Executes the actual network scan for users (Moved out to separate function for cleanliness).
+     */
+    private void executeReachScan(List<String> tagsToSearch, StringBuilder discoveryLogs) {
         ReachDiscoveryHelper.discoverGlobalReach(requireContext(), tagsToSearch, new ReachDiscoveryHelper.ReachCallback() {
             @Override
             public void onReachCalculated(int totalUsers, List<String> usernames) {
@@ -333,6 +395,32 @@ public class CreateAdFragment extends Fragment {
                     });
                 }
             }
+        });
+    }
+
+    /**
+     * Helper to lock a tag directly from the discovery view.
+     */
+    private void lockHashtagDeed(String tag) {
+        if (binding.btnLockTag != null) {
+            binding.btnLockTag.setEnabled(false);
+            binding.btnLockTag.setText("LOCKING ON BLOCKCHAIN...");
+        }
+        
+        HashtagRegistryManager.broadcastDeed(requireContext(), tag, db.getPrivateKey(), db.getPublicKey(), success -> {
+            if (!isAdded() || getActivity() == null) return;
+            getActivity().runOnUiThread(() -> {
+                if (success) {
+                    Toast.makeText(requireContext(), "Hashtag Locked Exclusively!", Toast.LENGTH_LONG).show();
+                    if (binding.btnLockTag != null) binding.btnLockTag.setVisibility(View.GONE);
+                } else {
+                    Toast.makeText(requireContext(), "Failed to lock hashtag.", Toast.LENGTH_SHORT).show();
+                    if (binding.btnLockTag != null) {
+                        binding.btnLockTag.setEnabled(true);
+                        binding.btnLockTag.setText("LOCK THIS TAG EXCLUSIVELY");
+                    }
+                }
+            });
         });
     }
 
@@ -378,7 +466,7 @@ public class CreateAdFragment extends Fragment {
             String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
             String ctaUrl = whatsapp.isEmpty() ? "" : "https://wa.me/" + cleanPhone;
 
-            // ENHANCEMENT: Included AES Key in the JSON content so authorized peers can decrypt.
+            // Construct Original Ad Payload JSON
             String contentStr = "{" +
                     "\"title\":\"" + title.replace("\"", "\\\"") + "\"," +
                     "\"desc\":\"" + desc.replace("\"", "\\\"") + "\"," +
@@ -389,11 +477,27 @@ public class CreateAdFragment extends Fragment {
                     "\"expiry\":\"2026-05-01\"" +
                     "}";
 
+            // =========================================================================
+            // FEATURE 2: MASTER APP-LEVEL JSON ENCRYPTION
+            // Encrypt the entire content string to shield it from external network clients
+            // =========================================================================
+            String finalSecureContent;
+            try {
+                finalSecureContent = EncryptionUtils.encryptPayload(contentStr);
+                Log.i(TAG, "Master App-Level Encryption Applied.");
+            } catch (Exception e) {
+                Log.e(TAG, "Master Encryption Failed! Aborting broadcast: " + e.getMessage());
+                Toast.makeText(getContext(), "Encryption failed. Ad aborted.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
             JSONObject event = new JSONObject();
             event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            event.put("content", contentStr);
+            
+            // Inject the unreadable encrypted hex string instead of plain JSON
+            event.put("content", finalSecureContent);
 
             JSONArray tags = new JSONArray();
             JSONArray dTag = new JSONArray();
@@ -422,12 +526,19 @@ public class CreateAdFragment extends Fragment {
                     db.saveDeletionData(eventId, delArray.toString());
                 }
 
+                // Since we encrypted it for the network, we must store the RAW version 
+                // in the Advertiser's local database so they can read their own history.
+                JSONObject localEvent = new JSONObject(signedEvent.toString());
+                localEvent.put("content", contentStr); // Revert to plain text for local view
+
                 JSONArray fullMsg = new JSONArray();
                 fullMsg.put("EVENT");
                 fullMsg.put(""); 
-                fullMsg.put(signedEvent);
+                fullMsg.put(localEvent);
 
                 db.saveToAdvertiserHistory(fullMsg.toString());
+                
+                // Broadcast the securely encrypted version
                 broadcastToNetwork(signedEvent);
             } else {
                 Toast.makeText(getContext(), "Signing Failed", Toast.LENGTH_SHORT).show();
@@ -443,6 +554,7 @@ public class CreateAdFragment extends Fragment {
         Set<String> relayPool = db.getRelayPool();
         StringBuilder technicalLogs = new StringBuilder();
         technicalLogs.append("AD BROADCAST STATUS:\n\n");
+        technicalLogs.append("[SECURE] Payload wrapped in AES-256 Master Key.\n\n");
 
         final int totalNodes = relayPool.size();
         final int[] finishedNodes = {0};
