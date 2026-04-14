@@ -35,6 +35,8 @@ import java.util.Set;
  * FIXED: Enforced strict manual string construction for content to resolve Event ID mismatch.
  * FIXED: Added Duplicate Checking to prevent continuous popups for ads already seen.
  * FIXED: Implemented Kind 5 (NIP-09) listening to wipe ads deleted by advertisers.
+ * ENHANCEMENT: Implements Phantom Ad Blocklist and Master App-Level Decryption.
+ * ENHANCEMENT: Integrated User-Side Trust Filter (Hashtag Registry check) for live traffic.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -144,6 +146,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     /**
      * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
      * UPDATED: Clears technicalLogs and prints mathematical signing diagnostics (k, e, parity).
+     * ENHANCEMENT: Interests are now wrapped in Master App Encryption for dark pool privacy.
      */
     private void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
@@ -159,15 +162,17 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
             
-            // FIXED: Send the username as a plain string instead of JSON format.
-            // This prevents Android's JSONObject from escaping quotes and causing "bad event id" 
-            // mismatch hashes at the relay level.
+            // Re-identify username for reach discovery
             String contentStr = "";
             String savedName = db.getUsername();
             if (savedName != null && !savedName.isEmpty()) {
                 contentStr = savedName; 
             }
-            event.put("content", contentStr); 
+
+            // ENHANCEMENT: Master App-Level Encryption
+            // Hide user interests/username from external Nostr network
+            String secureContent = EncryptionUtils.encryptPayload(contentStr);
+            event.put("content", secureContent); 
 
             JSONArray tags = new JSONArray();
 
@@ -206,7 +211,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 technicalLogs.append("-----------------------------\n\n");
 
                 wsManager.broadcastEvent(signedEvent.toString());
-                technicalLogs.append("BROADCAST: Sent Kind 30001 to relays.\n");
+                technicalLogs.append("BROADCAST: Sent Encrypted Kind 30001 to relays.\n");
                 technicalLogs.append("WAITING FOR RELAY VERIFICATION...\n\n");
                 updateOpenConsole();
             }
@@ -261,6 +266,16 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                             JSONObject event = msgArray.getJSONObject(2);
                             int kind = event.optInt("kind", -1);
                             String eventId = event.optString("id", "");
+                            String senderPubkey = event.optString("pubkey", "");
+
+                            // =========================================================================
+                            // FEATURE 3: PHANTOM AD PREVENTION - BLOCKLIST CHECK
+                            // =========================================================================
+                            if (db.isAdWiped(eventId)) {
+                                technicalLogs.append("[DROPPED] Phantom Ad Blocked: ").append(eventId).append("\n");
+                                updateOpenConsole();
+                                return;
+                            }
 
                             // =================================================================
                             // HANDLE KIND 5: ADVERTISER DELETIONS (NIP-09)
@@ -274,6 +289,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                         if (tagPair != null && tagPair.length() >= 2 && "e".equals(tagPair.getString(0))) {
                                             String targetDeletedId = tagPair.getString(1);
                                             
+                                            // PHANTOM AD PREVENTION: Register wipe permanently
+                                            db.addWipedAdId(targetDeletedId);
+
                                             // Find this Ad ID in the User's local history and wipe it
                                             Set<String> localHistory = db.getUserHistory();
                                             for (String savedItem : localHistory) {
@@ -299,20 +317,13 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                 Set<String> history = db.getUserHistory();
                                 for (String savedItem : history) {
                                     if (savedItem.contains("\"id\":\"" + eventId + "\"")) {
-                                        // We already have this ad, do not trigger the popup again
                                         return; 
                                     }
                                 }
 
-                                // CRITICAL FIX: Prevent protocol collision. 
-                                // Make sure this is an AD, not an empty User Interest list or a list from another app.
-                                String contentStr = event.optString("content", "");
-                                if (contentStr.isEmpty() || !contentStr.contains("\"title\"")) {
-                                    return; // Silently ignore events that are not AdNostr Ads
-                                }
-
                                 // Double check the 'd' tag to ensure it's an AdNostr broadcast
                                 boolean isAdNostrBroadcast = false;
+                                String adTag = "";
                                 JSONArray tags = event.optJSONArray("tags");
                                 if (tags != null) {
                                     for (int i = 0; i < tags.length(); i++) {
@@ -324,36 +335,73 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                             if ("d".equals(tagName)) {
                                                 if (tagValue.startsWith("adnostr_ad_")) {
                                                     isAdNostrBroadcast = true;
-                                                    break;
                                                 } else if ("adnostr_interests".equals(tagValue)) {
                                                     return; // Ignore interest lists
                                                 }
+                                            }
+                                            if ("t".equals(tagName)) {
+                                                adTag = tagValue;
                                             }
                                         }
                                     }
                                 }
                                 
-                                // If the validation fails, do not open the popup
                                 if (!isAdNostrBroadcast) return;
 
-                                technicalLogs.append("[AD DETECTED] Valid Kind 30001 Ad from ").append(url).append("\n");
-                                updateOpenConsole();
+                                // =========================================================================
+                                // FEATURE 2: MASTER APP-LEVEL DECRYPTION
+                                // Verify if the payload is wrapped in our Master Protocol Key
+                                // =========================================================================
+                                String contentStr = event.optString("content", "");
+                                String decryptedJson;
+                                try {
+                                    decryptedJson = EncryptionUtils.decryptPayload(contentStr);
+                                } catch (Exception e) {
+                                    // Decryption failed: Not an AdNostr event
+                                    return;
+                                }
 
-                                // NEW: Save the ad to database so we don't show it again
-                                db.saveToUserHistory(message);
+                                JSONObject content = new JSONObject(decryptedJson);
 
-                                if (db.isListening() && isAdded() && getActivity() != null) {
-                                    // FIXED: Enforce UI Thread execution for the Activity launch.
-                                    // This prevents the OS from blocking the foreground transition.
-                                    getActivity().runOnUiThread(() -> {
-                                        Intent intent = new Intent(requireContext(), AdPopupActivity.class);
-                                        intent.putExtra("AD_PAYLOAD_JSON", message);
-                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                        startActivity(intent);
+                                // =========================================================================
+                                // FEATURE 3: CONTENT INTEGRITY CHECK
+                                // =========================================================================
+                                if (!content.has("title") || content.optString("title").isEmpty()) return;
+                                
+                                Object imageObj = content.opt("image");
+                                if (imageObj == null) return;
+                                if (imageObj instanceof JSONArray && ((JSONArray) imageObj).length() == 0) return;
+                                if (imageObj instanceof String && ((String) imageObj).isEmpty()) return;
+
+                                // =========================================================================
+                                // FEATURE 1: USER-SIDE TRUST FILTER (OWNERSHIP CHECK)
+                                // =========================================================================
+                                if (!adTag.isEmpty()) {
+                                    final String finalDecrypted = decryptedJson;
+                                    final String finalAdTag = adTag;
+                                    final String finalId = eventId;
+                                    final String finalSender = senderPubkey;
+                                    final JSONObject finalOriginalEvent = event;
+                                    final String finalUrl = url;
+
+                                    HashtagRegistryManager.checkOwnership(requireContext(), adTag, senderPubkey, new HashtagRegistryManager.OwnershipCallback() {
+                                        @Override
+                                        public void onResult(int status, String ownerPubkey) {
+                                            if (status == HashtagRegistryManager.STATUS_TAKEN) {
+                                                technicalLogs.append("[REJECTED] Trust Filter: Mismatch for #").append(finalAdTag).append("\n");
+                                                updateOpenConsole();
+                                                return;
+                                            }
+
+                                            // PROCEED: Ad is Verified (Public or Owned)
+                                            technicalLogs.append("[AD VERIFIED] Valid secure ad from ").append(finalUrl).append("\n");
+                                            updateOpenConsole();
+
+                                            handleVerifiedAdDisplay(finalId, finalDecrypted, finalOriginalEvent, message);
+                                        }
                                     });
                                 }
                             } else {
-                                // Background traffic (Kind 1 etc) - update console metadata only
                                 updateOpenConsole();
                             }
                         }
@@ -374,6 +422,35 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 }
             }
         });
+    }
+
+    /**
+     * Saves the verified ad to history and triggers the popup UI.
+     */
+    private void handleVerifiedAdDisplay(String id, String decryptedContent, JSONObject originalEvent, String rawOriginal) {
+        try {
+            // Re-package for local history with decrypted content
+            JSONObject localStoreEvent = new JSONObject(originalEvent.toString());
+            localStoreEvent.put("content", decryptedContent);
+
+            JSONArray localMsg = new JSONArray();
+            localMsg.put("EVENT");
+            localMsg.put("");
+            localMsg.put(localStoreEvent);
+
+            db.saveToUserHistory(localMsg.toString());
+
+            if (db.isListening() && isAdded() && getActivity() != null) {
+                getActivity().runOnUiThread(() -> {
+                    Intent intent = new Intent(requireContext(), AdPopupActivity.class);
+                    intent.putExtra("AD_PAYLOAD_JSON", localMsg.toString());
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to display verified ad: " + e.getMessage());
+        }
     }
 
     private void setupHashtagGrid() {
@@ -442,9 +519,6 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     @Override
     public void onDestroyView() {
-        // FIXED: Removed wsManager.setStatusListener(null);
-        // This ensures the listener stays active in the background when you 
-        // switch to the Advertiser tab on a single phone, allowing Ads to pop up.
         super.onDestroyView();
         binding = null;
     }
