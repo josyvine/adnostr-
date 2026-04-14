@@ -13,6 +13,7 @@ import java.util.Set;
  * Local Data Management Utility for AdNostr.
  * UPDATED: Added keys for Private Cloudflare R2 Storage (Worker URL & Secret Token).
  * UPDATED: Added KEY_WIPED_AD_IDS to prevent "Phantom Ad" re-notifications.
+ * UPDATED: Added KEY_OWNED_HASHTAGS to manage claimed private hashtags (Hybrid Registry).
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  */
 public class AdNostrDatabaseHelper {
@@ -45,8 +46,11 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_USER_HISTORY = "local_user_ad_history";
     private static final String KEY_ADVERTISER_HISTORY = "local_advertiser_ad_history";
 
-    // PHANTOM AD PREVENTION (NEW)
+    // PHANTOM AD PREVENTION
     private static final String KEY_WIPED_AD_IDS = "wiped_deleted_ad_ids";
+
+    // HASHTAG REGISTRY (NEW)
+    private static final String KEY_OWNED_HASHTAGS = "my_owned_hashtags_registry";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -276,6 +280,42 @@ public class AdNostrDatabaseHelper {
     public boolean isAdWiped(String eventId) {
         Set<String> wiped = prefs.getStringSet(KEY_WIPED_AD_IDS, new HashSet<>());
         return wiped.contains(eventId);
+    }
+
+    // =========================================================================
+    // OWNED HASHTAG REGISTRY (NEW)
+    // =========================================================================
+
+    /**
+     * Saves a full set of owned private hashtags for the advertiser.
+     */
+    public void saveOwnedHashtags(Set<String> hashtags) {
+        prefs.edit().putStringSet(KEY_OWNED_HASHTAGS, hashtags).apply();
+    }
+
+    /**
+     * Retrieves the set of private hashtags owned by the advertiser.
+     */
+    public Set<String> getOwnedHashtags() {
+        return prefs.getStringSet(KEY_OWNED_HASHTAGS, new HashSet<>());
+    }
+
+    /**
+     * Adds a single newly claimed hashtag to the local registry.
+     */
+    public void addOwnedHashtag(String tag) {
+        Set<String> owned = new HashSet<>(getOwnedHashtags());
+        owned.add(tag.toLowerCase().replace("#", ""));
+        saveOwnedHashtags(owned);
+    }
+
+    /**
+     * Removes a hashtag from the local registry if the deed is released.
+     */
+    public void removeOwnedHashtag(String tag) {
+        Set<String> owned = new HashSet<>(getOwnedHashtags());
+        owned.remove(tag.toLowerCase().replace("#", ""));
+        saveOwnedHashtags(owned);
     }
 
     public void clearAllData() {
