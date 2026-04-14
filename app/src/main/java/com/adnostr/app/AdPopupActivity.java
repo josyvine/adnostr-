@@ -38,6 +38,7 @@ import okhttp3.Response;
  * Professional Ad Delivery Overlay.
  * UPDATED: Fixed Image Scaling (FIT_CENTER) to prevent cropping.
  * UPDATED: Integrated Fullscreen Zoom trigger.
+ * FIXED: Added IPFS translation to prevent OkHttp crashes on legacy phantom ads.
  * Logic: Download Encrypted Bytes -> Decrypt with AES Key from Nostr JSON -> Render Image.
  */
 public class AdPopupActivity extends AppCompatActivity {
@@ -195,6 +196,7 @@ public class AdPopupActivity extends AppCompatActivity {
     /**
      * Internal Adapter for the Image ViewPager slider.
      * UPDATED: Changed ScaleType to FIT_CENTER so images are not cropped.
+     * FIXED: Intercepts IPFS schemas to prevent OkHttp crashes.
      */
     private class ImageSliderAdapter extends RecyclerView.Adapter<ImageSliderAdapter.ViewHolder> {
         private final List<String> urls;
@@ -226,7 +228,16 @@ public class AdPopupActivity extends AppCompatActivity {
          * Secure Fetch Flow: Download -> Decrypt -> Display.
          */
         private void fetchAndDecryptMedia(String url, ImageView imageView) {
-            Request request = new Request.Builder().url(url).build();
+            // =========================================================================
+            // CRITICAL FIX: PHANTOM AD / IPFS CRASH PREVENTION
+            // =========================================================================
+            String safeUrl = url;
+            if (safeUrl != null && safeUrl.startsWith("ipfs://")) {
+                safeUrl = safeUrl.replace("ipfs://", "https://cloudflare-ipfs.com/ipfs/");
+                Log.w(TAG, "Legacy IPFS ad detected. Translating to HTTP gateway to prevent crash: " + safeUrl);
+            }
+
+            Request request = new Request.Builder().url(safeUrl).build();
 
             httpClient.newCall(request).enqueue(new Callback() {
                 @Override
