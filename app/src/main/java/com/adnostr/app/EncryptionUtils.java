@@ -12,10 +12,10 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * Security Utility for AdNostr Media.
+ * Security Utility for AdNostr Media and Payloads.
  * Implements client-side AES-GCM encryption for NIP-96/Blossom uploads.
- * Ensures that media servers cannot view the ad images without the key 
- * shared in the Nostr Event JSON.
+ * ENHANCEMENT: Added Master App-Level Payload Encryption to shield JSON content
+ * from unauthorized Nostr network viewers.
  */
 public class EncryptionUtils {
 
@@ -24,6 +24,57 @@ public class EncryptionUtils {
     private static final int TAG_LENGTH_BIT = 128;
     private static final int IV_LENGTH_BYTE = 12;
     private static final int KEY_LENGTH_BIT = 256;
+
+    // =========================================================================
+    // MASTER APP-LEVEL ENCRYPTION KEY (NEW)
+    // =========================================================================
+    // A 32-byte (256-bit) static AES key represented as a 64-character Hex string.
+    // This turns AdNostr into a secure "Dark Pool" ad network.
+    private static final String MASTER_APP_KEY_HEX = "7A24432646294A404E635266556A586E3272357538782F413F442A472D4B6150";
+
+    /**
+     * ENHANCEMENT: Master App-Level JSON Encryption
+     * Encrypts the raw Nostr Ad JSON payload into an unreadable hex string
+     * using the hardcoded App Signature Key.
+     * 
+     * @param jsonPayload The raw JSON string containing title, desc, CTA, etc.
+     * @return Hexadecimal representation of the AES-GCM encrypted payload.
+     */
+    public static String encryptPayload(String jsonPayload) throws Exception {
+        try {
+            byte[] masterKey = hexToBytes(MASTER_APP_KEY_HEX);
+            byte[] rawBytes = jsonPayload.getBytes("UTF-8");
+            byte[] encryptedBytes = encrypt(rawBytes, masterKey);
+            return bytesToHex(encryptedBytes);
+        } catch (Exception e) {
+            Log.e(TAG, "Payload Encryption Failed: " + e.getMessage());
+            throw new Exception("Master Payload Encryption Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * ENHANCEMENT: Master App-Level JSON Decryption
+     * Unwraps the encrypted hex string back into readable JSON using the App Signature Key.
+     * If this fails, it means the payload is not from AdNostr.
+     * 
+     * @param encryptedHexPayload The unreadable hex string from the Nostr event content.
+     * @return The decrypted raw JSON string.
+     */
+    public static String decryptPayload(String encryptedHexPayload) throws Exception {
+        try {
+            byte[] masterKey = hexToBytes(MASTER_APP_KEY_HEX);
+            byte[] encryptedBytes = hexToBytes(encryptedHexPayload);
+            byte[] decryptedBytes = decrypt(encryptedBytes, masterKey);
+            return new String(decryptedBytes, "UTF-8");
+        } catch (Exception e) {
+            // We do not Log.e here to prevent log spamming when the app encounters standard Nostr traffic
+            throw new Exception("Master Payload Decryption Error: Invalid AdNostr Payload");
+        }
+    }
+
+    // =========================================================================
+    // ORIGINAL MEDIA ENCRYPTION LOGIC (RETAINED & UNTOUCHED)
+    // =========================================================================
 
     /**
      * Generates a random 256-bit AES key.
