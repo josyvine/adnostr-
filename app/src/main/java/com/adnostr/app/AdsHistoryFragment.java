@@ -31,6 +31,7 @@ import java.util.Set;
  * 
  * UPDATED: Replaced Blossom/NIP-96 media cleanup with Private Cloudflare R2 single-click wipes.
  * FIXED: Optimized deletion loop to ensure all associated media files are physically purged from R2.
+ * FIXED: User deletions now write the ID to the Wiped Blocklist to permanently prevent Phantom Ads.
  * RETAINED: Forensic console logging and multi-selection deletion logic.
  */
 public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnAdHistoryClickListener {
@@ -136,9 +137,23 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
         // 3. Perform Deletion based on Role
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
             for (String ad : selectedItems) {
+                // Delete from local visible history
                 db.deleteFromUserHistory(ad);
+                
+                // =========================================================================
+                // CRITICAL FIX: PHANTOM AD PREVENTION (USER WIPE)
+                // =========================================================================
+                // Extract the ID and add it to the permanent blocklist so it never returns.
+                try {
+                    JSONArray msgArray = new JSONArray(ad);
+                    JSONObject adEvent = msgArray.getJSONObject(2);
+                    String adEventId = adEvent.getString("id");
+                    db.addWipedAdId(adEventId);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to extract event ID for wipe blocklist: " + e.getMessage());
+                }
             }
-            Toast.makeText(getContext(), "Selected ads removed locally.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Selected ads removed locally and permanently blocked.", Toast.LENGTH_SHORT).show();
         } else {
             // Logic for Advertisers: Local Deletion + Nostr Wipe + Private Cloudflare Physical Wipes
             broadcastNostrDeletionAndWipeMedia(selectedItems);
@@ -164,6 +179,12 @@ public class AdsHistoryFragment extends Fragment implements AdHistoryAdapter.OnA
                 JSONArray msgArray = new JSONArray(fullPayload);
                 JSONObject adEvent = msgArray.getJSONObject(2);
                 String adEventId = adEvent.getString("id");
+
+                // =========================================================================
+                // PHANTOM AD PREVENTION (ADVERTISER WIPE)
+                // Ensure the advertiser's app also remembers the wipe
+                // =========================================================================
+                db.addWipedAdId(adEventId);
 
                 // --- PART 1: BROADCAST NOSTR KIND 5 ---
                 JSONObject deletionEvent = new JSONObject();
