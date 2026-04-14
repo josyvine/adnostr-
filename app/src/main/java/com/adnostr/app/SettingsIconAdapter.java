@@ -14,8 +14,9 @@ import java.util.List;
 /**
  * Adapter for the Command Center Icon Grid.
  * FEATURE: Renders Instagram-style rounded square icons.
- * FEATURE: Role-based filtering (Hides Cloudflare for standard Users).
+ * FEATURE: Role-based filtering (Hides Cloudflare and Registry for standard Users).
  * FEATURE: Unified click interface for Command Popups.
+ * ENHANCEMENT: Added My Hashtags Registry icon for Advertisers.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -25,6 +26,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     public static final int CMD_CLOUDFLARE = 3;
     public static final int CMD_HISTORY = 4;
     public static final int CMD_RESET = 5;
+    
+    // NEW: Registry Management Identifier
+    public static final int CMD_MY_HASHTAGS = 6;
 
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
@@ -42,23 +46,27 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     public SettingsIconAdapter(String userRole, OnSettingClickListener listener) {
         this.listener = listener;
 
-        // 1. Profile / Username Icon (Available for Users)
+        // 1. Profile / Username Icon (Available for Users only)
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
             items.add(new SettingItem(CMD_PROFILE, "Profile", android.R.drawable.ic_menu_edit));
         }
 
-        // 2. Mode Switch Icon (Everyone)
+        // 2. Mode Switch Icon (Available to Everyone)
         items.add(new SettingItem(CMD_MODE_SWITCH, "Switch Mode", android.R.drawable.ic_menu_sort_by_size));
 
         // 3. CLOUDFLARE STORAGE (Strict: Advertiser Only)
         if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
             items.add(new SettingItem(CMD_CLOUDFLARE, "Storage", android.R.drawable.ic_menu_upload_you_tube));
+            
+            // 4. MY HASHTAGS REGISTRY (Strict: Advertiser Only)
+            // Added as part of the Hybrid Hashtag Registry enhancement
+            items.add(new SettingItem(CMD_MY_HASHTAGS, "Registry", android.R.drawable.ic_menu_agenda));
         }
 
-        // 4. History Shortcut (Everyone)
+        // 5. History Shortcut (Everyone)
         items.add(new SettingItem(CMD_HISTORY, "History", android.R.drawable.ic_menu_recent_history));
 
-        // 5. System Reset (Everyone)
+        // 6. System Reset (Everyone)
         items.add(new SettingItem(CMD_RESET, "Reset App", android.R.drawable.ic_menu_delete));
     }
 
