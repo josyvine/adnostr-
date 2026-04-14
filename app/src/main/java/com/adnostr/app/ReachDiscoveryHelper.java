@@ -26,6 +26,8 @@ import java.util.concurrent.TimeUnit;
  * UPDATED: Added Relay NOTICE and CLOSED handling to debug "0 users found" issues.
  * FIXED: Extracts usernames from the content payload to identify users in the search results.
  * FIXED: Support for both JSON and Plain-Text usernames to ensure discovery visibility.
+ * ENHANCEMENT: Integrated Hybrid Hashtag Registry (Cases 1, 2, 3) to protect private reach data.
+ * ENHANCEMENT: Master App-Level Decryption implemented to read secure User Interest lists.
  */
 public class ReachDiscoveryHelper {
 
@@ -51,14 +53,41 @@ public class ReachDiscoveryHelper {
             return;
         }
 
-        // 1. POOL ALIGNMENT: Fetch the full pool from the database helper
+        // =========================================================================
+        // FEATURE 1: HYBRID HASHTAG REGISTRY (PERMISSION LOGIC)
+        // Before calculating reach, background-scan for ownership events.
+        // =========================================================================
+        String primaryTag = hashtags.get(0).toLowerCase().replace("#", "");
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+
+        HashtagRegistryManager.checkOwnership(context, primaryTag, db.getPublicKey(), new HashtagRegistryManager.OwnershipCallback() {
+            @Override
+            public void onResult(int status, String ownerPubkey) {
+                // CASE 3: OWNED BY ANOTHER
+                if (status == HashtagRegistryManager.STATUS_TAKEN) {
+                    if (callback != null) {
+                        callback.onDiscoveryError("DECLINED: Tag Owned by " + ownerPubkey);
+                    }
+                    return;
+                }
+
+                // CASE 1 & 2: PUBLIC or OWNED BY YOU - Proceed with Scan
+                executeNetworkDiscovery(context, hashtags, callback);
+            }
+        });
+    }
+
+    /**
+     * Internal logic to execute the parallel relay scan after permission is granted.
+     */
+    private static void executeNetworkDiscovery(Context context, List<String> hashtags, ReachCallback callback) {
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
         Set<String> relayPool = db.getRelayPool();
 
         new Thread(() -> {
             // Thread-safe set to store unique pubkeys found across the pool
             final Set<String> uniqueUserPubkeys = Collections.synchronizedSet(new HashSet<>());
-            
+
             // NEW: Thread-safe set to store discovered usernames
             final Set<String> discoveredUsernames = Collections.synchronizedSet(new HashSet<>());
 
@@ -114,6 +143,7 @@ public class ReachDiscoveryHelper {
      * Internal worker to connect to a single relay and scrape matched events.
      * UPDATED: Now parses NOTICE and CLOSED messages to identify signature rejection.
      * FIXED: Parses the content field for optional 'username' metadata.
+     * ENHANCEMENT: Master App-Level Decryption to unlock usernames from interest events.
      */
     private static void connectAndScanRelay(String relayUrl, String reqMessage, Set<String> results, Set<String> usernames, CountDownLatch latch) {
         try {
@@ -138,23 +168,38 @@ public class ReachDiscoveryHelper {
                             String pubkey = event.getString("pubkey");
                             results.add(pubkey); 
 
-                            // FIXED: Robust parsing for Username
-                            String contentStr = event.optString("content", "").trim();
-                            if (!contentStr.isEmpty()) {
-                                if (contentStr.startsWith("{")) {
-                                    // Handle legacy/alternate JSON format
-                                    try {
-                                        JSONObject contentJson = new JSONObject(contentStr);
+                            // =========================================================================
+                            // ENHANCEMENT: MASTER APP-LEVEL DECRYPTION
+                            // =========================================================================
+                            String contentRaw = event.optString("content", "").trim();
+                            if (!contentRaw.isEmpty()) {
+                                try {
+                                    // Attempt to unlock the payload using the hardcoded App Master Key
+                                    String decryptedContent = EncryptionUtils.decryptPayload(contentRaw);
+                                    
+                                    if (decryptedContent.startsWith("{")) {
+                                        // Handle JSON format username
+                                        JSONObject contentJson = new JSONObject(decryptedContent);
                                         String foundName = contentJson.optString("username", "");
                                         if (!foundName.isEmpty()) {
                                             usernames.add(foundName);
                                         }
-                                    } catch (Exception ignored) {}
-                                } else {
-                                    // Handle fixed Plain-Text format (resolves escaping signature rejections)
-                                    // Make sure we don't accidentally add advertiser ad titles as usernames
-                                    if (!contentStr.contains("\"title\"")) {
-                                        usernames.add(contentStr);
+                                    } else {
+                                        // Handle Plain-Text format username
+                                        if (!decryptedContent.contains("\"title\"")) {
+                                            usernames.add(decryptedContent);
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    // Fallback to legacy/unencrypted parsing (if applicable)
+                                    if (contentRaw.startsWith("{")) {
+                                        try {
+                                            JSONObject contentJson = new JSONObject(contentRaw);
+                                            String foundName = contentJson.optString("username", "");
+                                            if (!foundName.isEmpty()) usernames.add(foundName);
+                                        } catch (Exception ignored) {}
+                                    } else if (!contentRaw.contains("\"") && contentRaw.length() < 30) {
+                                        usernames.add(contentRaw);
                                     }
                                 }
                             }
