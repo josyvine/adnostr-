@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:cardBackgroundColor="#121212"
+    app:cardCornerRadius="0dp"
+    app:cardElevation="0dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="24dp">
+
+        <!-- HEADER SECTION -->
+        <ImageView
+            android:id="@+id/ivRegistryIcon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_agenda"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="#2196F3" />
+
+        <TextView
+            android:id="@+id/tvRegistryTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="Hashtag Registry"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="@+id/ivRegistryIcon"
+            app:layout_constraintStart_toEndOf="@+id/ivRegistryIcon"
+            app:layout_constraintTop_toTopOf="@+id/ivRegistryIcon" />
+
+        <TextView
+            android:id="@+id/tvRegistrySubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="These hashtags are exclusively locked to your Public Key. Competitors cannot use these tags for reach discovery or username scraping."
+            android:textColor="#888888"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/ivRegistryIcon" />
+
+        <!-- DIVIDER -->
+        <View
+            android:id="@+id/viewDivider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="20dp"
+            android:background="#333333"
+            app:layout_constraintTop_toBottomOf="@+id/tvRegistrySubtitle" />
+
+        <!-- LIST OF OWNED HASHTAGS -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvOwnedHashtags"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="20dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            app:layout_constraintBottom_toTopOf="@+id/btnCloseRegistry"
+            app:layout_constraintTop_toBottomOf="@+id/viewDivider"
+            tools:listitem="@layout/item_owned_hashtag" />
+
+        <!-- EMPTY STATE PLACEHOLDER (Hidden by default) -->
+        <LinearLayout
+            android:id="@+id/llEmptyRegistry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@+id/rvOwnedHashtags"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/rvOwnedHashtags"
+            tools:visibility="visible">
+
+            <ImageView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:alpha="0.2"
+                android:src="@android:drawable/ic_menu_info_details"
+                app:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="No Tags Locked Yet"
+                android:textColor="#444444"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ACTION BUTTONS -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCloseRegistry"
+            style="@style/Widget.MaterialComponents.Button"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginBottom="8dp"
+            android:backgroundTint="#1E1E1E"
+            android:text="CLOSE CONSOLE"
+            android:textColor="#FFFFFF"
+            app:cornerRadius="12dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:strokeColor="#333333"
+            app:strokeWidth="1dp" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>
