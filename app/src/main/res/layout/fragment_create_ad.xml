@@ -1,17 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView 
+<androidx.constraintlayout.widget.ConstraintLayout 
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212"
-    android:fillViewport="true">
+    android:background="#121212">
 
+    <!-- HEADER SECTION -->
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clHeader"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="20dp">
+        android:padding="20dp"
+        app:layout_constraintTop_toTopOf="parent">
 
         <TextView
             android:id="@+id/tvCreateHeader"
@@ -24,280 +26,399 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <!-- MEDIA SECTION: IMAGE UPLOADS -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cvMediaSection"
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/tvStepIndicator"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="0dp"
-            app:layout_constraintTop_toBottomOf="@+id/tvCreateHeader"
-            app:strokeColor="#333333"
-            app:strokeWidth="1dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="24dp">
-
-                <ImageView
-                    android:id="@+id/btnAddImage"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:src="@android:drawable/ic_menu_camera"
-                    app:tint="#4CAF50" />
-
-                <TextView
-                    android:id="@+id/tvImageCount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Upload Ad Images"
-                    android:textColor="#B0B0B0"
-                    android:textSize="14sp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- DETAILS SECTION -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilTitle"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:hint="Ad Title (e.g. 50% OFF Pizza)"
-            android:textColorHint="#666666"
-            app:boxStrokeColor="#444444"
-            app:hintTextColor="#4CAF50"
-            app:layout_constraintTop_toBottomOf="@+id/cvMediaSection">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etAdTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilDesc"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="Description (Details of your offer)"
-            android:textColorHint="#666666"
-            app:boxStrokeColor="#444444"
-            app:hintTextColor="#4CAF50"
-            app:layout_constraintTop_toBottomOf="@+id/tilTitle">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etAdDescription"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="top"
-                android:minLines="3"
-                android:textColor="#FFFFFF" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- TARGETING SECTION WITH DISCOVERY -->
-        <LinearLayout
-            android:id="@+id/llTargetingContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal"
-            app:layout_constraintTop_toBottomOf="@+id/tilDesc">
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/tilTags"
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Target Hashtags (food, kochi)"
-                android:textColorHint="#666666"
-                app:boxStrokeColor="#444444"
-                app:hintTextColor="#2196F3">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etAdTags"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="#FFFFFF" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnDiscoverReach"
-                android:layout_width="60dp"
-                android:layout_height="60dp"
-                android:layout_marginStart="8dp"
-                android:backgroundTint="#2196F3"
-                android:padding="0dp"
-                app:cornerRadius="8dp"
-                app:icon="@android:drawable/ic_menu_search"
-                app:iconGravity="textStart"
-                app:iconPadding="0dp" />
-        </LinearLayout>
-
-        <!-- REACH ANALYTICS CARD -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cvReachDiscovery"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:visibility="gone"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp"
-            app:layout_constraintTop_toBottomOf="@+id/llTargetingContainer"
-            app:strokeColor="#2196F3"
-            app:strokeWidth="1dp"
-            tools:visibility="visible">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="12dp">
-                
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Global Reach Discovery:"
-                    android:textColor="#B0B0B0"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/tvActiveWatchers"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Verifying Registry..."
-                    android:textColor="#2196F3"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- NEW: EXCLUSIVE TAG LOCK BUTTON (OPTION B) -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnLockTag"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:layout_marginTop="8dp"
-            android:text="LOCK THIS TAG EXCLUSIVELY"
-            android:textColor="#2196F3"
-            android:visibility="gone"
-            app:cornerRadius="8dp"
-            app:layout_constraintTop_toBottomOf="@+id/cvReachDiscovery"
-            app:strokeColor="#2196F3"
-            app:strokeWidth="1dp"
-            tools:visibility="visible" />
-
-        <!-- LINKS SECTION -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilWhatsapp"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:hint="WhatsApp Number (e.g. 91999999999)"
-            android:textColorHint="#666666"
-            app:boxStrokeColor="#444444"
-            app:hintTextColor="#4CAF50"
-            app:layout_constraintTop_toBottomOf="@+id/btnLockTag">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etWhatsapp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="phone"
-                android:textColor="#FFFFFF" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <!-- LOCATION SECTION: GPS CAPTURE -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cvLocationSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            app:cardBackgroundColor="#1E1E1E"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="0dp"
-            app:layout_constraintTop_toBottomOf="@+id/tilWhatsapp"
-            app:strokeColor="#333333"
-            app:strokeWidth="1dp">
-
-            <androidx.constraintlayout.widget.ConstraintLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:padding="16dp">
-
-                <TextView
-                    android:id="@+id/tvLocationLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Business GPS Location"
-                    android:textColor="#888888"
-                    android:textSize="12sp"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent" />
-
-                <TextView
-                    android:id="@+id/tvLocationStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="No Location Captured"
-                    android:textColor="#666666"
-                    android:textSize="14sp"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toBottomOf="@+id/tvLocationLabel" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnCaptureLocation"
-                    style="@style/Widget.MaterialComponents.Button.TextButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="CAPTURE GPS"
-                    android:textColor="#4CAF50"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintTop_toTopOf="parent" />
-
-                <ProgressBar
-                    android:id="@+id/pbLocationLoader"
-                    style="?android:attr/progressBarStyleSmall"
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:layout_marginEnd="8dp"
-                    android:visibility="gone"
-                    app:layout_constraintBottom_toBottomOf="@+id/btnCaptureLocation"
-                    app:layout_constraintEnd_toStartOf="@+id/btnCaptureLocation"
-                    app:layout_constraintTop_toTopOf="@+id/btnCaptureLocation" />
-
-            </androidx.constraintlayout.widget.ConstraintLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- FINAL ACTION: BROADCAST -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnBroadcastNow"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_marginTop="32dp"
-            android:layout_marginBottom="32dp"
-            android:backgroundTint="#4CAF50"
-            android:text="BROADCAST SECURE AD"
-            android:textColor="#FFFFFF"
+            android:text="Step 1 of 3"
+            android:textColor="#4CAF50"
+            android:textSize="12sp"
             android:textStyle="bold"
-            app:cornerRadius="12dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/cvLocationSection" />
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/tvCreateHeader"
+            app:layout_constraintBottom_toBottomOf="@id/tvCreateHeader" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
-</androidx.core.widget.NestedScrollView>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        app:layout_constraintBottom_toTopOf="@+id/llNavigation"
+        app:layout_constraintTop_toBottomOf="@id/clHeader">
+
+        <!-- VIEW FLIPPER FOR 3-STEP FLOW -->
+        <ViewFlipper
+            android:id="@+id/vfCreateSteps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="20dp">
+
+            <!-- STEP 1: MEDIA & TITLE -->
+            <LinearLayout
+                android:id="@+id/llStep1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cvMediaSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="#1E1E1E"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="#333333"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="24dp">
+
+                        <ImageView
+                            android:id="@+id/btnAddImage"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:src="@android:drawable/ic_menu_camera"
+                            app:tint="#4CAF50" />
+
+                        <TextView
+                            android:id="@+id/tvImageCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Upload Ad Images"
+                            android:textColor="#B0B0B0"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilTitle"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:hint="Ad Title (e.g. 50% OFF Pizza)"
+                    android:textColorHint="#666666"
+                    app:boxStrokeColor="#444444"
+                    app:hintTextColor="#4CAF50">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etAdTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="#FFFFFF" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <LinearLayout
+                    android:id="@+id/llTargetingContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/tilTags"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:hint="Target Hashtags (food, kochi)"
+                        android:textColorHint="#666666"
+                        app:boxStrokeColor="#444444"
+                        app:hintTextColor="#2196F3">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etAdTags"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="#FFFFFF" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDiscoverReach"
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:layout_marginStart="8dp"
+                        android:backgroundTint="#2196F3"
+                        android:padding="0dp"
+                        app:cornerRadius="8dp"
+                        app:icon="@android:drawable/ic_menu_search"
+                        app:iconGravity="textStart"
+                        app:iconPadding="0dp" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- STEP 2: DETAILS & SOCIAL LINKS -->
+            <LinearLayout
+                android:id="@+id/llStep2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilDesc"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Description (Details of your offer)"
+                    android:textColorHint="#666666"
+                    app:boxStrokeColor="#444444"
+                    app:hintTextColor="#4CAF50">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etAdDescription"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="top"
+                        android:minLines="5"
+                        android:textColor="#FFFFFF" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilWhatsapp"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="WhatsApp / Phone Number"
+                    android:textColorHint="#666666"
+                    app:boxStrokeColor="#444444"
+                    app:hintTextColor="#4CAF50">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etWhatsapp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="phone"
+                        android:textColor="#FFFFFF" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- NEW: INSTAGRAM INPUT -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilInstagram"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="Instagram Profile URL"
+                    android:textColorHint="#666666"
+                    app:boxStrokeColor="#444444"
+                    app:hintTextColor="#E4405F">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etInstagram"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textUri"
+                        android:textColor="#FFFFFF" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- NEW: WEBSITE INPUT -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilWebsite"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="Website URL"
+                    android:textColorHint="#666666"
+                    app:boxStrokeColor="#444444"
+                    app:hintTextColor="#FFFFFF">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etWebsite"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textUri"
+                        android:textColor="#FFFFFF" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
+
+            <!-- STEP 3: ANALYTICS & BROADCAST -->
+            <LinearLayout
+                android:id="@+id/llStep3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cvReachDiscovery"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="#1E1E1E"
+                    app:cardCornerRadius="8dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="#2196F3"
+                    app:strokeWidth="1dp"
+                    tools:visibility="visible">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:padding="12dp">
+                        
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Global Reach Discovery:"
+                            android:textColor="#B0B0B0"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/tvActiveWatchers"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Verifying Registry..."
+                            android:textColor="#2196F3"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnLockTag"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="8dp"
+                    android:text="LOCK THIS TAG EXCLUSIVELY"
+                    android:textColor="#2196F3"
+                    android:visibility="gone"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="#2196F3"
+                    app:strokeWidth="1dp"
+                    tools:visibility="visible" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cvLocationSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    app:cardBackgroundColor="#1E1E1E"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="#333333"
+                    app:strokeWidth="1dp">
+
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:id="@+id/tvLocationLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Business GPS Location"
+                            android:textColor="#888888"
+                            android:textSize="12sp"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent" />
+
+                        <TextView
+                            android:id="@+id/tvLocationStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="No Location Captured"
+                            android:textColor="#666666"
+                            android:textSize="14sp"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toBottomOf="@+id/tvLocationLabel" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCaptureLocation"
+                            style="@style/Widget.MaterialComponents.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="CAPTURE GPS"
+                            android:textColor="#4CAF50"
+                            app:layout_constraintBottom_toBottomOf="parent"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintTop_toTopOf="parent" />
+
+                        <ProgressBar
+                            android:id="@+id/pbLocationLoader"
+                            style="?android:attr/progressBarStyleSmall"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_marginEnd="8dp"
+                            android:visibility="gone"
+                            app:layout_constraintBottom_toBottomOf="@+id/btnCaptureLocation"
+                            app:layout_constraintEnd_toStartOf="@+id/btnCaptureLocation"
+                            app:layout_constraintTop_toTopOf="@+id/btnCaptureLocation" />
+
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- NEW: AD PREVIEW BUTTON -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPreviewAd"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="60dp"
+                    android:layout_marginTop="24dp"
+                    android:text="PREVIEW AD"
+                    android:textColor="#FFFFFF"
+                    app:cornerRadius="12dp"
+                    app:icon="@android:drawable/ic_menu_view"
+                    app:strokeColor="#FFFFFF" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBroadcastNow"
+                    android:layout_width="match_parent"
+                    android:layout_height="60dp"
+                    android:layout_marginTop="16dp"
+                    android:backgroundTint="#4CAF50"
+                    android:text="BROADCAST SECURE AD"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    app:cornerRadius="12dp" />
+
+            </LinearLayout>
+
+        </ViewFlipper>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- NAVIGATION BAR -->
+    <LinearLayout
+        android:id="@+id/llNavigation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="20dp"
+        android:background="#1E1E1E"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBack"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Back"
+            android:textColor="#888888"
+            android:visibility="invisible" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNext"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Next"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
