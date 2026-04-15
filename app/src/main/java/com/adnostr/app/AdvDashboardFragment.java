@@ -1,11 +1,17 @@
 package com.adnostr.app;
 
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
@@ -14,10 +20,18 @@ import androidx.viewpager2.widget.ViewPager2;
 
 import com.adnostr.app.databinding.FragmentAdvDashboardBinding;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+
+import coil.Coil;
+import coil.request.ImageRequest;
+
 /**
  * Dashboard for AdNostr Advertisers.
  * Displays business metrics, identity status, and provide the entry point 
  * for creating and broadcasting new decentralized ads.
+ * UPDATED: Integrated Brand Logo management via flAvatarContainer.
+ * UPDATED: Implements R2 Wipe-on-Replace logic for storage optimization.
  * FIXED: Navigation logic updated from NavController to ViewPager2 Index switching.
  */
 public class AdvDashboardFragment extends Fragment {
@@ -25,6 +39,24 @@ public class AdvDashboardFragment extends Fragment {
     private static final String TAG = "AdNostr_AdvDash";
     private FragmentAdvDashboardBinding binding;
     private AdNostrDatabaseHelper db;
+
+    // Launcher for the Brand Logo Picker
+    private ActivityResultLauncher<Intent> logoPickerLauncher;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        // Initialize the logo picker result handler
+        logoPickerLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                        handleLogoSelection(result.getData().getData());
+                    }
+                }
+        );
+    }
 
     @Nullable
     @Override
@@ -40,13 +72,16 @@ public class AdvDashboardFragment extends Fragment {
 
         db = AdNostrDatabaseHelper.getInstance(requireContext());
 
-        // 1. Setup Business Identity Header
+        // 1. Setup Business Identity Header (including Logo display)
         setupIdentityHeader();
 
         // 2. Refresh Metrics (Active Ads, Reach, etc.)
         refreshBusinessMetrics();
 
-        // 3. Setup Primary Floating Action Button (FAB)
+        // 3. Setup Brand Logo Click Logic
+        binding.flAvatarContainer.setOnClickListener(v -> openLogoPicker());
+
+        // 4. Setup Primary Floating Action Button (FAB)
         // FIXED: Replaced NavController logic with ViewPager2 page switching.
         // For Advertisers, 'Create Ad' is at Position 2.
         binding.fabCreateAd.setOnClickListener(v -> {
@@ -59,7 +94,7 @@ public class AdvDashboardFragment extends Fragment {
             }
         });
 
-        // 4. Setup shortcut to Relay Management
+        // 5. Setup shortcut to Relay Management
         // FIXED: Replaced NavController logic with ViewPager2 page switching.
         // For Advertisers, 'Relay Marketplace' is at Position 3.
         binding.btnManageRelays.setOnClickListener(v -> {
@@ -74,6 +109,64 @@ public class AdvDashboardFragment extends Fragment {
     }
 
     /**
+     * Triggers the system file manager to pick a business logo.
+     */
+    private void openLogoPicker() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("image/*");
+        logoPickerLauncher.launch(intent);
+    }
+
+    /**
+     * Logic: Delete Old Logo from R2 -> Upload New Logo -> Save Credentials.
+     */
+    private void handleLogoSelection(Uri uri) {
+        if (uri == null) return;
+
+        try {
+            InputStream inputStream = requireContext().getContentResolver().openInputStream(uri);
+            ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = inputStream.read(buffer)) != -1) {
+                byteBuffer.write(buffer, 0, len);
+            }
+            byte[] logoBytes = byteBuffer.toByteArray();
+
+            CloudflareHelper cloudHelper = new CloudflareHelper();
+            
+            // Step 1: Physical Wipe of the old logo to save storage space
+            String oldLogoId = db.getAdvertiserLogoId();
+            if (!oldLogoId.isEmpty()) {
+                Log.i(TAG, "Storage Optimization: Wiping old logo " + oldLogoId);
+                cloudHelper.deleteMedia(requireContext(), oldLogoId, null);
+            }
+
+            // Step 2: Upload new brand logo
+            Toast.makeText(getContext(), "Updating Brand Logo...", Toast.LENGTH_SHORT).show();
+            cloudHelper.uploadMedia(requireContext(), logoBytes, "brand_logo.png", new CloudflareHelper.CloudflareCallback() {
+                @Override public void onStatusUpdate(String log) { Log.d(TAG, log); }
+
+                @Override
+                public void onSuccess(String uploadedUrl, String fileId) {
+                    db.saveAdvertiserLogoUrl(uploadedUrl);
+                    db.saveAdvertiserLogoId(fileId);
+                    setupIdentityHeader(); // Refresh UI
+                    Toast.makeText(getContext(), "Logo Updated Successfully", Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    Toast.makeText(getContext(), "Logo Upload Failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
+
+        } catch (Exception e) {
+            Log.e(TAG, "Logo handling failed: " + e.getMessage());
+        }
+    }
+
+    /**
      * Displays the Advertiser's public identity.
      * Uses the hex public key generated during the Splash phase.
      */
@@ -84,6 +177,19 @@ public class AdvDashboardFragment extends Fragment {
             // Truncate for display (e.g., npub1xyz...89q)
             String displayId = "ID: " + pubKey.substring(0, 8) + "..." + pubKey.substring(pubKey.length() - 4);
             binding.tvAdvertiserId.setText(displayId);
+        }
+
+        // Load the Brand Logo if it exists
+        String logoUrl = db.getAdvertiserLogoUrl();
+        if (!logoUrl.isEmpty()) {
+            ImageRequest request = new ImageRequest.Builder(requireContext())
+                    .data(logoUrl)
+                    .crossfade(true)
+                    .target(binding.ivBusinessAvatar)
+                    .build();
+            Coil.imageLoader(requireContext()).enqueue(request);
+        } else {
+            binding.ivBusinessAvatar.setImageResource(android.R.drawable.ic_menu_gallery);
         }
 
         // Mock status check: PRO vs FREE
