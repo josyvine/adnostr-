@@ -46,6 +46,13 @@ import java.util.Set;
  * FIXED: Detailed Forensic Logs are now piped to the UI console in real-time.
  * ENHANCEMENT: Master App-Level Encryption completely shields ad payloads from external clients.
  * ENHANCEMENT: Hybrid Hashtag Registry integrated to lock/protect private discovery tags.
+ * 
+ * OVERHAUL UPDATES:
+ * - Implements 3-Step UI State Machine (ViewFlipper).
+ * - Integrated DNS/URL Validation Engine for Website/Instagram.
+ * - Implements Native Multi-Image Picker (ACTION_GET_CONTENT).
+ * - Intelligent Description Chunking for synchronized sliders.
+ * - Ad Preview trigger for testing without broadcast.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -55,6 +62,7 @@ public class CreateAdFragment extends Fragment {
     private FusedLocationProviderClient fusedLocationClient;
 
     private String capturedMapsUrl = "";
+    private int currentStep = 1;
 
     // Core state for new Media system
     private final List<String> uploadedMediaUrls = new ArrayList<>();
@@ -103,24 +111,120 @@ public class CreateAdFragment extends Fragment {
         db = AdNostrDatabaseHelper.getInstance(requireContext());
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireContext());
 
-        // 1. Open Real File Manager for Media
+        // 1. Navigation Flow
+        binding.btnNext.setOnClickListener(v -> handleNextStep());
+        binding.btnBack.setOnClickListener(v -> handleBackStep());
+
+        // 2. Open Real File Manager for Media
         binding.btnAddImage.setOnClickListener(v -> openFilePicker());
 
-        // 2. Location Logic (GPS capture)
+        // 3. Location Logic (GPS capture)
         binding.btnCaptureLocation.setOnClickListener(v -> captureBusinessLocation());
 
-        // 3. Real Hashtag Reach Discovery (NOW ROUTED THROUGH HYBRID REGISTRY)
+        // 4. Real Hashtag Reach Discovery (NOW ROUTED THROUGH HYBRID REGISTRY)
         binding.btnDiscoverReach.setOnClickListener(v -> discoverHashtagReach());
 
-        // 4. Broadcast Action
-        binding.btnBroadcastNow.setOnClickListener(v -> prepareAndBroadcastAd());
+        // 5. Ad Preview Action
+        binding.btnPreviewAd.setOnClickListener(v -> prepareAndBroadcastAd(true));
+
+        // 6. Broadcast Action
+        binding.btnBroadcastNow.setOnClickListener(v -> prepareAndBroadcastAd(false));
+
+        // Initialize Step 1 UI
+        updateStepUI();
     }
 
     /**
-     * Triggers the Android system file manager.
+     * Toggles the ViewFlipper and validation logic for step transitions.
+     */
+    private void handleNextStep() {
+        if (currentStep == 1) {
+            // Validate Step 1: Must have images and a title
+            if (binding.etAdTitle.getText().toString().trim().isEmpty() || uploadedMediaUrls.isEmpty()) {
+                Toast.makeText(getContext(), "Please add images and a title to proceed.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            currentStep = 2;
+        } else if (currentStep == 2) {
+            // Validate Step 2: Use DNS/URL Validation logic
+            validateLinksAndProceed();
+            return; // Exit as validation is async
+        } else {
+            return;
+        }
+        updateStepUI();
+    }
+
+    private void handleBackStep() {
+        if (currentStep > 1) {
+            currentStep--;
+            updateStepUI();
+        }
+    }
+
+    private void updateStepUI() {
+        binding.vfCreateSteps.setDisplayedChild(currentStep - 1);
+        binding.tvStepIndicator.setText("Step " + currentStep + " of 3");
+        binding.btnBack.setVisibility(currentStep == 1 ? View.INVISIBLE : View.VISIBLE);
+        binding.btnNext.setVisibility(currentStep == 3 ? View.INVISIBLE : View.VISIBLE);
+    }
+
+    /**
+     * Logic to validate Website and Instagram links before moving to final step.
+     */
+    private void validateLinksAndProceed() {
+        String webUrl = binding.etWebsite.getText().toString().trim();
+        String instaUrl = binding.etInstagram.getText().toString().trim();
+
+        if (webUrl.isEmpty() && instaUrl.isEmpty()) {
+            currentStep = 3;
+            updateStepUI();
+            return;
+        }
+
+        binding.btnNext.setEnabled(false);
+        binding.btnNext.setText("Validating...");
+
+        // Perform Thorough Validation on Website first
+        if (!webUrl.isEmpty()) {
+            UrlValidationUtils.validateUrlThoroughly(webUrl, (isValid, formattedUrl, errorMessage) -> {
+                if (!isValid) {
+                    Toast.makeText(getContext(), "Website Error: " + errorMessage, Toast.LENGTH_SHORT).show();
+                    resetNextButton();
+                } else {
+                    binding.etWebsite.setText(formattedUrl);
+                    currentStep = 3;
+                    updateStepUI();
+                    resetNextButton();
+                }
+            });
+        } else if (!instaUrl.isEmpty()) {
+            // Simplified check for Instagram Profile URL
+            UrlValidationUtils.validateUrlThoroughly(instaUrl, (isValid, formattedUrl, errorMessage) -> {
+                if (!isValid) {
+                    Toast.makeText(getContext(), "Instagram Error: " + errorMessage, Toast.LENGTH_SHORT).show();
+                    resetNextButton();
+                } else {
+                    binding.etInstagram.setText(formattedUrl);
+                    currentStep = 3;
+                    updateStepUI();
+                    resetNextButton();
+                }
+            });
+        }
+    }
+
+    private void resetNextButton() {
+        binding.btnNext.setEnabled(true);
+        binding.btnNext.setText("Next");
+    }
+
+    /**
+     * Triggers the Android native system file manager for multi-select.
+     * UPDATED: Using ACTION_GET_CONTENT to force native file picker.
      */
     private void openFilePicker() {
-        Intent intent = new Intent(Intent.ACTION_PICK);
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("image/*");
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         imagePickerLauncher.launch(intent);
@@ -170,8 +274,8 @@ public class CreateAdFragment extends Fragment {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
                             binding.tvImageCount.setText("Direct Uploading...");
-                            
-                            // PIPE LOG TO CONSOLE (Preserving detailed technical output)
+
+                            // PIPE LOG TO CONSOLE
                             sessionLogs.append(log);
                             RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
                             if (dialog != null) {
@@ -187,20 +291,20 @@ public class CreateAdFragment extends Fragment {
                     if (isAdded() && getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
                             uploadedMediaUrls.add(uploadedUrl);
-                            
+
                             // Store the Cloudflare File ID for single-click deletion later
                             if (fileId != null && !fileId.isEmpty()) {
                                 deletionUrlsForSession.add(fileId);
                             }
-                            
+
                             binding.tvImageCount.setText(uploadedMediaUrls.size() + " Encrypted Items Ready");
-                            
+
                             sessionLogs.append("\n[FINAL SUCCESS] Private Cloud Hosted at: ").append(uploadedUrl);
                             RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
                             if (dialog != null) {
                                 dialog.updateTechnicalLogs("Upload Success", sessionLogs.toString());
                             }
-                            
+
                             Toast.makeText(getContext(), "Private Storage Upload Complete", Toast.LENGTH_SHORT).show();
                         });
                     }
@@ -218,7 +322,7 @@ public class CreateAdFragment extends Fragment {
                             String rawStackTrace = sw.toString();
 
                             sessionLogs.append("\n\n!!! CRITICAL FAILURE !!!\n").append(rawStackTrace);
-                            
+
                             RelayReportDialog dialog = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("MEDIA_CONSOLE");
                             if (dialog != null) {
                                 dialog.updateTechnicalLogs("UPLOAD FAILED", sessionLogs.toString());
@@ -313,39 +417,39 @@ public class CreateAdFragment extends Fragment {
             @Override
             public void onResult(int status, String ownerPubkey) {
                 if (!isAdded() || getActivity() == null) return;
-                
+
                 getActivity().runOnUiThread(() -> {
                     RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("DISCOVERY_CONSOLE");
-                    
+
                     if (status == HashtagRegistryManager.STATUS_TAKEN) {
                         // CASE 3 (OWNED BY ANOTHER) - Block Reach Calculation
                         discoveryLogs.append("\n!!! DECLINED !!!\nTag is securely locked by: ").append(ownerPubkey).append("\nDiscovery Blocked to prevent spam.\n");
                         binding.tvActiveWatchers.setText("DECLINED: Tag Owned by Another Advertiser");
                         binding.tvActiveWatchers.setTextColor(getResources().getColor(android.R.color.holo_red_light));
-                        
+
                         if (existing != null) existing.updateTechnicalLogs("ACCESS DENIED", discoveryLogs.toString());
-                        
+
                     } else if (status == HashtagRegistryManager.STATUS_MINE) {
                         // CASE 2 (OWNED BY YOU) - Allow Reach Calculation
                         discoveryLogs.append("\n[VERIFIED] You own this private tag. Proceeding with scan...\n");
                         binding.tvActiveWatchers.setText("Scanning Network...");
                         binding.tvActiveWatchers.setTextColor(getResources().getColor(R.color.hfs_active_blue));
-                        
+
                         if (existing != null) existing.updateTechnicalLogs("OWNER VERIFIED", discoveryLogs.toString());
                         executeReachScan(tagsToSearch, discoveryLogs);
-                        
+
                     } else {
                         // CASE 1 (NO OWNER / PUBLIC) - Allow Reach + Show Option B
                         discoveryLogs.append("\n[PUBLIC] Tag is unclaimed. Proceeding with scan...\n");
                         binding.tvActiveWatchers.setText("Scanning Network...");
                         binding.tvActiveWatchers.setTextColor(getResources().getColor(R.color.hfs_active_blue));
-                        
+
                         // Option B: Show Lock Button
                         if (binding.btnLockTag != null) {
                             binding.btnLockTag.setVisibility(View.VISIBLE);
                             binding.btnLockTag.setOnClickListener(v -> lockHashtagDeed(primaryTag));
                         }
-                        
+
                         if (existing != null) existing.updateTechnicalLogs("PUBLIC TAG", discoveryLogs.toString());
                         executeReachScan(tagsToSearch, discoveryLogs);
                     }
@@ -406,7 +510,7 @@ public class CreateAdFragment extends Fragment {
             binding.btnLockTag.setEnabled(false);
             binding.btnLockTag.setText("LOCKING ON BLOCKCHAIN...");
         }
-        
+
         HashtagRegistryManager.broadcastDeed(requireContext(), tag, db.getPrivateKey(), db.getPublicKey(), success -> {
             if (!isAdded() || getActivity() == null) return;
             getActivity().runOnUiThread(() -> {
@@ -442,11 +546,29 @@ public class CreateAdFragment extends Fragment {
         });
     }
 
-    private void prepareAndBroadcastAd() {
+    /**
+     * Intelligent Description Chunking Logic.
+     * Splits description by period or line break into an array of strings.
+     */
+    private List<String> chunkDescription(String desc) {
+        List<String> chunks = new ArrayList<>();
+        String[] splitLines = desc.split("\\n|\\.(?!\\d)");
+        for (String line : splitLines) {
+            if (!line.trim().isEmpty()) {
+                chunks.add(line.trim());
+            }
+        }
+        if (chunks.isEmpty()) chunks.add(desc); // Fallback
+        return chunks;
+    }
+
+    private void prepareAndBroadcastAd(boolean isPreviewOnly) {
         String title = binding.etAdTitle.getText().toString().trim();
         String desc = binding.etAdDescription.getText().toString().trim();
         String tagsInput = binding.etAdTags.getText().toString().trim();
         String whatsapp = binding.etWhatsapp.getText().toString().trim();
+        String instagram = binding.etInstagram.getText().toString().trim();
+        String website = binding.etWebsite.getText().toString().trim();
 
         if (title.isEmpty() || desc.isEmpty() || tagsInput.isEmpty()) {
             Toast.makeText(getContext(), "Please provide all ad details", Toast.LENGTH_SHORT).show();
@@ -454,32 +576,43 @@ public class CreateAdFragment extends Fragment {
         }
 
         try {
-            // Construct JSON image array for swiping (using HTTPS Media URLs from Cloudflare)
-            StringBuilder imageJsonBuilder = new StringBuilder("[");
-            for (int i = 0; i < uploadedMediaUrls.size(); i++) {
-                imageJsonBuilder.append("\"").append(uploadedMediaUrls.get(i)).append("\"");
-                if (i < uploadedMediaUrls.size() - 1) imageJsonBuilder.append(",");
-            }
-            imageJsonBuilder.append("]");
-            String imagePayload = imageJsonBuilder.toString();
+            // Build Image JSON Array
+            JSONArray imageJsonArr = new JSONArray();
+            for (String url : uploadedMediaUrls) imageJsonArr.put(url);
 
-            String cleanPhone = whatsapp.replaceAll("[^\\d]", "");
-            String ctaUrl = whatsapp.isEmpty() ? "" : "https://wa.me/" + cleanPhone;
+            // Build Chunked Description JSON Array
+            JSONArray descJsonArr = new JSONArray();
+            for (String chunk : chunkDescription(desc)) descJsonArr.put(chunk);
 
-            // Construct Original Ad Payload JSON
-            String contentStr = "{" +
-                    "\"title\":\"" + title.replace("\"", "\\\"") + "\"," +
-                    "\"desc\":\"" + desc.replace("\"", "\\\"") + "\"," +
-                    "\"image\":" + imagePayload + "," +
-                    "\"key\":\"" + currentAdAesKeyHex + "\"," +
-                    "\"cta\":\"" + ctaUrl + "\"," +
-                    "\"maps\":\"" + capturedMapsUrl + "\"," +
-                    "\"expiry\":\"2026-05-01\"" +
-                    "}";
+            // Construct Ad Payload JSON (Including logo and new social fields)
+            JSONObject contentObj = new JSONObject();
+            contentObj.put("title", title);
+            contentObj.put("desc", descJsonArr); // Intelligent Array
+            contentObj.put("image", imageJsonArr);
+            contentObj.put("logo", db.getAdvertiserLogoUrl()); // Integrated Profile Logo
+            contentObj.put("key", currentAdAesKeyHex);
+            contentObj.put("phone", whatsapp);
+            contentObj.put("cta", whatsapp.isEmpty() ? "" : "https://wa.me/" + whatsapp.replaceAll("[^\\d]", ""));
+            contentObj.put("instagram", instagram);
+            contentObj.put("website", website);
+            contentObj.put("maps", capturedMapsUrl);
+            contentObj.put("expiry", "2026-05-01");
+
+            String contentStr = contentObj.toString();
 
             // =========================================================================
-            // FEATURE 2: MASTER APP-LEVEL JSON ENCRYPTION
-            // Encrypt the entire content string to shield it from external network clients
+            // AD PREVIEW FEATURE: Launch Popup with IS_PREVIEW flag
+            // =========================================================================
+            if (isPreviewOnly) {
+                Intent intent = new Intent(requireContext(), AdPopupActivity.class);
+                intent.putExtra("AD_PAYLOAD_JSON", contentStr);
+                intent.putExtra("IS_PREVIEW", true);
+                startActivity(intent);
+                return;
+            }
+
+            // =========================================================================
+            // MASTER APP-LEVEL JSON ENCRYPTION (FOR REAL BROADCAST)
             // =========================================================================
             String finalSecureContent;
             try {
@@ -495,8 +628,6 @@ public class CreateAdFragment extends Fragment {
             event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            
-            // Inject the unreadable encrypted hex string instead of plain JSON
             event.put("content", finalSecureContent);
 
             JSONArray tags = new JSONArray();
@@ -520,25 +651,21 @@ public class CreateAdFragment extends Fragment {
             if (signedEvent != null) {
                 String eventId = signedEvent.getString("id");
 
-                // Save Deletion Data (Cloudflare File IDs) for this Ad ID before broadcasting
                 if (!deletionUrlsForSession.isEmpty()) {
                     JSONArray delArray = new JSONArray(deletionUrlsForSession);
                     db.saveDeletionData(eventId, delArray.toString());
                 }
 
-                // Since we encrypted it for the network, we must store the RAW version 
-                // in the Advertiser's local database so they can read their own history.
+                // Local History Storage
                 JSONObject localEvent = new JSONObject(signedEvent.toString());
-                localEvent.put("content", contentStr); // Revert to plain text for local view
-
+                localEvent.put("content", contentStr); 
                 JSONArray fullMsg = new JSONArray();
                 fullMsg.put("EVENT");
                 fullMsg.put(""); 
                 fullMsg.put(localEvent);
-
                 db.saveToAdvertiserHistory(fullMsg.toString());
-                
-                // Broadcast the securely encrypted version
+
+                // Broadcast
                 broadcastToNetwork(signedEvent);
             } else {
                 Toast.makeText(getContext(), "Signing Failed", Toast.LENGTH_SHORT).show();
