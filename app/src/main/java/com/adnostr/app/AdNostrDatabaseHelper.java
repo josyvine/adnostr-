@@ -14,6 +14,7 @@ import java.util.Set;
  * UPDATED: Added keys for Private Cloudflare R2 Storage (Worker URL & Secret Token).
  * UPDATED: Added KEY_WIPED_AD_IDS to prevent "Phantom Ad" re-notifications.
  * UPDATED: Added KEY_OWNED_HASHTAGS to manage claimed private hashtags (Hybrid Registry).
+ * UPDATED: Added Advertiser Logo URL and ID keys for Branding/UI overhaul.
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  */
 public class AdNostrDatabaseHelper {
@@ -24,6 +25,10 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_PRIVATE_KEY = "nostr_private_key_hex";
     private static final String KEY_PUBLIC_KEY = "nostr_public_key_hex";
     private static final String KEY_USERNAME = "user_display_name";
+    
+    // BRANDING
+    private static final String KEY_ADVERTISER_LOGO_URL = "advertiser_logo_url";
+    private static final String KEY_ADVERTISER_LOGO_ID = "advertiser_logo_id";
 
     // App State & Role
     private static final String KEY_USER_ROLE = "user_app_role"; 
@@ -127,6 +132,26 @@ public class AdNostrDatabaseHelper {
 
     public String getUsername() {
         return prefs.getString(KEY_USERNAME, "");
+    }
+
+    // =========================================================================
+    // BRANDING STORAGE (NEW)
+    // =========================================================================
+
+    public void saveAdvertiserLogoUrl(String url) {
+        prefs.edit().putString(KEY_ADVERTISER_LOGO_URL, url).apply();
+    }
+
+    public String getAdvertiserLogoUrl() {
+        return prefs.getString(KEY_ADVERTISER_LOGO_URL, "");
+    }
+
+    public void saveAdvertiserLogoId(String id) {
+        prefs.edit().putString(KEY_ADVERTISER_LOGO_ID, id).apply();
+    }
+
+    public String getAdvertiserLogoId() {
+        return prefs.getString(KEY_ADVERTISER_LOGO_ID, "");
     }
 
     // =========================================================================
