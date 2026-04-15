@@ -21,8 +21,8 @@
         android:id="@+id/cvAdContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
         app:cardBackgroundColor="#121212"
         app:cardCornerRadius="24dp"
         app:cardElevation="24dp"
@@ -38,10 +38,51 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
+            <!-- NEW: TOP BRAND BAR (Logo + Verified Status) -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cvLogoWrapper"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    app:cardBackgroundColor="#333333"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="0dp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+                    
+                    <ImageView
+                        android:id="@+id/ivAdLogo"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        android:src="@android:drawable/ic_menu_gallery" />
+                </com.google.android.material.card.MaterialCardView>
+
+                <TextView
+                    android:id="@+id/tvVerifiedBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="✔ Verified"
+                    android:textColor="#4CAF50"
+                    android:textSize="12sp"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toEndOf="@id/cvLogoWrapper"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
             <!-- IMAGE SLIDER AREA -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
-                android:layout_height="320dp">
+                android:layout_height="240dp">
 
                 <!-- FIXED: ViewPager2 with black background to prevent white gaps -->
                 <androidx.viewpager2.widget.ViewPager2
@@ -64,15 +105,15 @@
                 <!-- Close Button (Top Right) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCloseAd"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:layout_margin="16dp"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_margin="12dp"
                     android:insetLeft="0dp"
                     android:insetTop="0dp"
                     android:insetRight="0dp"
                     android:insetBottom="0dp"
                     app:backgroundTint="#80000000"
-                    app:cornerRadius="18dp"
+                    app:cornerRadius="16dp"
                     app:icon="@android:drawable/ic_menu_close_clear_cancel"
                     app:iconGravity="textStart"
                     app:iconPadding="0dp"
@@ -80,18 +121,18 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent" />
 
-                <!-- NEW: Zoom Button (Top Left) -->
+                <!-- Zoom Button (Top Left) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnZoomImage"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:layout_margin="16dp"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_margin="12dp"
                     android:insetLeft="0dp"
                     android:insetTop="0dp"
                     android:insetRight="0dp"
                     android:insetBottom="0dp"
                     app:backgroundTint="#80000000"
-                    app:cornerRadius="18dp"
+                    app:cornerRadius="16dp"
                     app:icon="@android:drawable/ic_menu_zoom"
                     app:iconGravity="textStart"
                     app:iconPadding="0dp"
@@ -99,12 +140,12 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent" />
 
-                <!-- MODERN SWIPE INDICATOR (E-commerce Style Overlay) -->
+                <!-- MODERN SWIPE INDICATOR -->
                 <com.google.android.material.tabs.TabLayout
                     android:id="@+id/tabDots"
                     android:layout_width="wrap_content"
                     android:layout_height="24dp"
-                    android:layout_marginBottom="12dp"
+                    android:layout_marginBottom="8dp"
                     android:background="@android:color/transparent"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
@@ -112,116 +153,92 @@
                     app:tabBackground="@drawable/modern_dot_selector"
                     app:tabGravity="center"
                     app:tabIndicatorHeight="0dp"
-                    app:tabMaxWidth="10dp"
+                    app:tabMaxWidth="8dp"
                     app:tabRippleColor="@null" />
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 
-            <!-- CONTENT AREA -->
-            <androidx.core.widget.NestedScrollView
+            <!-- NEW: INTELLIGENT DESCRIPTION SLIDER (Synchronized with images) -->
+            <androidx.viewpager2.widget.ViewPager2
+                android:id="@+id/vpAdText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:maxHeight="320dp"
-                android:overScrollMode="never">
+                android:layout_marginTop="8dp"
+                android:padding="20dp" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="24dp">
+            <!-- NEW: MODERN ICON ACTION BAR -->
+            <LinearLayout
+                android:id="@+id/llIconActions"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:divider="?android:attr/dividerVertical"
+                android:showDividers="none">
 
-                    <TextView
-                        android:id="@+id/tvPopupTitle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-black"
-                        android:textColor="#FFFFFF"
-                        android:textSize="24sp"
-                        tools:text="Ad Title Here" />
+                <ImageView
+                    android:id="@+id/ivActionWhatsapp"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:src="@android:drawable/stat_sys_speakerphone"
+                    android:visibility="gone"
+                    app:tint="#25D366"
+                    tools:visibility="visible" />
 
-                    <TextView
-                        android:id="@+id/tvPopupDesc"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:lineSpacingExtra="6dp"
-                        android:textColor="#BDBDBD"
-                        android:textSize="16sp"
-                        tools:text="Detailed description of the ad broadcast goes here." />
+                <ImageView
+                    android:id="@+id/ivActionCall"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:src="@android:drawable/ic_menu_call"
+                    android:visibility="gone"
+                    app:tint="#FFFFFF"
+                    tools:visibility="visible" />
 
-                    <!-- ACTION BUTTONS -->
-                    <com.google.android.flexbox.FlexboxLayout
-                        android:id="@+id/flexActionButtons"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="28dp"
-                        app:flexWrap="wrap"
-                        app:justifyContent="flex_start">
+                <ImageView
+                    android:id="@+id/ivActionInstagram"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:src="@android:drawable/ic_menu_camera"
+                    android:visibility="gone"
+                    app:tint="#E4405F"
+                    tools:visibility="visible" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnActionWhatsapp"
-                            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="8dp"
-                            android:layout_marginBottom="10dp"
-                            android:text="WhatsApp"
-                            android:textAllCaps="false"
-                            android:textColor="#FFFFFF"
-                            android:visibility="gone"
-                            app:backgroundTint="#25D366"
-                            app:cornerRadius="14dp"
-                            app:icon="@android:drawable/stat_sys_speakerphone"
-                            tools:visibility="visible" />
+                <ImageView
+                    android:id="@+id/ivActionWebsite"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:src="@android:drawable/ic_menu_share"
+                    android:visibility="gone"
+                    app:tint="#FFFFFF"
+                    tools:visibility="visible" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnActionMap"
-                            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="8dp"
-                            android:layout_marginBottom="10dp"
-                            android:text="Directions"
-                            android:textAllCaps="false"
-                            android:visibility="gone"
-                            app:backgroundTint="#4285F4"
-                            app:cornerRadius="14dp"
-                            app:icon="@android:drawable/ic_dialog_map"
-                            tools:visibility="visible" />
+                <ImageView
+                    android:id="@+id/ivActionMap"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:src="@android:drawable/ic_dialog_map"
+                    android:visibility="gone"
+                    app:tint="#4285F4"
+                    tools:visibility="visible" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnActionWebsite"
-                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="8dp"
-                            android:layout_marginBottom="10dp"
-                            android:text="Website"
-                            android:textAllCaps="false"
-                            android:textColor="#FFFFFF"
-                            android:visibility="gone"
-                            app:cornerRadius="14dp"
-                            app:strokeColor="#FFFFFF"
-                            tools:visibility="visible" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnActionCall"
-                            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginBottom="10dp"
-                            android:text="Call Now"
-                            android:textAllCaps="false"
-                            android:visibility="gone"
-                            app:backgroundTint="#F57C00"
-                            app:cornerRadius="14dp"
-                            app:icon="@android:drawable/ic_menu_call"
-                            tools:visibility="visible" />
-
-                    </com.google.android.flexbox.FlexboxLayout>
-
-                </LinearLayout>
-            </androidx.core.widget.NestedScrollView>
+            </LinearLayout>
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
