@@ -42,6 +42,8 @@ import okhttp3.Response;
  * UPDATED: Implements Synchronized Text Slider matching the Image Slider.
  * UPDATED: Mapped Modern Icon Actions for WhatsApp, Instagram, and Phone.
  * UPDATED: Supports IS_PREVIEW flag for advertiser testing.
+ * FIXED: Preview mode crash by bypassing 'content' field requirement for direct payloads.
+ * FIXED: ViewPager2 crash by forcing MATCH_PARENT on text slider pages.
  * Logic: Download Encrypted Bytes -> Decrypt -> Render Image + Sync Text.
  */
 public class AdPopupActivity extends AppCompatActivity {
@@ -121,17 +123,25 @@ public class AdPopupActivity extends AppCompatActivity {
 
     private void parseAndPopulateAd(String jsonStr) throws Exception {
         JSONObject event;
+        // Check if it's a Nostr Relay Message [ "EVENT", "subId", {event} ]
         if (jsonStr.trim().startsWith("[")) {
             JSONArray relayMsg = new JSONArray(jsonStr);
             event = relayMsg.getJSONObject(2);
         } else {
+            // It's a direct JSON object (usually from Preview mode)
             event = new JSONObject(jsonStr);
         }
 
-        String contentRaw = event.optString("content", "");
-        if (contentRaw.isEmpty()) throw new Exception("Ad content field is empty.");
-
-        JSONObject content = new JSONObject(contentRaw);
+        JSONObject content;
+        // FIXED: If in Preview mode, the object itself IS the content. 
+        // If not, we must extract the 'content' string field from the Nostr Event.
+        if (isPreview) {
+            content = event;
+        } else {
+            String contentRaw = event.optString("content", "");
+            if (contentRaw.isEmpty()) throw new Exception("Ad content field is empty.");
+            content = new JSONObject(contentRaw);
+        }
 
         // 1. Extract and Load Advertiser Logo
         String logoUrl = content.optString("logo", "");
@@ -252,6 +262,12 @@ public class AdPopupActivity extends AppCompatActivity {
         @Override
         public TextHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View v = LayoutInflater.from(parent.getContext()).inflate(android.R.layout.simple_list_item_2, parent, false);
+            
+            // FIXED: ViewPager2 child views MUST have MATCH_PARENT layout params to prevent IllegalStateException
+            v.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            
             return new TextHolder(v);
         }
 
