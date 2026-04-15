@@ -27,15 +27,56 @@
             android:layout_height="wrap_content"
             android:padding="20dp">
 
-            <ImageView
-                android:id="@+id/ivBusinessAvatar"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:src="@android:drawable/ic_menu_gallery"
+            <!-- BRAND LOGO CONTAINER (CLICKABLE) -->
+            <FrameLayout
+                android:id="@+id/flAvatarContainer"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
-                app:tint="#FFFFFF" />
+                app:layout_constraintTop_toTopOf="parent">
+
+                <!-- Circular boundary for the Logo -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="50dp"
+                    android:layout_height="50dp"
+                    android:layout_gravity="center"
+                    app:cardCornerRadius="25dp"
+                    app:cardBackgroundColor="#333333"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="0dp">
+
+                    <ImageView
+                        android:id="@+id/ivBusinessAvatar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        android:src="@android:drawable/ic_menu_gallery"
+                        app:tint="#FFFFFF" />
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Edit Pencil Overlay -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="bottom|end"
+                    app:cardBackgroundColor="#2196F3"
+                    app:cardCornerRadius="10dp"
+                    app:cardElevation="2dp"
+                    app:strokeColor="#1E1E1E"
+                    app:strokeWidth="2dp">
+
+                    <ImageView
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:layout_gravity="center"
+                        android:src="@android:drawable/ic_menu_edit"
+                        app:tint="#FFFFFF" />
+                </com.google.android.material.card.MaterialCardView>
+            </FrameLayout>
 
             <TextView
                 android:id="@+id/tvAdvertiserId"
@@ -47,7 +88,7 @@
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toEndOf="@+id/ivBusinessAvatar"
+                app:layout_constraintStart_toEndOf="@+id/flAvatarContainer"
                 app:layout_constraintTop_toTopOf="parent" />
 
             <TextView
