@@ -160,11 +160,13 @@
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 
-            <!-- NEW: INTELLIGENT DESCRIPTION SLIDER (Synchronized with images) -->
+            <!-- GLITCH FIX: ViewPager2 for text updated with minHeight. 
+                 This prevents the collapse glitch during initial content loading. -->
             <androidx.viewpager2.widget.ViewPager2
                 android:id="@+id/vpAdText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:minHeight="100dp"
                 android:layout_marginTop="8dp"
                 android:padding="20dp" />
 
