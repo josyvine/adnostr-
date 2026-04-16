@@ -53,6 +53,7 @@ import java.util.Set;
  * - Implements Native Multi-Image Picker (ACTION_GET_CONTENT).
  * - Intelligent Description Chunking for synchronized sliders.
  * - Ad Preview trigger for testing without broadcast.
+ * - NEW: Professional Rich Text Editor integration via Pencil Icon.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -71,6 +72,9 @@ public class CreateAdFragment extends Fragment {
 
     // Launcher to handle the real system file/image picker
     private ActivityResultLauncher<Intent> imagePickerLauncher;
+    
+    // ENHANCEMENT: Launcher for the Professional Rich Text Editor
+    private ActivityResultLauncher<Intent> richTextLauncher;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -91,6 +95,21 @@ public class CreateAdFragment extends Fragment {
                             for (int i = 0; i < count; i++) {
                                 handleSelectedImage(result.getData().getClipData().getItemAt(i).getUri());
                             }
+                        }
+                    }
+                }
+        );
+
+        // ENHANCEMENT: Handle return from Professional Rich Text Editor
+        richTextLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                        String formattedHtml = result.getData().getStringExtra("FORMATTED_HTML");
+                        if (formattedHtml != null) {
+                            // Update the preview field with the returned formatted string (HTML)
+                            binding.etAdDescription.setText(formattedHtml);
+                            Log.d(TAG, "Rich Text Editor returned formatted HTML payload.");
                         }
                     }
                 }
@@ -129,6 +148,14 @@ public class CreateAdFragment extends Fragment {
 
         // 6. Broadcast Action
         binding.btnBroadcastNow.setOnClickListener(v -> prepareAndBroadcastAd(false));
+
+        // ENHANCEMENT: Launch Rich Text Editor on Pencil click
+        binding.ivEditRichText.setOnClickListener(v -> {
+            Intent intent = new Intent(requireContext(), RichTextEditorActivity.class);
+            // Pass the current text (if any) to the editor
+            intent.putExtra("EXISTING_TEXT", binding.etAdDescription.getText().toString());
+            richTextLauncher.launch(intent);
+        });
 
         // Initialize Step 1 UI
         updateStepUI();
@@ -403,7 +430,7 @@ public class CreateAdFragment extends Fragment {
                 "DISCOVERY CONSOLE",
                 "Scanning decentralized registry...",
                 discoveryLogs.toString()
-        );
+            );
         dialog.showSafe(getChildFragmentManager(), "DISCOVERY_CONSOLE");
 
         // Primary Tag for Ownership Check
@@ -549,21 +576,25 @@ public class CreateAdFragment extends Fragment {
     /**
      * Intelligent Description Chunking Logic.
      * Splits description by period or line break into an array of strings.
+     * FIXED: Strips HTML tags for the swipable chunk array to ensure the slider preview is clean.
      */
     private List<String> chunkDescription(String desc) {
+        // Strip HTML for the slider preview chunks
+        String cleanDesc = desc.replaceAll("<[^>]*>", "");
         List<String> chunks = new ArrayList<>();
-        String[] splitLines = desc.split("\\n|\\.(?!\\d)");
+        String[] splitLines = cleanDesc.split("\\n|\\.(?!\\d)");
         for (String line : splitLines) {
             if (!line.trim().isEmpty()) {
                 chunks.add(line.trim());
             }
         }
-        if (chunks.isEmpty()) chunks.add(desc); // Fallback
+        if (chunks.isEmpty()) chunks.add(cleanDesc); // Fallback
         return chunks;
     }
 
     private void prepareAndBroadcastAd(boolean isPreviewOnly) {
         String title = binding.etAdTitle.getText().toString().trim();
+        // This 'desc' can now contain HTML formatting from the Rich Text Editor
         String desc = binding.etAdDescription.getText().toString().trim();
         String tagsInput = binding.etAdTags.getText().toString().trim();
         String whatsapp = binding.etWhatsapp.getText().toString().trim();
@@ -580,14 +611,18 @@ public class CreateAdFragment extends Fragment {
             JSONArray imageJsonArr = new JSONArray();
             for (String url : uploadedMediaUrls) imageJsonArr.put(url);
 
-            // Build Chunked Description JSON Array
+            // Build Chunked Description JSON Array (Stripped of HTML for UI Slider)
             JSONArray descJsonArr = new JSONArray();
             for (String chunk : chunkDescription(desc)) descJsonArr.put(chunk);
 
             // Construct Ad Payload JSON (Including logo and new social fields)
             JSONObject contentObj = new JSONObject();
             contentObj.put("title", title);
-            contentObj.put("desc", descJsonArr); // Intelligent Array
+            
+            // ENHANCEMENT: Store both the chunked preview and the FULL formatted text
+            contentObj.put("desc", descJsonArr);       // Synchronized preview chunks (No HTML)
+            contentObj.put("full_desc", desc);          // THE FULL RICH TEXT PAYLOAD (With HTML)
+            
             contentObj.put("image", imageJsonArr);
             contentObj.put("logo", db.getAdvertiserLogoUrl()); // Integrated Profile Logo
             contentObj.put("key", currentAdAesKeyHex);
