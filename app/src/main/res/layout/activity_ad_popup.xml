@@ -38,8 +38,9 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- NEW: TOP BRAND BAR (Logo + Verified Status) -->
+            <!-- FIXED: Added llTopBrandingBar ID to resolve build error -->
             <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/llTopBrandingBar"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:paddingStart="16dp"
@@ -55,7 +56,7 @@
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent">
-                    
+
                     <ImageView
                         android:id="@+id/ivAdLogo"
                         android:layout_width="match_parent"
@@ -64,8 +65,9 @@
                         android:src="@android:drawable/ic_menu_gallery" />
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- FIXED: Renamed tvVerifiedBadge to tvVerifiedBanner to match AdPopupActivity.java -->
                 <TextView
-                    android:id="@+id/tvVerifiedBadge"
+                    android:id="@+id/tvVerifiedBanner"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
