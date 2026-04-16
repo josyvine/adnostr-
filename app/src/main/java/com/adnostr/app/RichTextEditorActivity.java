@@ -4,17 +4,14 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
-import android.text.Editable;
 import android.text.Html;
 import android.text.Spannable;
-import android.text.SpannableStringBuilder;
 import android.text.style.AlignmentSpan;
 import android.text.style.BulletSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
 import android.util.Log;
-import android.view.LayoutInflator;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -27,6 +24,7 @@ import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
  * FEATURE: Supports specialized Sub-heading tool (H2) for ad sections.
  * FEATURE: Implements Bullet Point logic and Foreground Color mapping.
  * FEATURE: Serializes content to HTML for AdNostr JSON payload compatibility.
+ * FIXED: Removed erroneous LayoutInflator import to resolve build failure.
  */
 public class RichTextEditorActivity extends AppCompatActivity {
 
