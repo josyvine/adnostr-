@@ -123,7 +123,7 @@ public class AdPopupActivity extends AppCompatActivity {
             @Override
             public void onPageSelected(int position) {
                 super.onPageSelected(position);
-                
+
                 // 1. Synchronize the text slider chunks
                 if (position < textChunks.size()) {
                     binding.vpAdText.setCurrentItem(position, true);
@@ -162,15 +162,22 @@ public class AdPopupActivity extends AppCompatActivity {
             content = new JSONObject(contentRaw);
         }
 
-        // 1. Extract and Load Advertiser Logo
+        // 1. Extract and Load Advertiser Logo into the Branding Bar
         String logoUrl = content.optString("logo", "");
         if (!logoUrl.isEmpty()) {
+            // Show the tiny transparent border and load the logo
+            binding.llTopBrandingBar.setVisibility(View.VISIBLE);
             ImageRequest logoReq = new ImageRequest.Builder(this)
                     .data(logoUrl)
                     .crossfade(true)
                     .target(binding.ivAdLogo)
                     .build();
             Coil.imageLoader(this).enqueue(logoReq);
+            
+            // Show verified status banner
+            binding.tvVerifiedBanner.setVisibility(View.VISIBLE);
+        } else {
+            binding.llTopBrandingBar.setVisibility(View.GONE);
         }
 
         // 2. Handle Image Slider (HTTPS URLs)
