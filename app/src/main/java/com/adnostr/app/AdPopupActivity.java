@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Html;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -49,6 +51,7 @@ import okhttp3.Response;
  * Logic: Download Encrypted Bytes -> Decrypt -> Render Image + Sync Text.
  * ENHANCEMENT: Implements "Read More" overflow detection for long formatted descriptions.
  * FIXED: Text slider now properly parses and renders HTML tags for rich text formatting.
+ * GLITCH FIX: Implemented requestLayout() and post-delay measurement to fix "Ghost Text" visibility.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -176,7 +179,7 @@ public class AdPopupActivity extends AppCompatActivity {
                     .target(binding.ivAdLogo)
                     .build();
             Coil.imageLoader(this).enqueue(logoReq);
-            
+
             // Show verified status banner
             binding.tvVerifiedBanner.setVisibility(View.VISIBLE);
         } else {
@@ -236,6 +239,17 @@ public class AdPopupActivity extends AppCompatActivity {
         AdTextSliderAdapter adapter = new AdTextSliderAdapter(title, chunks);
         binding.vpAdText.setAdapter(adapter);
         binding.vpAdText.setUserInputEnabled(false); // Only image slider controls text
+
+        // GLITCH FIX: Force re-measurement of the text slider area.
+        // This stops the text from being "hidden" (0px height) until a zoom event occurs.
+        binding.vpAdText.post(() -> {
+            binding.vpAdText.requestLayout();
+            // A secondary post to ensure ViewPager2 measurement logic catches the change
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                binding.vpAdText.invalidate();
+                binding.vpAdText.requestLayout();
+            }, 100);
+        });
     }
 
     private void setupActionButtons(JSONObject content) {
@@ -316,14 +330,13 @@ public class AdPopupActivity extends AppCompatActivity {
             tvTitle.setTextColor(0xFFFFFFFF);
             tvTitle.setTextSize(20);
 
-            // FIXED: Convert chunk HTML into visual formatting for the slider
+            // GLITCH FIX: Ensure text is rendered as SPANNABLE to prevent formatting loss during recycling.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                tvDesc.setText(Html.fromHtml(chunks.get(position), Html.FROM_HTML_MODE_COMPACT));
+                tvDesc.setText(Html.fromHtml(chunks.get(position), Html.FROM_HTML_MODE_LEGACY), TextView.BufferType.SPANNABLE);
             } else {
-                tvDesc.setText(Html.fromHtml(chunks.get(position)));
+                tvDesc.setText(Html.fromHtml(chunks.get(position)), TextView.BufferType.SPANNABLE);
             }
-            
-            // Note: Spannable formatting (colors) will override this fallback color natively.
+
             tvDesc.setTextColor(0xFFBDBDBD);
             tvDesc.setTextSize(14);
         }
