@@ -6,8 +6,10 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.text.Html;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -72,7 +74,7 @@ public class CreateAdFragment extends Fragment {
 
     // Launcher to handle the real system file/image picker
     private ActivityResultLauncher<Intent> imagePickerLauncher;
-    
+
     // ENHANCEMENT: Launcher for the Professional Rich Text Editor
     private ActivityResultLauncher<Intent> richTextLauncher;
 
@@ -107,9 +109,14 @@ public class CreateAdFragment extends Fragment {
                     if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                         String formattedHtml = result.getData().getStringExtra("FORMATTED_HTML");
                         if (formattedHtml != null) {
-                            // Update the preview field with the returned formatted string (HTML)
-                            binding.etAdDescription.setText(formattedHtml);
-                            Log.d(TAG, "Rich Text Editor returned formatted HTML payload.");
+                            // FIXED: Translate HTML tags (like <p>, <b>, etc.) into invisible formatted spans.
+                            // This stops raw HTML code from showing inside the preview box.
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                binding.etAdDescription.setText(Html.fromHtml(formattedHtml, Html.FROM_HTML_MODE_LEGACY));
+                            } else {
+                                binding.etAdDescription.setText(Html.fromHtml(formattedHtml));
+                            }
+                            Log.d(TAG, "Rich Text Editor returned formatted HTML payload and rendered successfully.");
                         }
                     }
                 }
@@ -575,19 +582,45 @@ public class CreateAdFragment extends Fragment {
 
     /**
      * Intelligent Description Chunking Logic.
-     * Splits description by period or line break into an array of strings.
-     * FIXED: Strips HTML tags for the swipable chunk array to ensure the slider preview is clean.
+     * FIXED: 1 Image = 1 Full Sentence rule. Splits by proper sentence endings (. ! ?) 
+     * and preserves commas and punctuation. Excess sentences are grouped into the last chunk.
      */
     private List<String> chunkDescription(String desc) {
         // Strip HTML for the slider preview chunks
-        String cleanDesc = desc.replaceAll("<[^>]*>", "");
+        String cleanDesc = desc.replaceAll("<[^>]*>", "").trim();
         List<String> chunks = new ArrayList<>();
-        String[] splitLines = cleanDesc.split("\\n|\\.(?!\\d)");
-        for (String line : splitLines) {
-            if (!line.trim().isEmpty()) {
-                chunks.add(line.trim());
+        
+        if (cleanDesc.isEmpty()) {
+            chunks.add("");
+            return chunks;
+        }
+
+        // Split by Full Stop, Exclamation, or Question Mark followed by whitespace, 
+        // but KEEP the punctuation mark attached to the sentence.
+        String[] sentences = cleanDesc.split("(?<=[.!?])\\s+");
+        
+        int targetImageCount = uploadedMediaUrls.size();
+        if (targetImageCount <= 0) targetImageCount = 1; // Fallback safety
+
+        for (int i = 0; i < sentences.length; i++) {
+            String currentSentence = sentences[i].trim();
+            if (currentSentence.isEmpty()) continue;
+
+            if (chunks.size() < targetImageCount - 1) {
+                // Add single sentence to its own slide
+                chunks.add(currentSentence);
+            } else {
+                // We've reached the last available image slide. Group all remaining text here.
+                if (chunks.size() < targetImageCount) {
+                    chunks.add(currentSentence); 
+                } else {
+                    int lastIndex = chunks.size() - 1;
+                    String merged = chunks.get(lastIndex) + " " + currentSentence;
+                    chunks.set(lastIndex, merged);
+                }
             }
         }
+
         if (chunks.isEmpty()) chunks.add(cleanDesc); // Fallback
         return chunks;
     }
@@ -618,11 +651,11 @@ public class CreateAdFragment extends Fragment {
             // Construct Ad Payload JSON (Including logo and new social fields)
             JSONObject contentObj = new JSONObject();
             contentObj.put("title", title);
-            
+
             // ENHANCEMENT: Store both the chunked preview and the FULL formatted text
             contentObj.put("desc", descJsonArr);       // Synchronized preview chunks (No HTML)
             contentObj.put("full_desc", desc);          // THE FULL RICH TEXT PAYLOAD (With HTML)
-            
+
             contentObj.put("image", imageJsonArr);
             contentObj.put("logo", db.getAdvertiserLogoUrl()); // Integrated Profile Logo
             contentObj.put("key", currentAdAesKeyHex);
