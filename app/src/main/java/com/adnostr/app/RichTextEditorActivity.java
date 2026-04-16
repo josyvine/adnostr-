@@ -25,6 +25,7 @@ import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
  * FEATURE: Implements Bullet Point logic and Foreground Color mapping.
  * FEATURE: Serializes content to HTML for AdNostr JSON payload compatibility.
  * FIXED: Removed erroneous LayoutInflator import to resolve build failure.
+ * FIXED: Focus-Loss bug resolved. Actions now automatically target current word or paragraph if no highlight is made.
  */
 public class RichTextEditorActivity extends AppCompatActivity {
 
@@ -51,7 +52,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
 
         // 2. Setup Action Bar Logic
         binding.btnCancelEditor.setOnClickListener(v -> finish());
-        
+
         binding.btnSaveRichText.setOnClickListener(v -> {
             String htmlOutput = Html.toHtml(binding.etRichContent.getText(), Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE);
             Intent resultIntent = new Intent();
@@ -86,16 +87,62 @@ public class RichTextEditorActivity extends AppCompatActivity {
     }
 
     /**
+     * Helper to find the boundaries of the current paragraph/line.
+     * Used for H2, Alignment, and Bullets when the user just taps the line without highlighting.
+     */
+    private int[] getParagraphBounds(int cursor) {
+        String text = binding.etRichContent.getText().toString();
+        if (text.isEmpty()) return new int[]{0, 0};
+
+        int start = text.lastIndexOf('\n', cursor - 1);
+        start = (start == -1) ? 0 : start + 1;
+
+        int end = text.indexOf('\n', cursor);
+        end = (end == -1) ? text.length() : end;
+
+        return new int[]{start, end};
+    }
+
+    /**
+     * Helper to find the boundaries of the current word.
+     * Used for Bold, Italics, and Color when the user taps a word without highlighting.
+     */
+    private int[] getWordBounds(int cursor) {
+        String text = binding.etRichContent.getText().toString();
+        if (text.isEmpty() || cursor < 0 || cursor > text.length()) return new int[]{0, 0};
+
+        int start = cursor;
+        while (start > 0 && !Character.isWhitespace(text.charAt(start - 1))) {
+            start--;
+        }
+
+        int end = cursor;
+        while (end < text.length() && !Character.isWhitespace(text.charAt(end))) {
+            end++;
+        }
+
+        return new int[]{start, end};
+    }
+
+    /**
      * Toggles Bold or Italic on the selected text.
      */
     private void toggleStyleSpan(int style) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
+        
+        // If no text is selected, apply to the current word
+        if (start == end) {
+            int[] bounds = getWordBounds(start);
+            start = bounds[0];
+            end = bounds[1];
+        }
+        
         if (start == end) return;
 
         Spannable spannable = binding.etRichContent.getText();
         StyleSpan[] existingSpans = spannable.getSpans(start, end, StyleSpan.class);
-        
+
         boolean found = false;
         for (StyleSpan span : existingSpans) {
             if (span.getStyle() == style) {
@@ -107,6 +154,9 @@ public class RichTextEditorActivity extends AppCompatActivity {
         if (!found) {
             spannable.setSpan(new StyleSpan(style), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
+        
+        // Prevent focus loss so the keyboard stays open
+        binding.etRichContent.requestFocus();
     }
 
     /**
@@ -115,9 +165,17 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private void applyAlignment(android.text.Layout.Alignment alignment) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
-        
+
+        // Alignment applies to the whole paragraph, even if only a word is selected or clicked
+        int[] bounds = getParagraphBounds(start);
+        start = bounds[0];
+        end = bounds[1];
+
+        if (start == end) return;
+
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new AlignmentSpan.Standard(alignment), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        binding.etRichContent.requestFocus();
     }
 
     /**
@@ -126,9 +184,17 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private void applyBulletSpan() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
-        
+
+        // Bullets apply to the whole paragraph
+        int[] bounds = getParagraphBounds(start);
+        start = bounds[0];
+        end = bounds[1];
+
+        if (start == end) return;
+
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new BulletSpan(20, Color.parseColor("#4CAF50")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        binding.etRichContent.requestFocus();
     }
 
     /**
@@ -137,29 +203,53 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private void applySubHeadingStyle() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
+        
+        // H2 applies to the whole paragraph/line
+        int[] bounds = getParagraphBounds(start);
+        start = bounds[0];
+        end = bounds[1];
+        
         if (start == end) return;
 
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new RelativeSizeSpan(1.4f), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         spannable.setSpan(new StyleSpan(Typeface.BOLD), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         spannable.setSpan(new ForegroundColorSpan(Color.parseColor("#2196F3")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        
+        binding.etRichContent.requestFocus();
     }
 
     private void toggleFontSize() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
+        
+        if (start == end) {
+            int[] bounds = getWordBounds(start);
+            start = bounds[0];
+            end = bounds[1];
+        }
+        
         if (start == end) return;
 
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new RelativeSizeSpan(1.2f), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        binding.etRichContent.requestFocus();
     }
 
     private void applyColor(int color) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
+        
+        if (start == end) {
+            int[] bounds = getWordBounds(start);
+            start = bounds[0];
+            end = bounds[1];
+        }
+        
         if (start == end) return;
 
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new ForegroundColorSpan(color), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        binding.etRichContent.requestFocus();
     }
 }
