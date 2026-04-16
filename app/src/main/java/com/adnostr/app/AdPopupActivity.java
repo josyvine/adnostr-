@@ -45,6 +45,7 @@ import okhttp3.Response;
  * FIXED: Preview mode crash by bypassing 'content' field requirement for direct payloads.
  * FIXED: ViewPager2 crash by forcing MATCH_PARENT on text slider pages.
  * Logic: Download Encrypted Bytes -> Decrypt -> Render Image + Sync Text.
+ * ENHANCEMENT: Implements "Read More" overflow detection for long formatted descriptions.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -54,6 +55,7 @@ public class AdPopupActivity extends AppCompatActivity {
     private String adDecryptionKeyHex = "";
     private final List<String> imageUrls = new ArrayList<>();
     private final List<String> textChunks = new ArrayList<>();
+    private String fullDescriptionHtml = ""; // ENHANCEMENT: Stores the formatted rich text
     private boolean isPreview = false;
 
     @Override
@@ -101,7 +103,7 @@ public class AdPopupActivity extends AppCompatActivity {
             if (!imageUrls.isEmpty()) {
                 int currentPos = binding.vpAdImages.getCurrentItem();
                 String targetUrl = imageUrls.get(currentPos);
-                
+
                 Intent zoomIntent = new Intent(this, ImageZoomActivity.class);
                 zoomIntent.putExtra("ZOOM_URL", targetUrl);
                 zoomIntent.putExtra("AES_KEY", adDecryptionKeyHex);
@@ -109,13 +111,30 @@ public class AdPopupActivity extends AppCompatActivity {
             }
         });
 
-        // NEW: Sync Text Slider with Image Slider
+        // ENHANCEMENT: Launch Full Description Viewer
+        binding.tvReadMore.setOnClickListener(v -> {
+            Intent intent = new Intent(this, DescriptionDetailsActivity.class);
+            intent.putExtra("FULL_DESCRIPTION_HTML", fullDescriptionHtml);
+            startActivity(intent);
+        });
+
+        // NEW: Sync Text Slider with Image Slider + Overflow Detection
         binding.vpAdImages.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
                 super.onPageSelected(position);
+                
+                // 1. Synchronize the text slider chunks
                 if (position < textChunks.size()) {
                     binding.vpAdText.setCurrentItem(position, true);
+                }
+
+                // 2. ENHANCEMENT: Detection logic for "Read More" expansion
+                // Show the trigger only on the FINAL image slide if a full description exists
+                if (position == imageUrls.size() - 1 && !fullDescriptionHtml.isEmpty()) {
+                    binding.tvReadMore.setVisibility(View.VISIBLE);
+                } else {
+                    binding.tvReadMore.setVisibility(View.GONE);
                 }
             }
         });
@@ -177,6 +196,13 @@ public class AdPopupActivity extends AppCompatActivity {
             }
         } else {
             textChunks.add(content.optString("desc", ""));
+        }
+
+        // ENHANCEMENT: Capture the full professionally formatted HTML description
+        fullDescriptionHtml = content.optString("full_desc", "");
+        // Fallback for compatibility: if full_desc is missing, use the raw desc object
+        if (fullDescriptionHtml.isEmpty()) {
+            fullDescriptionHtml = content.optString("desc", "");
         }
 
         // Extracts the AES Key
@@ -262,12 +288,12 @@ public class AdPopupActivity extends AppCompatActivity {
         @Override
         public TextHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View v = LayoutInflater.from(parent.getContext()).inflate(android.R.layout.simple_list_item_2, parent, false);
-            
+
             // FIXED: ViewPager2 child views MUST have MATCH_PARENT layout params to prevent IllegalStateException
             v.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 
                     ViewGroup.LayoutParams.MATCH_PARENT));
-            
+
             return new TextHolder(v);
         }
 
@@ -275,11 +301,11 @@ public class AdPopupActivity extends AppCompatActivity {
         public void onBindViewHolder(@NonNull TextHolder holder, int position) {
             TextView tvTitle = holder.itemView.findViewById(android.R.id.text1);
             TextView tvDesc = holder.itemView.findViewById(android.R.id.text2);
-            
+
             tvTitle.setText(title);
             tvTitle.setTextColor(0xFFFFFFFF);
             tvTitle.setTextSize(20);
-            
+
             tvDesc.setText(chunks.get(position));
             tvDesc.setTextColor(0xFFBDBDBD);
             tvDesc.setTextSize(14);
