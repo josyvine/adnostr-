@@ -56,6 +56,7 @@ import java.util.Set;
  * - Intelligent Description Chunking for synchronized sliders.
  * - Ad Preview trigger for testing without broadcast.
  * - NEW: Professional Rich Text Editor integration via Pencil Icon.
+ * GLITCH FIX: Captured formatted HTML instead of plain text to prevent formatting loss.
  */
 public class CreateAdFragment extends Fragment {
 
@@ -582,76 +583,78 @@ public class CreateAdFragment extends Fragment {
 
     /**
      * Intelligent Description Chunking Logic.
-     * FIXED: HTML stripping removed. Sentences are strictly limited to the number 
-     * of images uploaded. Overflow is discarded from the slider and handed over 
-     * to the "Read More" full description screen.
+     * FIXED: Splitting logic refined to handle HTML formatted sentences safely.
+     * STRICT LIMIT: 1 sentence per image. Discard overflow for the slider.
      */
-    private List<String> chunkDescription(String desc) {
+    private List<String> chunkDescription(String descHtml) {
         List<String> chunks = new ArrayList<>();
-        
-        if (desc == null || desc.trim().isEmpty()) {
+
+        if (descHtml == null || descHtml.trim().isEmpty()) {
             chunks.add("");
             return chunks;
         }
 
-        // Split by Full Stop, Exclamation, or Question Mark followed by whitespace, 
-        // or HTML tags (like <br> or </p>), keeping the punctuation.
-        String[] sentences = desc.split("(?<=[.!?])(?:\\s+|(?=<))");
-        
+        // Split HTML content by sentence endings (. ! ?) while keeping the punctuation.
+        // This looks for punctuation followed by whitespace OR the start of a new HTML tag.
+        String[] sentences = descHtml.split("(?<=[.!?])(?:\\s+|(?=<))");
+
         int targetImageCount = uploadedMediaUrls.size();
-        if (targetImageCount <= 0) targetImageCount = 1; // Fallback safety
+        if (targetImageCount <= 0) targetImageCount = 1;
 
         for (int i = 0; i < sentences.length; i++) {
             String currentSentence = sentences[i].trim();
             if (currentSentence.isEmpty()) continue;
 
-            // STRICT LIMIT: 1 sentence per image. Discard overflow.
             if (chunks.size() < targetImageCount) {
                 chunks.add(currentSentence);
             } else {
-                // We reached the image limit. 
-                // Discard the rest for the slider (they remain in full_desc for "Read More").
+                // Image limit reached. Discard the rest for slider chunks.
                 break;
             }
         }
 
-        if (chunks.isEmpty()) chunks.add(desc); // Fallback
+        if (chunks.isEmpty()) chunks.add(descHtml);
         return chunks;
     }
 
     private void prepareAndBroadcastAd(boolean isPreviewOnly) {
         String title = binding.etAdTitle.getText().toString().trim();
-        // This 'desc' can now contain HTML formatting from the Rich Text Editor
-        String desc = binding.etAdDescription.getText().toString().trim();
+        
+        // GLITCH FIX: Use Html.toHtml to capture all edited formatting (bullets, colors, headings)
+        String descHtml;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            descHtml = Html.toHtml(binding.etAdDescription.getText(), Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE);
+        } else {
+            descHtml = Html.toHtml(binding.etAdDescription.getText());
+        }
+
         String tagsInput = binding.etAdTags.getText().toString().trim();
         String whatsapp = binding.etWhatsapp.getText().toString().trim();
         String instagram = binding.etInstagram.getText().toString().trim();
         String website = binding.etWebsite.getText().toString().trim();
 
-        if (title.isEmpty() || desc.isEmpty() || tagsInput.isEmpty()) {
+        if (title.isEmpty() || descHtml.isEmpty() || tagsInput.isEmpty()) {
             Toast.makeText(getContext(), "Please provide all ad details", Toast.LENGTH_SHORT).show();
             return;
         }
 
         try {
-            // Build Image JSON Array
             JSONArray imageJsonArr = new JSONArray();
             for (String url : uploadedMediaUrls) imageJsonArr.put(url);
 
-            // Build Chunked Description JSON Array (Stripped of HTML for UI Slider)
+            // GLITCH FIX: Use HTML-safe chunking
             JSONArray descJsonArr = new JSONArray();
-            for (String chunk : chunkDescription(desc)) descJsonArr.put(chunk);
+            for (String chunk : chunkDescription(descHtml)) descJsonArr.put(chunk);
 
-            // Construct Ad Payload JSON (Including logo and new social fields)
             JSONObject contentObj = new JSONObject();
             contentObj.put("title", title);
 
-            // ENHANCEMENT: Store both the chunked preview and the FULL formatted text
-            contentObj.put("desc", descJsonArr);       // Synchronized preview chunks
-            contentObj.put("full_desc", desc);          // THE FULL RICH TEXT PAYLOAD (With HTML)
+            // ENHANCEMENT: Store chunked preview and full rich text as-is
+            contentObj.put("desc", descJsonArr);       
+            contentObj.put("full_desc", descHtml);          
 
             contentObj.put("image", imageJsonArr);
-            contentObj.put("logo", db.getAdvertiserLogoUrl()); // Integrated Profile Logo
+            contentObj.put("logo", db.getAdvertiserLogoUrl()); 
             contentObj.put("key", currentAdAesKeyHex);
             contentObj.put("phone", whatsapp);
             contentObj.put("cta", whatsapp.isEmpty() ? "" : "https://wa.me/" + whatsapp.replaceAll("[^\\d]", ""));
@@ -662,9 +665,6 @@ public class CreateAdFragment extends Fragment {
 
             String contentStr = contentObj.toString();
 
-            // =========================================================================
-            // AD PREVIEW FEATURE: Launch Popup with IS_PREVIEW flag
-            // =========================================================================
             if (isPreviewOnly) {
                 Intent intent = new Intent(requireContext(), AdPopupActivity.class);
                 intent.putExtra("AD_PAYLOAD_JSON", contentStr);
@@ -673,9 +673,7 @@ public class CreateAdFragment extends Fragment {
                 return;
             }
 
-            // =========================================================================
-            // MASTER APP-LEVEL JSON ENCRYPTION (FOR REAL BROADCAST)
-            // =========================================================================
+            // MASTER APP-LEVEL JSON ENCRYPTION
             String finalSecureContent;
             try {
                 finalSecureContent = EncryptionUtils.encryptPayload(contentStr);
@@ -718,7 +716,6 @@ public class CreateAdFragment extends Fragment {
                     db.saveDeletionData(eventId, delArray.toString());
                 }
 
-                // Local History Storage
                 JSONObject localEvent = new JSONObject(signedEvent.toString());
                 localEvent.put("content", contentStr); 
                 JSONArray fullMsg = new JSONArray();
@@ -727,7 +724,6 @@ public class CreateAdFragment extends Fragment {
                 fullMsg.put(localEvent);
                 db.saveToAdvertiserHistory(fullMsg.toString());
 
-                // Broadcast
                 broadcastToNetwork(signedEvent);
             } else {
                 Toast.makeText(getContext(), "Signing Failed", Toast.LENGTH_SHORT).show();
