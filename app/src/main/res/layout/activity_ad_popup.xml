@@ -33,20 +33,18 @@
         app:strokeColor="#22FFFFFF"
         app:strokeWidth="1dp">
 
-        <!-- GLITCH FIX: Switched to ConstraintLayout to enable Vertical Chaining.
-             This forces the UI to measure the text area immediately. -->
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
-            <!-- BRANDING BAR -->
+            <!-- FIXED: Added llTopBrandingBar ID to resolve build error -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/llTopBrandingBar"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                app:layout_constraintTop_toTopOf="parent">
+                android:paddingEnd="16dp">
 
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/cvLogoWrapper"
@@ -67,6 +65,7 @@
                         android:src="@android:drawable/ic_menu_gallery" />
                 </com.google.android.material.card.MaterialCardView>
 
+                <!-- FIXED: Renamed tvVerifiedBadge to tvVerifiedBanner to match AdPopupActivity.java -->
                 <TextView
                     android:id="@+id/tvVerifiedBanner"
                     android:layout_width="wrap_content"
@@ -84,17 +83,19 @@
 
             <!-- IMAGE SLIDER AREA -->
             <androidx.constraintlayout.widget.ConstraintLayout
-                android:id="@+id/clImageArea"
                 android:layout_width="match_parent"
-                android:layout_height="240dp"
-                app:layout_constraintTop_toBottomOf="@id/llTopBrandingBar">
+                android:layout_height="240dp">
 
+                <!-- FIXED: ViewPager2 with black background to prevent white gaps -->
                 <androidx.viewpager2.widget.ViewPager2
                     android:id="@+id/vpAdImages"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="#000000" />
+                    android:background="#000000"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent" />
 
+                <!-- Fallback single image view -->
                 <ImageView
                     android:id="@+id/ivAdCover"
                     android:layout_width="match_parent"
@@ -103,6 +104,7 @@
                     android:visibility="gone"
                     tools:src="@android:drawable/ic_menu_gallery" />
 
+                <!-- Close Button (Top Right) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCloseAd"
                     android:layout_width="32dp"
@@ -121,6 +123,7 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent" />
 
+                <!-- Zoom Button (Top Left) -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnZoomImage"
                     android:layout_width="32dp"
@@ -139,6 +142,7 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent" />
 
+                <!-- MODERN SWIPE INDICATOR -->
                 <com.google.android.material.tabs.TabLayout
                     android:id="@+id/tabDots"
                     android:layout_width="wrap_content"
@@ -156,36 +160,34 @@
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 
-            <!-- GLITCH FIX: vpAdText now uses match_constraint (0dp) with a minHeight.
-                 It is anchored to the Image Area and the Read More button. -->
+            <!-- GLITCH FIX: ViewPager2 for text updated with minHeight. 
+                 This prevents the collapse glitch during initial content loading. -->
             <androidx.viewpager2.widget.ViewPager2
                 android:id="@+id/vpAdText"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:minHeight="110dp"
-                android:padding="20dp"
-                app:layout_constraintHeight_min="110dp"
-                app:layout_constraintTop_toBottomOf="@id/clImageArea"
-                app:layout_constraintBottom_toTopOf="@+id/tvReadMore" />
+                android:layout_height="wrap_content"
+                android:minHeight="100dp"
+                android:layout_marginTop="8dp"
+                android:padding="20dp" />
 
+            <!-- ENHANCEMENT: Read More Action Button (Overflow Logic) -->
             <TextView
                 android:id="@+id/tvReadMore"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_marginTop="-12dp"
                 android:layout_marginEnd="20dp"
-                android:layout_marginBottom="8dp"
+                android:layout_marginBottom="12dp"
                 android:padding="4dp"
                 android:text="Read More..."
                 android:textColor="#2196F3"
                 android:textSize="13sp"
                 android:textStyle="bold"
                 android:visibility="gone"
-                app:layout_constraintBottom_toTopOf="@+id/llIconActions"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/vpAdText"
                 tools:visibility="visible" />
 
-            <!-- ACTION BAR -->
+            <!-- NEW: MODERN ICON ACTION BAR -->
             <LinearLayout
                 android:id="@+id/llIconActions"
                 android:layout_width="match_parent"
@@ -194,8 +196,8 @@
                 android:orientation="horizontal"
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/tvReadMore">
+                android:divider="?android:attr/dividerVertical"
+                android:showDividers="none">
 
                 <ImageView
                     android:id="@+id/ivActionWhatsapp"
@@ -259,7 +261,7 @@
 
             </LinearLayout>
 
-        </androidx.constraintlayout.widget.ConstraintLayout>
+        </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
