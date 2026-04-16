@@ -17,7 +17,6 @@ import java.util.List;
  * GLITCH FIX: Explicitly uses TextView.BufferType.SPANNABLE. 
  * This ensures that when the ViewPager2 recycles pages, your bold, 
  * italic, and color formatting remains "as is" and does not get stripped.
- * GLITCH FIX: Integrated BulletTagHandler to render list formatting.
  */
 public class AdTextSliderAdapter extends RecyclerView.Adapter<AdTextSliderAdapter.TextHolder> {
 
@@ -55,12 +54,11 @@ public class AdTextSliderAdapter extends RecyclerView.Adapter<AdTextSliderAdapte
 
         // GLITCH FIX: Convert chunk HTML into visual formatting and lock the BufferType
         // to SPANNABLE. This prevents the recycling mechanism from losing the edited styles.
-        // We now pass the BulletTagHandler to handle list rendering.
         String htmlChunk = chunks.get(position);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            tvDesc.setText(Html.fromHtml(htmlChunk, Html.FROM_HTML_MODE_LEGACY, null, new AdPopupActivity.BulletTagHandler()), TextView.BufferType.SPANNABLE);
+            tvDesc.setText(Html.fromHtml(htmlChunk, Html.FROM_HTML_MODE_LEGACY), TextView.BufferType.SPANNABLE);
         } else {
-            tvDesc.setText(Html.fromHtml(htmlChunk, null, new AdPopupActivity.BulletTagHandler()), TextView.BufferType.SPANNABLE);
+            tvDesc.setText(Html.fromHtml(htmlChunk), TextView.BufferType.SPANNABLE);
         }
 
         // Set base text properties (Spannable HTML will override these for specific edited parts)
