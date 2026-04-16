@@ -2,7 +2,9 @@ package com.adnostr.app;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.text.Html;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -46,6 +48,7 @@ import okhttp3.Response;
  * FIXED: ViewPager2 crash by forcing MATCH_PARENT on text slider pages.
  * Logic: Download Encrypted Bytes -> Decrypt -> Render Image + Sync Text.
  * ENHANCEMENT: Implements "Read More" overflow detection for long formatted descriptions.
+ * FIXED: Text slider now properly parses and renders HTML tags for rich text formatting.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -313,7 +316,14 @@ public class AdPopupActivity extends AppCompatActivity {
             tvTitle.setTextColor(0xFFFFFFFF);
             tvTitle.setTextSize(20);
 
-            tvDesc.setText(chunks.get(position));
+            // FIXED: Convert chunk HTML into visual formatting for the slider
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                tvDesc.setText(Html.fromHtml(chunks.get(position), Html.FROM_HTML_MODE_COMPACT));
+            } else {
+                tvDesc.setText(Html.fromHtml(chunks.get(position)));
+            }
+            
+            // Note: Spannable formatting (colors) will override this fallback color natively.
             tvDesc.setTextColor(0xFFBDBDBD);
             tvDesc.setTextSize(14);
         }
