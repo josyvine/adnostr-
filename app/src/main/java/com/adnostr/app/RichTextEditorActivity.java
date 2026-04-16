@@ -4,17 +4,28 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.Html;
 import android.text.Spannable;
+import android.text.TextWatcher;
+import android.text.style.AbsoluteSizeSpan;
 import android.text.style.AlignmentSpan;
 import android.text.style.BulletSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
+import android.text.style.UnderlineSpan;
 import android.util.Log;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.PopupWindow;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.ListPopupWindow;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
 
@@ -26,11 +37,21 @@ import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
  * FEATURE: Serializes content to HTML for AdNostr JSON payload compatibility.
  * FIXED: Removed erroneous LayoutInflator import to resolve build failure.
  * FIXED: Focus-Loss bug resolved. Actions now automatically target current word or paragraph if no highlight is made.
+ * FIXED: Bullet lists can now be toggled on and off (deleted).
+ * FIXED: Empty Editor formatting resolved. Styles clicked on an empty line apply to text as you type.
+ * ENHANCEMENT: Integrated Modern Popup Sliders for Text Styles, Font Sizes, and Color Palette.
  */
 public class RichTextEditorActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_RichEditor";
     private ActivityRichTextEditorBinding binding;
+
+    // Pending style states for when the user clicks a format before typing
+    private boolean pendingBold = false;
+    private boolean pendingItalic = false;
+    private boolean pendingUnderline = false;
+    private int pendingColor = -1;
+    private int pendingFontSize = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,14 +82,18 @@ public class RichTextEditorActivity extends AppCompatActivity {
             finish();
         });
 
-        // 3. Setup Formatting Controls
+        // 3. Setup Formatting Controls & Popups
         setupFormattingButtons();
+
+        // 4. Setup Empty Editor Typing Logic
+        setupTextWatcher();
     }
 
     private void setupFormattingButtons() {
-        // --- BOLD & ITALIC ---
-        binding.btnBold.setOnClickListener(v -> toggleStyleSpan(Typeface.BOLD));
-        binding.btnItalic.setOnClickListener(v -> toggleStyleSpan(Typeface.ITALIC));
+        // --- TEXT STYLING POPUP (Bold, Italic, Underline Slider) ---
+        // Replacing the static bold button with the modern text style slider
+        binding.btnBold.setOnClickListener(v -> showTextStylePopup(v));
+        binding.btnItalic.setOnClickListener(v -> showTextStylePopup(v));
 
         // --- ALIGNMENT ---
         binding.btnAlignLeft.setOnClickListener(v -> applyAlignment(android.text.Layout.Alignment.ALIGN_NORMAL));
@@ -81,15 +106,127 @@ public class RichTextEditorActivity extends AppCompatActivity {
         // --- SUB-HEADING (H2 STYLE) ---
         binding.btnSubHeading.setOnClickListener(v -> applySubHeadingStyle());
 
-        // --- FONT SIZE & COLOR ---
-        binding.btnFontSize.setOnClickListener(v -> toggleFontSize());
-        binding.btnTextColor.setOnClickListener(v -> applyColor(Color.parseColor("#4CAF50"))); // Default Brand Green
+        // --- FONT SIZE & COLOR POPUPS ---
+        binding.btnFontSize.setOnClickListener(v -> showFontSizePopup(v));
+        binding.btnTextColor.setOnClickListener(v -> showColorPopup(v));
     }
 
     /**
-     * Helper to find the boundaries of the current paragraph/line.
-     * Used for H2, Alignment, and Bullets when the user just taps the line without highlighting.
+     * Monitors typing to apply styles dynamically if the user clicked a format
+     * while the editor or line was completely empty.
      */
+    private void setupTextWatcher() {
+        binding.etRichContent.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (count > 0) { // Text was added
+                    Spannable spannable = binding.etRichContent.getText();
+                    if (pendingBold) {
+                        spannable.setSpan(new StyleSpan(Typeface.BOLD), start, start + count, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                    if (pendingItalic) {
+                        spannable.setSpan(new StyleSpan(Typeface.ITALIC), start, start + count, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                    if (pendingUnderline) {
+                        spannable.setSpan(new UnderlineSpan(), start, start + count, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                    if (pendingColor != -1) {
+                        spannable.setSpan(new ForegroundColorSpan(pendingColor), start, start + count, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                    if (pendingFontSize != -1) {
+                        spannable.setSpan(new AbsoluteSizeSpan(pendingFontSize, true), start, start + count, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    }
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
+    }
+
+    // =========================================================================
+    // MODERN POPUP SLIDERS & MENUS
+    // =========================================================================
+
+    /**
+     * Microsoft Word style dropdown for exact font sizes.
+     */
+    private void showFontSizePopup(View anchor) {
+        String[] sizes = {"14", "18", "23", "28", "36"};
+        ListPopupWindow listPopupWindow = new ListPopupWindow(this);
+        listPopupWindow.setAnchorView(anchor);
+        listPopupWindow.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, sizes));
+        
+        // Ensure it pops up above the toolbar if there isn't space below
+        listPopupWindow.setDropDownGravity(android.view.Gravity.TOP); 
+
+        listPopupWindow.setOnItemClickListener((parent, view, position, id) -> {
+            applyFontSize(Integer.parseInt(sizes[position]));
+            listPopupWindow.dismiss();
+        });
+        listPopupWindow.show();
+    }
+
+    /**
+     * Horizontal color palette popup showing up to 10 colors.
+     */
+    private void showColorPopup(View anchor) {
+        View popupView = getLayoutInflater().inflate(R.layout.popup_color_palette, null);
+        
+        PopupWindow popupWindow = new PopupWindow(popupView, 
+                ViewGroup.LayoutParams.WRAP_CONTENT, 
+                ViewGroup.LayoutParams.WRAP_CONTENT, true);
+
+        // We will wire the RecyclerView from popup_color_palette.xml to the ColorPaletteAdapter
+        RecyclerView rvColors = popupView.findViewById(R.id.rvColorPalette);
+        rvColors.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+        
+        ColorPaletteAdapter colorAdapter = new ColorPaletteAdapter(color -> {
+            applyColor(color);
+            popupWindow.dismiss();
+        });
+        rvColors.setAdapter(colorAdapter);
+
+        // Show above the control panel
+        popupWindow.showAsDropDown(anchor, 0, -anchor.getHeight() - 150);
+    }
+
+    /**
+     * Horizontal slider for modern text styling (Bold, Italic, Underline, etc.)
+     */
+    private void showTextStylePopup(View anchor) {
+        View popupView = getLayoutInflater().inflate(R.layout.popup_text_styles, null);
+        
+        PopupWindow popupWindow = new PopupWindow(popupView, 
+                ViewGroup.LayoutParams.WRAP_CONTENT, 
+                ViewGroup.LayoutParams.WRAP_CONTENT, true);
+
+        popupView.findViewById(R.id.btnPopupBold).setOnClickListener(v -> {
+            toggleStyleSpan(Typeface.BOLD);
+            popupWindow.dismiss();
+        });
+
+        popupView.findViewById(R.id.btnPopupItalic).setOnClickListener(v -> {
+            toggleStyleSpan(Typeface.ITALIC);
+            popupWindow.dismiss();
+        });
+
+        popupView.findViewById(R.id.btnPopupUnderline).setOnClickListener(v -> {
+            toggleUnderlineSpan();
+            popupWindow.dismiss();
+        });
+
+        // Show above the control panel
+        popupWindow.showAsDropDown(anchor, 0, -anchor.getHeight() - 150);
+    }
+
+    // =========================================================================
+    // CORE FORMATTING LOGIC
+    // =========================================================================
+
     private int[] getParagraphBounds(int cursor) {
         String text = binding.etRichContent.getText().toString();
         if (text.isEmpty()) return new int[]{0, 0};
@@ -103,10 +240,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
         return new int[]{start, end};
     }
 
-    /**
-     * Helper to find the boundaries of the current word.
-     * Used for Bold, Italics, and Color when the user taps a word without highlighting.
-     */
     private int[] getWordBounds(int cursor) {
         String text = binding.etRichContent.getText().toString();
         if (text.isEmpty() || cursor < 0 || cursor > text.length()) return new int[]{0, 0};
@@ -124,21 +257,24 @@ public class RichTextEditorActivity extends AppCompatActivity {
         return new int[]{start, end};
     }
 
-    /**
-     * Toggles Bold or Italic on the selected text.
-     */
     private void toggleStyleSpan(int style) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
         
-        // If no text is selected, apply to the current word
         if (start == end) {
             int[] bounds = getWordBounds(start);
             start = bounds[0];
             end = bounds[1];
         }
         
-        if (start == end) return;
+        // Handle Empty Editor State
+        if (start == end) {
+            if (style == Typeface.BOLD) pendingBold = !pendingBold;
+            if (style == Typeface.ITALIC) pendingItalic = !pendingItalic;
+            Toast.makeText(this, "Style active for typing", Toast.LENGTH_SHORT).show();
+            binding.etRichContent.requestFocus();
+            return;
+        }
 
         Spannable spannable = binding.etRichContent.getText();
         StyleSpan[] existingSpans = spannable.getSpans(start, end, StyleSpan.class);
@@ -155,18 +291,44 @@ public class RichTextEditorActivity extends AppCompatActivity {
             spannable.setSpan(new StyleSpan(style), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         
-        // Prevent focus loss so the keyboard stays open
         binding.etRichContent.requestFocus();
     }
 
-    /**
-     * Applies paragraph alignment to the selected text.
-     */
+    private void toggleUnderlineSpan() {
+        int start = binding.etRichContent.getSelectionStart();
+        int end = binding.etRichContent.getSelectionEnd();
+        
+        if (start == end) {
+            int[] bounds = getWordBounds(start);
+            start = bounds[0];
+            end = bounds[1];
+        }
+
+        if (start == end) {
+            pendingUnderline = !pendingUnderline;
+            Toast.makeText(this, "Underline active for typing", Toast.LENGTH_SHORT).show();
+            binding.etRichContent.requestFocus();
+            return;
+        }
+
+        Spannable spannable = binding.etRichContent.getText();
+        UnderlineSpan[] existingSpans = spannable.getSpans(start, end, UnderlineSpan.class);
+
+        if (existingSpans.length > 0) {
+            for (UnderlineSpan span : existingSpans) {
+                spannable.removeSpan(span);
+            }
+        } else {
+            spannable.setSpan(new UnderlineSpan(), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        
+        binding.etRichContent.requestFocus();
+    }
+
     private void applyAlignment(android.text.Layout.Alignment alignment) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
 
-        // Alignment applies to the whole paragraph, even if only a word is selected or clicked
         int[] bounds = getParagraphBounds(start);
         start = bounds[0];
         end = bounds[1];
@@ -179,13 +341,12 @@ public class RichTextEditorActivity extends AppCompatActivity {
     }
 
     /**
-     * Applies a standard Bullet Point to the current line.
+     * FIXED: Implements Bullet Deletion (Toggle On/Off).
      */
     private void applyBulletSpan() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
 
-        // Bullets apply to the whole paragraph
         int[] bounds = getParagraphBounds(start);
         start = bounds[0];
         end = bounds[1];
@@ -193,18 +354,24 @@ public class RichTextEditorActivity extends AppCompatActivity {
         if (start == end) return;
 
         Spannable spannable = binding.etRichContent.getText();
-        spannable.setSpan(new BulletSpan(20, Color.parseColor("#4CAF50")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        
+        // Check if bullet already exists to toggle it OFF
+        BulletSpan[] existingSpans = spannable.getSpans(start, end, BulletSpan.class);
+        if (existingSpans.length > 0) {
+            for (BulletSpan span : existingSpans) {
+                spannable.removeSpan(span);
+            }
+        } else {
+            spannable.setSpan(new BulletSpan(20, Color.parseColor("#4CAF50")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        
         binding.etRichContent.requestFocus();
     }
 
-    /**
-     * Professional Sub-heading: Large + Bold + Accent Color.
-     */
     private void applySubHeadingStyle() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
         
-        // H2 applies to the whole paragraph/line
         int[] bounds = getParagraphBounds(start);
         start = bounds[0];
         end = bounds[1];
@@ -219,7 +386,10 @@ public class RichTextEditorActivity extends AppCompatActivity {
         binding.etRichContent.requestFocus();
     }
 
-    private void toggleFontSize() {
+    /**
+     * Applies an exact font size (e.g., 18, 23) via AbsoluteSizeSpan.
+     */
+    private void applyFontSize(int sizeInDip) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
         
@@ -229,10 +399,15 @@ public class RichTextEditorActivity extends AppCompatActivity {
             end = bounds[1];
         }
         
-        if (start == end) return;
+        if (start == end) {
+            pendingFontSize = sizeInDip;
+            Toast.makeText(this, "Size " + sizeInDip + " set", Toast.LENGTH_SHORT).show();
+            binding.etRichContent.requestFocus();
+            return;
+        }
 
         Spannable spannable = binding.etRichContent.getText();
-        spannable.setSpan(new RelativeSizeSpan(1.2f), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        spannable.setSpan(new AbsoluteSizeSpan(sizeInDip, true), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         binding.etRichContent.requestFocus();
     }
 
@@ -246,7 +421,12 @@ public class RichTextEditorActivity extends AppCompatActivity {
             end = bounds[1];
         }
         
-        if (start == end) return;
+        if (start == end) {
+            pendingColor = color;
+            Toast.makeText(this, "Color selected for typing", Toast.LENGTH_SHORT).show();
+            binding.etRichContent.requestFocus();
+            return;
+        }
 
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new ForegroundColorSpan(color), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
