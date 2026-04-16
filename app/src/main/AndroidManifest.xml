@@ -86,6 +86,20 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
+        <!-- ENHANCEMENT: Professional Rich Text Editor Activity -->
+        <activity
+            android:name=".RichTextEditorActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- ENHANCEMENT: Full-Screen Description Expansion Activity -->
+        <activity
+            android:name=".DescriptionDetailsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
         <!-- CRITICAL: The Global Error Display Activity -->
         <activity
             android:name=".ErrorDisplayActivity"
