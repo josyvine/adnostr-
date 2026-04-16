@@ -162,13 +162,13 @@
                 android:layout_marginEnd="8dp"
                 android:background="#333333" />
 
-            <!-- TEXT FORMATTING -->
+            <!-- TEXT FORMATTING (These now launch the Modern Popup Sliders) -->
             <ImageButton
                 android:id="@+id/btnBold"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Bold"
+                android:contentDescription="Text Styles Popup"
                 android:src="@android:drawable/ic_menu_edit"
                 app:tint="#B0B0B0" />
 
@@ -177,7 +177,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Italic"
+                android:contentDescription="Text Styles Popup Alt"
                 android:src="@android:drawable/ic_menu_manage"
                 app:tint="#B0B0B0" />
 
@@ -189,7 +189,6 @@
                 android:background="#333333" />
 
             <!-- SPECIALIZED SUB-HEADING TOOL -->
-            <!-- FIXED: Ensured H2 button is clickable and matches Java RelativeSizeSpan logic. -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSubHeading"
                 style="@style/Widget.MaterialComponents.Button.TextButton"
@@ -208,13 +207,13 @@
                 android:layout_marginEnd="8dp"
                 android:background="#333333" />
 
-            <!-- FONT SIZE & COLOR -->
+            <!-- FONT SIZE & COLOR (These now launch the Modern Popup Menus) -->
             <ImageButton
                 android:id="@+id/btnFontSize"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Font Size"
+                android:contentDescription="Font Size Menu"
                 android:src="@android:drawable/ic_menu_zoom"
                 app:tint="#B0B0B0" />
 
@@ -223,7 +222,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Text Color"
+                android:contentDescription="Text Color Palette"
                 android:src="@android:drawable/ic_menu_gallery"
                 app:tint="#4CAF50" />
 
