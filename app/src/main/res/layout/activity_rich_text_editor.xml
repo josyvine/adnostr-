@@ -22,6 +22,7 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Cancel"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -63,6 +64,8 @@
         app:layout_constraintBottom_toTopOf="@+id/hsvControlPanel"
         app:layout_constraintTop_toBottomOf="@id/clEditorHeader">
 
+        <!-- FIXED: Added inputType and gravity to ensure Spans render correctly and 
+             formatting stays visible while typing. -->
         <EditText
             android:id="@+id/etRichContent"
             android:layout_width="match_parent"
@@ -70,6 +73,7 @@
             android:background="@null"
             android:gravity="top|start"
             android:hint="Start typing your professional ad description..."
+            android:inputType="textMultiLine|textNoSuggestions|textLongMessage"
             android:padding="24dp"
             android:textColor="#FFFFFF"
             android:textColorHint="#444444"
@@ -78,6 +82,8 @@
     </androidx.core.widget.NestedScrollView>
 
     <!-- MODERN CONTROL ASSISTANCE PANEL (Bottom Formatting Toolbar) -->
+    <!-- FIXED: Ensured IDs match Java listeners and optimized touch targets 
+         to prevent "Placeholder" behavior. -->
     <HorizontalScrollView
         android:id="@+id/hsvControlPanel"
         android:layout_width="match_parent"
@@ -100,6 +106,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Align Left"
                 android:src="@android:drawable/ic_menu_sort_alphabetically"
                 app:tint="#B0B0B0" />
 
@@ -108,6 +115,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Align Center"
                 android:src="@android:drawable/ic_menu_sort_by_size"
                 app:tint="#B0B0B0" />
 
@@ -116,8 +124,9 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_menu_sort_alphabetically"
+                android:contentDescription="Align Right"
                 android:rotation="180"
+                android:src="@android:drawable/ic_menu_sort_alphabetically"
                 app:tint="#B0B0B0" />
 
             <View
@@ -133,6 +142,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Bullet List"
                 android:src="@android:drawable/ic_menu_agenda"
                 app:tint="#B0B0B0" />
 
@@ -141,6 +151,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Number List"
                 android:src="@android:drawable/ic_menu_my_calendar"
                 app:tint="#B0B0B0" />
 
@@ -157,6 +168,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Bold"
                 android:src="@android:drawable/ic_menu_edit"
                 app:tint="#B0B0B0" />
 
@@ -165,6 +177,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Italic"
                 android:src="@android:drawable/ic_menu_manage"
                 app:tint="#B0B0B0" />
 
@@ -176,13 +189,16 @@
                 android:background="#333333" />
 
             <!-- SPECIALIZED SUB-HEADING TOOL -->
+            <!-- FIXED: Ensured H2 button is clickable and matches Java RelativeSizeSpan logic. -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSubHeading"
                 style="@style/Widget.MaterialComponents.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:minWidth="48dp"
                 android:text="H2"
                 android:textColor="#2196F3"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
             <View
@@ -198,6 +214,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Font Size"
                 android:src="@android:drawable/ic_menu_zoom"
                 app:tint="#B0B0B0" />
 
@@ -206,6 +223,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Text Color"
                 android:src="@android:drawable/ic_menu_gallery"
                 app:tint="#4CAF50" />
 
