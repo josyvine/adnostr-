@@ -6,11 +6,15 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
 import android.text.Html;
+import android.text.Spannable;
+import android.text.style.BulletSpan;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -25,6 +29,7 @@ import com.google.android.material.tabs.TabLayoutMediator;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.xml.sax.XMLReader;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -51,7 +56,8 @@ import okhttp3.Response;
  * Logic: Download Encrypted Bytes -> Decrypt -> Render Image + Sync Text.
  * ENHANCEMENT: Implements "Read More" overflow detection for long formatted descriptions.
  * FIXED: Text slider now properly parses and renders HTML tags for rich text formatting.
- * GLITCH FIX: Implemented requestLayout() and post-delay measurement to fix "Ghost Text" visibility.
+ * GLITCH FIX: Implemented ViewTreeObserver to fix "Ghost Text" visibility immediately on load.
+ * GLITCH FIX: Added BulletTagHandler to render list formatting which is natively ignored by Android.
  */
 public class AdPopupActivity extends AppCompatActivity {
 
@@ -240,15 +246,15 @@ public class AdPopupActivity extends AppCompatActivity {
         binding.vpAdText.setAdapter(adapter);
         binding.vpAdText.setUserInputEnabled(false); // Only image slider controls text
 
-        // GLITCH FIX: Force re-measurement of the text slider area.
-        // This stops the text from being "hidden" (0px height) until a zoom event occurs.
-        binding.vpAdText.post(() -> {
-            binding.vpAdText.requestLayout();
-            // A secondary post to ensure ViewPager2 measurement logic catches the change
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                binding.vpAdText.invalidate();
+        // GLITCH FIX: Use OnGlobalLayoutListener to ensure the text area height 
+        // is calculated the moment it becomes visible.
+        binding.vpAdText.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                binding.vpAdText.getViewTreeObserver().removeOnGlobalLayoutListener(this);
                 binding.vpAdText.requestLayout();
-            }, 100);
+                binding.vpAdText.invalidate();
+            }
         });
     }
 
@@ -300,6 +306,19 @@ public class AdPopupActivity extends AppCompatActivity {
     }
 
     /**
+     * GLITCH FIX: Internal Class to handle Bullets in HTML.
+     * Android's standard parser ignores list tags; this forces rendering.
+     */
+    public static class BulletTagHandler implements Html.TagHandler {
+        @Override
+        public void handleTag(boolean opening, String tag, Editable output, XMLReader xmlReader) {
+            if (tag.equalsIgnoreCase("bullet") && opening) {
+                output.append("\n\t• ");
+            }
+        }
+    }
+
+    /**
      * Internal Adapter for the Synchronized Text Slider.
      */
     private class AdTextSliderAdapter extends RecyclerView.Adapter<AdTextSliderAdapter.TextHolder> {
@@ -313,7 +332,6 @@ public class AdPopupActivity extends AppCompatActivity {
         public TextHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View v = LayoutInflater.from(parent.getContext()).inflate(android.R.layout.simple_list_item_2, parent, false);
 
-            // FIXED: ViewPager2 child views MUST have MATCH_PARENT layout params to prevent IllegalStateException
             v.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 
                     ViewGroup.LayoutParams.MATCH_PARENT));
@@ -330,11 +348,12 @@ public class AdPopupActivity extends AppCompatActivity {
             tvTitle.setTextColor(0xFFFFFFFF);
             tvTitle.setTextSize(20);
 
-            // GLITCH FIX: Ensure text is rendered as SPANNABLE to prevent formatting loss during recycling.
+            // GLITCH FIX: Integrated the custom BulletTagHandler into the HTML parser
+            String htmlData = chunks.get(position);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                tvDesc.setText(Html.fromHtml(chunks.get(position), Html.FROM_HTML_MODE_LEGACY), TextView.BufferType.SPANNABLE);
+                tvDesc.setText(Html.fromHtml(htmlData, Html.FROM_HTML_MODE_LEGACY, null, new BulletTagHandler()), TextView.BufferType.SPANNABLE);
             } else {
-                tvDesc.setText(Html.fromHtml(chunks.get(position)), TextView.BufferType.SPANNABLE);
+                tvDesc.setText(Html.fromHtml(htmlData, null, new BulletTagHandler()), TextView.BufferType.SPANNABLE);
             }
 
             tvDesc.setTextColor(0xFFBDBDBD);
