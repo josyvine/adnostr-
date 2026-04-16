@@ -3,6 +3,7 @@ package com.adnostr.app;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.Html;
@@ -40,6 +41,7 @@ import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
  * FIXED: Bullet lists can now be toggled on and off (deleted).
  * FIXED: Empty Editor formatting resolved. Styles clicked on an empty line apply to text as you type.
  * ENHANCEMENT: Integrated Modern Popup Sliders for Text Styles, Font Sizes, and Color Palette.
+ * GLITCH FIX: Applied standard HTML serialization to ensure edited text displays "as is" in popups.
  */
 public class RichTextEditorActivity extends AppCompatActivity {
 
@@ -64,8 +66,12 @@ public class RichTextEditorActivity extends AppCompatActivity {
         String existingText = getIntent().getStringExtra("EXISTING_TEXT");
         if (existingText != null && !existingText.isEmpty()) {
             if (existingText.contains("<")) {
-                // If it looks like HTML, parse it
-                binding.etRichContent.setText(Html.fromHtml(existingText, Html.FROM_HTML_MODE_LEGACY));
+                // GLITCH FIX: Use version-safe Html.fromHtml to load existing formatting
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    binding.etRichContent.setText(Html.fromHtml(existingText, Html.FROM_HTML_MODE_LEGACY));
+                } else {
+                    binding.etRichContent.setText(Html.fromHtml(existingText));
+                }
             } else {
                 binding.etRichContent.setText(existingText);
             }
@@ -74,8 +80,15 @@ public class RichTextEditorActivity extends AppCompatActivity {
         // 2. Setup Action Bar Logic
         binding.btnCancelEditor.setOnClickListener(v -> finish());
 
+        // GLITCH FIX: Optimized saving logic to preserve all edits "as is"
         binding.btnSaveRichText.setOnClickListener(v -> {
-            String htmlOutput = Html.toHtml(binding.etRichContent.getText(), Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE);
+            String htmlOutput;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                htmlOutput = Html.toHtml(binding.etRichContent.getText(), Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE);
+            } else {
+                htmlOutput = Html.toHtml(binding.etRichContent.getText());
+            }
+            
             Intent resultIntent = new Intent();
             resultIntent.putExtra("FORMATTED_HTML", htmlOutput);
             setResult(RESULT_OK, resultIntent);
@@ -159,7 +172,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
         ListPopupWindow listPopupWindow = new ListPopupWindow(this);
         listPopupWindow.setAnchorView(anchor);
         listPopupWindow.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, sizes));
-        
+
         // Ensure it pops up above the toolbar if there isn't space below
         listPopupWindow.setDropDownGravity(android.view.Gravity.TOP); 
 
@@ -175,7 +188,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
      */
     private void showColorPopup(View anchor) {
         View popupView = getLayoutInflater().inflate(R.layout.popup_color_palette, null);
-        
+
         PopupWindow popupWindow = new PopupWindow(popupView, 
                 ViewGroup.LayoutParams.WRAP_CONTENT, 
                 ViewGroup.LayoutParams.WRAP_CONTENT, true);
@@ -183,7 +196,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
         // We will wire the RecyclerView from popup_color_palette.xml to the ColorPaletteAdapter
         RecyclerView rvColors = popupView.findViewById(R.id.rvColorPalette);
         rvColors.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
-        
+
         ColorPaletteAdapter colorAdapter = new ColorPaletteAdapter(color -> {
             applyColor(color);
             popupWindow.dismiss();
@@ -199,7 +212,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
      */
     private void showTextStylePopup(View anchor) {
         View popupView = getLayoutInflater().inflate(R.layout.popup_text_styles, null);
-        
+
         PopupWindow popupWindow = new PopupWindow(popupView, 
                 ViewGroup.LayoutParams.WRAP_CONTENT, 
                 ViewGroup.LayoutParams.WRAP_CONTENT, true);
@@ -260,13 +273,13 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private void toggleStyleSpan(int style) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
-        
+
         if (start == end) {
             int[] bounds = getWordBounds(start);
             start = bounds[0];
             end = bounds[1];
         }
-        
+
         // Handle Empty Editor State
         if (start == end) {
             if (style == Typeface.BOLD) pendingBold = !pendingBold;
@@ -290,14 +303,14 @@ public class RichTextEditorActivity extends AppCompatActivity {
         if (!found) {
             spannable.setSpan(new StyleSpan(style), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        
+
         binding.etRichContent.requestFocus();
     }
 
     private void toggleUnderlineSpan() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
-        
+
         if (start == end) {
             int[] bounds = getWordBounds(start);
             start = bounds[0];
@@ -321,7 +334,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
         } else {
             spannable.setSpan(new UnderlineSpan(), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        
+
         binding.etRichContent.requestFocus();
     }
 
@@ -354,7 +367,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
         if (start == end) return;
 
         Spannable spannable = binding.etRichContent.getText();
-        
+
         // Check if bullet already exists to toggle it OFF
         BulletSpan[] existingSpans = spannable.getSpans(start, end, BulletSpan.class);
         if (existingSpans.length > 0) {
@@ -364,25 +377,25 @@ public class RichTextEditorActivity extends AppCompatActivity {
         } else {
             spannable.setSpan(new BulletSpan(20, Color.parseColor("#4CAF50")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        
+
         binding.etRichContent.requestFocus();
     }
 
     private void applySubHeadingStyle() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
-        
+
         int[] bounds = getParagraphBounds(start);
         start = bounds[0];
         end = bounds[1];
-        
+
         if (start == end) return;
 
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new RelativeSizeSpan(1.4f), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         spannable.setSpan(new StyleSpan(Typeface.BOLD), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         spannable.setSpan(new ForegroundColorSpan(Color.parseColor("#2196F3")), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        
+
         binding.etRichContent.requestFocus();
     }
 
@@ -392,13 +405,13 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private void applyFontSize(int sizeInDip) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
-        
+
         if (start == end) {
             int[] bounds = getWordBounds(start);
             start = bounds[0];
             end = bounds[1];
         }
-        
+
         if (start == end) {
             pendingFontSize = sizeInDip;
             Toast.makeText(this, "Size " + sizeInDip + " set", Toast.LENGTH_SHORT).show();
@@ -414,13 +427,13 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private void applyColor(int color) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
-        
+
         if (start == end) {
             int[] bounds = getWordBounds(start);
             start = bounds[0];
             end = bounds[1];
         }
-        
+
         if (start == end) {
             pendingColor = color;
             Toast.makeText(this, "Color selected for typing", Toast.LENGTH_SHORT).show();
