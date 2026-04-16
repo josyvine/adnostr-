@@ -582,22 +582,21 @@ public class CreateAdFragment extends Fragment {
 
     /**
      * Intelligent Description Chunking Logic.
-     * FIXED: 1 Image = 1 Full Sentence rule. Splits by proper sentence endings (. ! ?) 
-     * and preserves commas and punctuation. Excess sentences are grouped into the last chunk.
+     * FIXED: HTML stripping removed. Sentences are strictly limited to the number 
+     * of images uploaded. Overflow is discarded from the slider and handed over 
+     * to the "Read More" full description screen.
      */
     private List<String> chunkDescription(String desc) {
-        // Strip HTML for the slider preview chunks
-        String cleanDesc = desc.replaceAll("<[^>]*>", "").trim();
         List<String> chunks = new ArrayList<>();
         
-        if (cleanDesc.isEmpty()) {
+        if (desc == null || desc.trim().isEmpty()) {
             chunks.add("");
             return chunks;
         }
 
         // Split by Full Stop, Exclamation, or Question Mark followed by whitespace, 
-        // but KEEP the punctuation mark attached to the sentence.
-        String[] sentences = cleanDesc.split("(?<=[.!?])\\s+");
+        // or HTML tags (like <br> or </p>), keeping the punctuation.
+        String[] sentences = desc.split("(?<=[.!?])(?:\\s+|(?=<))");
         
         int targetImageCount = uploadedMediaUrls.size();
         if (targetImageCount <= 0) targetImageCount = 1; // Fallback safety
@@ -606,22 +605,17 @@ public class CreateAdFragment extends Fragment {
             String currentSentence = sentences[i].trim();
             if (currentSentence.isEmpty()) continue;
 
-            if (chunks.size() < targetImageCount - 1) {
-                // Add single sentence to its own slide
+            // STRICT LIMIT: 1 sentence per image. Discard overflow.
+            if (chunks.size() < targetImageCount) {
                 chunks.add(currentSentence);
             } else {
-                // We've reached the last available image slide. Group all remaining text here.
-                if (chunks.size() < targetImageCount) {
-                    chunks.add(currentSentence); 
-                } else {
-                    int lastIndex = chunks.size() - 1;
-                    String merged = chunks.get(lastIndex) + " " + currentSentence;
-                    chunks.set(lastIndex, merged);
-                }
+                // We reached the image limit. 
+                // Discard the rest for the slider (they remain in full_desc for "Read More").
+                break;
             }
         }
 
-        if (chunks.isEmpty()) chunks.add(cleanDesc); // Fallback
+        if (chunks.isEmpty()) chunks.add(desc); // Fallback
         return chunks;
     }
 
@@ -653,7 +647,7 @@ public class CreateAdFragment extends Fragment {
             contentObj.put("title", title);
 
             // ENHANCEMENT: Store both the chunked preview and the FULL formatted text
-            contentObj.put("desc", descJsonArr);       // Synchronized preview chunks (No HTML)
+            contentObj.put("desc", descJsonArr);       // Synchronized preview chunks
             contentObj.put("full_desc", desc);          // THE FULL RICH TEXT PAYLOAD (With HTML)
 
             contentObj.put("image", imageJsonArr);
