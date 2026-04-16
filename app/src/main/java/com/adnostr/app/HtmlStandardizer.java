@@ -15,7 +15,6 @@ import android.text.style.UnderlineSpan;
  * This ensures that edited descriptions (colors, sizes, bullets) 
  * are preserved "as is" during Nostr transmission and display 
  * correctly in the Ad Popup Slider and "Read More" screen.
- * GLITCH FIX: Updated Bullets to use a custom tag for robust rendering via TagHandler.
  */
 public class HtmlStandardizer {
 
@@ -29,7 +28,7 @@ public class HtmlStandardizer {
         int next;
         for (int i = 0; i < text.length(); i = next) {
             next = text.nextSpanTransition(i, text.length(), Object.class);
-
+            
             Object[] spans = text.getSpans(i, next, Object.class);
             StringBuilder openTags = new StringBuilder();
             StringBuilder closeTags = new StringBuilder();
@@ -57,7 +56,7 @@ public class HtmlStandardizer {
                     int size = ((AbsoluteSizeSpan) span).getSize();
                     if (size > 24) openTags.append("<big><big>");
                     else if (size > 18) openTags.append("<big>");
-
+                    
                     if (size > 24) closeTags.insert(0, "</big></big>");
                     else if (size > 18) closeTags.insert(0, "</big>");
                 } else if (span instanceof RelativeSizeSpan) {
@@ -67,9 +66,7 @@ public class HtmlStandardizer {
                         closeTags.insert(0, "</h1>");
                     }
                 } else if (span instanceof BulletSpan) {
-                    // GLITCH FIX: Wrap text in a custom tag that our receiver's TagHandler can identify.
-                    openTags.append("<bullet>");
-                    closeTags.insert(0, "</bullet>");
+                    openTags.append("• ");
                 }
             }
 
