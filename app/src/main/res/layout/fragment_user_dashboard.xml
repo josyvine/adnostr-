@@ -8,17 +8,63 @@
     android:background="#121212"
     android:padding="16dp">
 
+    <!-- ENHANCEMENT: IDENTITY HEADER (RESTORED FROM JSON) -->
+    <LinearLayout
+        android:id="@+id/llIdentityHeader"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/ivUserShield"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="12dp"
+            android:src="@android:drawable/ic_menu_myplaces"
+            app:tint="#2196F3" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvUsername"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Anonymous User"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvUserIdentity"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:alpha="0.6"
+                android:text="ID: ab9e...0662"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- CONNECTION STATUS BAR -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/cvStatusHeader"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
         app:cardBackgroundColor="#1E1E1E"
         app:cardCornerRadius="12dp"
         app:cardElevation="0dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/llIdentityHeader"
         app:strokeColor="#333333"
         app:strokeWidth="1dp">
 
@@ -48,7 +94,7 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- NEW: ADD CUSTOM HASHTAG SECTION -->
+    <!-- ADD CUSTOM HASHTAG SECTION -->
     <LinearLayout
         android:id="@+id/llAddTagContainer"
         android:layout_width="0dp"
@@ -93,7 +139,7 @@
             app:iconPadding="0dp" />
     </LinearLayout>
 
-    <!-- NEW: HASHTAG MANAGEMENT BAR -->
+    <!-- HASHTAG MANAGEMENT BAR -->
     <LinearLayout
         android:id="@+id/llManageBar"
         android:layout_width="match_parent"
@@ -138,7 +184,7 @@
         app:layout_constraintTop_toBottomOf="@+id/llManageBar"
         tools:listitem="@layout/item_hashtag" />
 
-    <!-- NEW: ACTIVE LISTENING PROCESS INDICATOR -->
+    <!-- ACTIVE LISTENING PROCESS INDICATOR -->
     <LinearLayout
         android:id="@+id/llListeningState"
         android:layout_width="wrap_content"
@@ -158,13 +204,13 @@
             android:layout_marginEnd="8dp"
             android:indeterminateTint="#4CAF50" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Monitoring Decentralized Network..."
-                android:textColor="#4CAF50"
-                android:textSize="12sp"
-                android:textStyle="italic" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Monitoring Decentralized Network..."
+            android:textColor="#4CAF50"
+            android:textSize="12sp"
+            android:textStyle="italic" />
     </LinearLayout>
 
     <!-- ACTION BUTTON (START/STOP TOGGLE) -->
