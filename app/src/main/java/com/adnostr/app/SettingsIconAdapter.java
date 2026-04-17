@@ -17,6 +17,7 @@ import java.util.List;
  * FEATURE: Role-based filtering (Hides Cloudflare and Registry for standard Users).
  * FEATURE: Unified click interface for Command Popups.
  * ENHANCEMENT: Added My Hashtags Registry icon for Advertisers.
+ * ENHANCEMENT: Added Backup Identity icon for JSON Portability.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -27,8 +28,11 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     public static final int CMD_HISTORY = 4;
     public static final int CMD_RESET = 5;
     
-    // NEW: Registry Management Identifier
+    // Registry Management Identifier
     public static final int CMD_MY_HASHTAGS = 6;
+    
+    // NEW: Identity Portability Identifier
+    public static final int CMD_BACKUP = 7;
 
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
@@ -66,7 +70,11 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         // 5. History Shortcut (Everyone)
         items.add(new SettingItem(CMD_HISTORY, "History", android.R.drawable.ic_menu_recent_history));
 
-        // 6. System Reset (Everyone)
+        // 6. NEW: Identity Backup (Available to Everyone)
+        // Uses the standard Android save icon
+        items.add(new SettingItem(CMD_BACKUP, "Backup", android.R.drawable.ic_menu_save));
+
+        // 7. System Reset (Everyone)
         items.add(new SettingItem(CMD_RESET, "Reset App", android.R.drawable.ic_menu_delete));
     }
 
