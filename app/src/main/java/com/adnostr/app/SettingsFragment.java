@@ -1,5 +1,6 @@
 package com.adnostr.app;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -10,6 +11,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
@@ -18,6 +21,7 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.adnostr.app.databinding.DialogCloudflareConfigBinding;
+import com.adnostr.app.databinding.DialogIdentityBackupBinding;
 import com.adnostr.app.databinding.DialogModeSwitchBinding;
 import com.adnostr.app.databinding.DialogUsernameSetupBinding;
 import com.adnostr.app.databinding.FragmentSettingsBinding;
@@ -28,6 +32,7 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * RETAINED: 100% of original Username Manager, Cloudflare, and Role Switching logic.
  * FEATURE: Functions now launch in professionally rendered square icon popups.
  * ENHANCEMENT: Added My Hashtags deed registry for advertisers.
+ * ENHANCEMENT: Added JSON Identity Portability (Backup & Restore).
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -35,6 +40,39 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
     private FragmentSettingsBinding binding;
     private AdNostrDatabaseHelper db;
     private SettingsIconAdapter adapter;
+
+    // ENHANCEMENT: Launchers for the Android Storage Access Framework (SAF)
+    private ActivityResultLauncher<Intent> exportLauncher;
+    private ActivityResultLauncher<Intent> importLauncher;
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        // Register the launcher for EXPORTING the JSON backup
+        exportLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                        if (result.getData().getData() != null) {
+                            BackupManager.exportProfileToJson(requireContext(), result.getData().getData());
+                        }
+                    }
+                }
+        );
+
+        // Register the launcher for IMPORTING the JSON backup
+        importLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                        if (result.getData().getData() != null) {
+                            BackupManager.importProfileFromJson(requireContext(), result.getData().getData());
+                        }
+                    }
+                }
+        );
+    }
 
     @Nullable
     @Override
@@ -95,10 +133,46 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             case SettingsIconAdapter.CMD_HISTORY:
                 navigateToHistory();
                 break;
+            case SettingsIconAdapter.CMD_BACKUP:
+                showIdentityBackupDialog();
+                break;
             case SettingsIconAdapter.CMD_RESET:
                 showResetConfirmation();
                 break;
         }
+    }
+
+    /**
+     * ENHANCEMENT COMMAND POPUP: JSON Identity Portability.
+     * Allows the user to download or restore their identity passport.
+     */
+    private void showIdentityBackupDialog() {
+        DialogIdentityBackupBinding dialogBinding = DialogIdentityBackupBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(dialogBinding.getRoot())
+                .create();
+
+        // Trigger the Android System File Creator
+        dialogBinding.btnDownloadPassport.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, "adnostr_backup.json");
+            exportLauncher.launch(intent);
+            dialog.dismiss();
+        });
+
+        // Trigger the Android System File Picker
+        dialogBinding.btnRestorePassport.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            importLauncher.launch(intent);
+            dialog.dismiss();
+        });
+
+        dialogBinding.btnCloseBackup.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
     }
 
     /**
