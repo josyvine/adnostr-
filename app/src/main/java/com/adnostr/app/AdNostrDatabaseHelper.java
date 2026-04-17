@@ -17,6 +17,7 @@ import java.util.Set;
  * UPDATED: Added Advertiser Logo URL and ID keys for Branding/UI overhaul.
  * ENHANCEMENT: Added batchRestoreAccount for JSON Identity Portability.
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
+ * FIXED: Changed from .apply() to .commit() to ensure JSON restoration sticks on restart.
  */
 public class AdNostrDatabaseHelper {
 
@@ -26,7 +27,7 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_PRIVATE_KEY = "nostr_private_key_hex";
     private static final String KEY_PUBLIC_KEY = "nostr_public_key_hex";
     private static final String KEY_USERNAME = "user_display_name";
-    
+
     // BRANDING
     private static final String KEY_ADVERTISER_LOGO_URL = "advertiser_logo_url";
     private static final String KEY_ADVERTISER_LOGO_ID = "advertiser_logo_id";
@@ -351,6 +352,7 @@ public class AdNostrDatabaseHelper {
     /**
      * Overwrites all account info in one atomic transaction.
      * Used by the BackupManager when importing a Digital Passport JSON.
+     * FIXED: Changed to .commit() to ensure synchronous write before app restart.
      */
     public void batchRestoreAccount(String privKey, String pubKey, String username, String role, Set<String> interests, String cfUrl, String cfToken) {
         SharedPreferences.Editor editor = prefs.edit();
@@ -373,10 +375,12 @@ public class AdNostrDatabaseHelper {
         // 5. Enforce Setup Completion
         editor.putBoolean(KEY_SETUP_COMPLETE, true);
 
-        editor.apply();
+        // CRITICAL FIX: Synchronous commit forces write before System.exit()
+        editor.commit();
     }
 
     public void clearAllData() {
-        prefs.edit().clear().apply();
+        // CRITICAL FIX: Synchronous commit forces wipe before BackupManager continues
+        prefs.edit().clear().commit();
     }
 }
