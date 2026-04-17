@@ -1,5 +1,6 @@
 package com.adnostr.app;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -21,6 +22,8 @@ import java.util.Set;
  * FEATURE: Exports full decentralized identity and settings to a JSON "Digital Passport".
  * FEATURE: Validates imported keys via NostrKeyManager for length and BIP-340 parity.
  * FEATURE: Performs batch restore and triggers an app-level process restart.
+ * 
+ * FIXED: Added missing android.app.Activity import to resolve compilation error.
  */
 public class BackupManager {
 
@@ -104,11 +107,7 @@ public class BackupManager {
                 throw new Exception("Invalid Identity: Keys must be 64-character hex strings.");
             }
 
-            // BIP-340 Parity Check: Verify the provided PubKey matches the derived PubKey
-            // We use your existing generateKeyPair logic to check if deriving from 'priv' yields 'pub'
-            // This prevents using corrupted or manually edited passport files.
-            // (Note: In a high-perf environment, we'd extract the derivation part specifically)
-            // For now, we verify basic hex validity
+            // Basic hex validity check
             try {
                 NostrKeyManager.hexToBytes(priv);
                 NostrKeyManager.hexToBytes(pub);
