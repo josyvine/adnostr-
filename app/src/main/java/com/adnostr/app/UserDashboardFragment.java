@@ -37,6 +37,7 @@ import java.util.Set;
  * FIXED: Implemented Kind 5 (NIP-09) listening to wipe ads deleted by advertisers.
  * ENHANCEMENT: Implements Phantom Ad Blocklist and Master App-Level Decryption.
  * ENHANCEMENT: Integrated User-Side Trust Filter (Hashtag Registry check) for live traffic.
+ * ENHANCEMENT: Integrated Identity Header to display restored Username and PubKey from JSON.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -66,6 +67,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
         // Ensure WebSocket Manager is initialized with context for DB access
         wsManager.init(requireContext());
+
+        // ENHANCEMENT: Display the user's decentralized identity (from JSON restore or auto-gen)
+        setupIdentityHeader();
 
         setupHashtagGrid();
         binding.btnAddTag.setOnClickListener(v -> addNewHashtag());
@@ -161,7 +165,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             event.put("kind", 30001); 
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            
+
             // Re-identify username for reach discovery
             String contentStr = "";
             String savedName = db.getUsername();
@@ -288,7 +292,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                         // Find the 'e' tag which points to the deleted Ad ID
                                         if (tagPair != null && tagPair.length() >= 2 && "e".equals(tagPair.getString(0))) {
                                             String targetDeletedId = tagPair.getString(1);
-                                            
+
                                             // PHANTOM AD PREVENTION: Register wipe permanently
                                             db.addWipedAdId(targetDeletedId);
 
@@ -331,7 +335,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                         if (tagPair != null && tagPair.length() >= 2) {
                                             String tagName = tagPair.optString(0);
                                             String tagValue = tagPair.optString(1);
-                                            
+
                                             if ("d".equals(tagName)) {
                                                 if (tagValue.startsWith("adnostr_ad_")) {
                                                     isAdNostrBroadcast = true;
@@ -345,7 +349,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                         }
                                     }
                                 }
-                                
+
                                 if (!isAdNostrBroadcast) return;
 
                                 // =========================================================================
@@ -367,7 +371,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                 // FEATURE 3: CONTENT INTEGRITY CHECK
                                 // =========================================================================
                                 if (!content.has("title") || content.optString("title").isEmpty()) return;
-                                
+
                                 Object imageObj = content.opt("image");
                                 if (imageObj == null) return;
                                 if (imageObj instanceof JSONArray && ((JSONArray) imageObj).length() == 0) return;
@@ -460,6 +464,27 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         binding.rvHashtags.setLayoutManager(new GridLayoutManager(requireContext(), 3));
         binding.rvHashtags.setAdapter(adapter);
         updateDeleteButtonVisibility();
+    }
+
+    /**
+     * ENHANCEMENT: Populates the UI header with the user's Username and PubKey.
+     * This confirms that the identity from the JSON Passport was loaded correctly.
+     */
+    private void setupIdentityHeader() {
+        String username = db.getUsername();
+        String pubKey = db.getPublicKey();
+
+        if (username != null && !username.isEmpty()) {
+            binding.tvUsername.setText("Welcome, " + username);
+        } else {
+            binding.tvUsername.setText("Anonymous User");
+        }
+
+        if (pubKey != null && !pubKey.isEmpty()) {
+            // Truncate PubKey for a clean display (e.g., ab9e...0662)
+            String displayId = "ID: " + pubKey.substring(0, 8) + "..." + pubKey.substring(pubKey.length() - 4);
+            binding.tvUserIdentity.setText(displayId);
+        }
     }
 
     private void addNewHashtag() {
