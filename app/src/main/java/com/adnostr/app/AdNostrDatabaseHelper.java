@@ -15,6 +15,7 @@ import java.util.Set;
  * UPDATED: Added KEY_WIPED_AD_IDS to prevent "Phantom Ad" re-notifications.
  * UPDATED: Added KEY_OWNED_HASHTAGS to manage claimed private hashtags (Hybrid Registry).
  * UPDATED: Added Advertiser Logo URL and ID keys for Branding/UI overhaul.
+ * ENHANCEMENT: Added batchRestoreAccount for JSON Identity Portability.
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  */
 public class AdNostrDatabaseHelper {
@@ -341,6 +342,38 @@ public class AdNostrDatabaseHelper {
         Set<String> owned = new HashSet<>(getOwnedHashtags());
         owned.remove(tag.toLowerCase().replace("#", ""));
         saveOwnedHashtags(owned);
+    }
+
+    // =========================================================================
+    // IDENTITY PORTABILITY: BATCH RESTORE (NEW)
+    // =========================================================================
+
+    /**
+     * Overwrites all account info in one atomic transaction.
+     * Used by the BackupManager when importing a Digital Passport JSON.
+     */
+    public void batchRestoreAccount(String privKey, String pubKey, String username, String role, Set<String> interests, String cfUrl, String cfToken) {
+        SharedPreferences.Editor editor = prefs.edit();
+
+        // 1. Restore Identity
+        if (privKey != null && !privKey.isEmpty()) editor.putString(KEY_PRIVATE_KEY, privKey);
+        if (pubKey != null && !pubKey.isEmpty()) editor.putString(KEY_PUBLIC_KEY, pubKey);
+        if (username != null) editor.putString(KEY_USERNAME, username);
+
+        // 2. Restore Role
+        if (role != null && !role.isEmpty()) editor.putString(KEY_USER_ROLE, role);
+
+        // 3. Restore Interests (For Users)
+        if (interests != null) editor.putStringSet(KEY_USER_INTERESTS, interests);
+
+        // 4. Restore Private Cloudflare Credentials (For Advertisers)
+        if (cfUrl != null) editor.putString(KEY_CLOUDFLARE_WORKER_URL, cfUrl);
+        if (cfToken != null) editor.putString(KEY_CLOUDFLARE_SECRET_TOKEN, cfToken);
+
+        // 5. Enforce Setup Completion
+        editor.putBoolean(KEY_SETUP_COMPLETE, true);
+
+        editor.apply();
     }
 
     public void clearAllData() {
