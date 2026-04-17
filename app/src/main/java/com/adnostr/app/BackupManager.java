@@ -23,7 +23,8 @@ import java.util.Set;
  * FEATURE: Validates imported keys via NostrKeyManager for length and BIP-340 parity.
  * FEATURE: Performs batch restore and triggers an app-level process restart.
  * 
- * FIXED: Added missing android.app.Activity import to resolve compilation error.
+ * UPDATED: Implemented Smart Export logic to filter fields based on the active Role.
+ * UPDATED: Enforced clearAllData() before restoration to ensure a clean identity swap.
  */
 public class BackupManager {
 
@@ -31,37 +32,47 @@ public class BackupManager {
 
     /**
      * Packages current identity and settings into a JSON string and writes to the selected Uri.
-     * TRIGGERED BY: ACTION_CREATE_DOCUMENT result in SettingsFragment.
+     * FEATURE: Smart Filtering - only saves data relevant to the active user role.
      */
     public static void exportProfileToJson(Context context, Uri fileUri) {
         try {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            String currentRole = db.getUserRole();
 
             // 1. Build the JSON Object according to the requested schema
             JSONObject backup = new JSONObject();
-            
-            // Identity
+
+            // Identity (Always Included)
             backup.put("nostr_private_key", db.getPrivateKey());
             backup.put("nostr_public_key", db.getPublicKey());
             backup.put("username", db.getUsername());
-            
-            // App Role
-            String role = db.getUserRole();
-            backup.put("app_role", role);
+            backup.put("app_role", currentRole);
 
-            // User Interests (For Users)
-            JSONArray interestsArray = new JSONArray();
-            Set<String> interests = db.getInterests();
-            for (String interest : interests) {
-                interestsArray.put(interest);
+            // 2. SMART EXPORT: Filter data based on Role
+            if (RoleSelectionActivity.ROLE_USER.equals(currentRole)) {
+                // Logic for User: Include Interests, Exclude Cloudflare
+                JSONArray interestsArray = new JSONArray();
+                Set<String> interests = db.getInterests();
+                for (String interest : interests) {
+                    interestsArray.put(interest);
+                }
+                backup.put("user_interests", interestsArray);
+                
+                // Set Advertiser fields to empty for a clean User Passport
+                backup.put("cloudflare_worker_url", "");
+                backup.put("cloudflare_secret_token", "");
+                
+                Log.i(TAG, "Smart Export: Produced valid USER Passport.");
+            } else {
+                // Logic for Advertiser: Include Cloudflare, Exclude Interests
+                backup.put("user_interests", new JSONArray()); // Empty array
+                backup.put("cloudflare_worker_url", db.getCloudflareWorkerUrl());
+                backup.put("cloudflare_secret_token", db.getCloudflareSecretToken());
+                
+                Log.i(TAG, "Smart Export: Produced valid ADVERTISER Passport.");
             }
-            backup.put("user_interests", interestsArray);
 
-            // Private Storage (For Advertisers)
-            backup.put("cloudflare_worker_url", db.getCloudflareWorkerUrl());
-            backup.put("cloudflare_secret_token", db.getCloudflareSecretToken());
-
-            // 2. Write the JSON string to the physical file via Uri
+            // 3. Write the JSON string to the physical file via Uri
             String jsonContent = backup.toString(4); // Indented for readability
             OutputStream outputStream = context.getContentResolver().openOutputStream(fileUri);
             if (outputStream != null) {
@@ -125,6 +136,11 @@ public class BackupManager {
             }
 
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            
+            // CRITICAL FIX: Wipe existing auto-generated key before restoring from JSON
+            db.clearAllData();
+            
+            // Execute batch restore with imported data
             db.batchRestoreAccount(priv, pub, name, role, interests, cfUrl, cfToken);
 
             Toast.makeText(context, "Identity Passport Verified. Restoring...", Toast.LENGTH_SHORT).show();
@@ -145,12 +161,12 @@ public class BackupManager {
         Intent intent = new Intent(context, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         context.startActivity(intent);
-        
+
         // If context is an Activity, finish it
         if (context instanceof Activity) {
             ((Activity) context).finish();
         }
-        
+
         // Force process exit to ensure all static instances (WSManager, etc.) are reset
         System.exit(0);
     }
