@@ -13,19 +13,28 @@ import org.json.JSONObject;
 import java.net.URI;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Decentralized Username Manager.
  * Handles querying the Nostr network to ensure username uniqueness,
  * as well as claiming and releasing usernames using Kind 0 (Metadata) events.
+ * 
+ * ENHANCEMENT: Implements Multi-Relay Consensus for Availability Checks.
+ * Queries a pool of 3 bootstrap relays simultaneously to prevent cross-device collisions.
  */
 public class UsernameManager {
 
     private static final String TAG = "AdNostr_UserManager";
     
-    // We use nostr.band as the bootstrap for checking because it supports NIP-50 search queries
-    private static final String SEARCH_RELAY = "wss://relay.nostr.band";
+    // ENHANCEMENT: Pool of 3 Bootstrap Relays for Consensus Checking
+    private static final String[] SEARCH_RELAYS = {
+            "wss://relay.nostr.band",
+            "wss://nos.lol",
+            "wss://relay.damus.io"
+    };
 
     /**
      * Interface to pass results back to the UI thread.
@@ -43,6 +52,8 @@ public class UsernameManager {
 
     /**
      * Checks the Nostr network to see if a username is already taken by another PubKey.
+     * ENHANCEMENT: Now queries multiple relays simultaneously. If ANY relay says the name
+     * is taken by a different PubKey, the claim is rejected.
      * 
      * @param username The desired username to check.
      * @param myPubkey The current user's public key (to ensure we don't block ourselves).
@@ -57,105 +68,100 @@ public class UsernameManager {
         final String targetName = username.trim().toLowerCase();
         final AtomicBoolean isTaken = new AtomicBoolean(false);
         final AtomicBoolean hasResponded = new AtomicBoolean(false);
+        
+        // Latch to wait for all 3 relays to finish their queries
+        final CountDownLatch latch = new CountDownLatch(SEARCH_RELAYS.length);
 
         new Thread(() -> {
             try {
-                WebSocketClient client = new WebSocketClient(new URI(SEARCH_RELAY)) {
-                    @Override
-                    public void onOpen(ServerHandshake handshakedata) {
-                        try {
-                            // Construct NIP-50 Search Query for Kind 0 Metadata
-                            JSONObject filter = new JSONObject();
-                            filter.put("kinds", new JSONArray().put(0));
-                            filter.put("search", targetName);
+                // Loop through our consensus pool and launch simultaneous queries
+                for (String relayUrl : SEARCH_RELAYS) {
+                    WebSocketClient client = new WebSocketClient(new URI(relayUrl)) {
+                        @Override
+                        public void onOpen(ServerHandshake handshakedata) {
+                            try {
+                                // Construct NIP-50 Search Query for Kind 0 Metadata
+                                JSONObject filter = new JSONObject();
+                                filter.put("kinds", new JSONArray().put(0));
+                                filter.put("search", targetName);
 
-                            String subId = "namecheck-" + UUID.randomUUID().toString().substring(0, 6);
-                            String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
-                            
-                            send(req);
-                            Log.d(TAG, "Sent username availability check: " + targetName);
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error building search query: " + e.getMessage());
-                        }
-                    }
-
-                    @Override
-                    public void onMessage(String message) {
-                        try {
-                            if (!message.startsWith("[")) return;
-                            JSONArray msgArray = new JSONArray(message);
-                            String type = msgArray.getString(0);
-
-                            if ("EVENT".equals(type)) {
-                                JSONObject event = msgArray.getJSONObject(2);
-                                String eventPubkey = event.getString("pubkey");
+                                String subId = "namecheck-" + UUID.randomUUID().toString().substring(0, 6);
+                                String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
                                 
-                                // Parse the metadata content
-                                String contentStr = event.optString("content", "{}");
-                                JSONObject content = new JSONObject(contentStr);
-                                String foundName = content.optString("name", "").trim().toLowerCase();
-
-                                // If the exact name is found AND it belongs to a DIFFERENT user
-                                if (foundName.equals(targetName) && !eventPubkey.equals(myPubkey)) {
-                                    if (hasResponded.compareAndSet(false, true)) {
-                                        isTaken.set(true);
-                                        close();
-                                        new Handler(Looper.getMainLooper()).post(() -> 
-                                            callback.onResult(false, "Username is already taken by another user.")
-                                        );
-                                    }
-                                }
-                            } else if ("EOSE".equals(type)) {
-                                // End of Stored Events - If we get here and it's not taken, it's available!
-                                if (hasResponded.compareAndSet(false, true)) {
-                                    close();
-                                    new Handler(Looper.getMainLooper()).post(() -> 
-                                        callback.onResult(true, "Username is available!")
-                                    );
-                                }
+                                send(req);
+                                Log.d(TAG, "Sent username availability check to " + relayUrl + ": " + targetName);
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error building search query on " + relayUrl + ": " + e.getMessage());
                             }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error parsing search result: " + e.getMessage());
                         }
-                    }
 
-                    @Override
-                    public void onClose(int code, String reason, boolean remote) {
-                        // Fallback if closed before EOSE
-                        if (hasResponded.compareAndSet(false, true)) {
-                            new Handler(Looper.getMainLooper()).post(() -> 
-                                callback.onResult(!isTaken.get(), isTaken.get() ? "Username taken." : "Username appears available.")
-                            );
+                        @Override
+                        public void onMessage(String message) {
+                            try {
+                                if (!message.startsWith("[")) return;
+                                JSONArray msgArray = new JSONArray(message);
+                                String type = msgArray.getString(0);
+
+                                if ("EVENT".equals(type)) {
+                                    JSONObject event = msgArray.getJSONObject(2);
+                                    String eventPubkey = event.getString("pubkey");
+                                    
+                                    // Parse the metadata content
+                                    String contentStr = event.optString("content", "{}");
+                                    JSONObject content = new JSONObject(contentStr);
+                                    String foundName = content.optString("name", "").trim().toLowerCase();
+
+                                    // CONSENSUS CHECK: If the exact name is found AND it belongs to a DIFFERENT user
+                                    if (foundName.equals(targetName) && !eventPubkey.equals(myPubkey)) {
+                                        // We found a collision! Fail fast and inform the UI.
+                                        if (hasResponded.compareAndSet(false, true)) {
+                                            isTaken.set(true);
+                                            Log.w(TAG, "Collision detected on " + relayUrl + ". Name taken by: " + eventPubkey);
+                                            new Handler(Looper.getMainLooper()).post(() -> 
+                                                callback.onResult(false, "Username is already taken by another user.")
+                                            );
+                                        }
+                                        close(); // Close this connection, we have our answer
+                                    }
+                                } else if ("EOSE".equals(type)) {
+                                    // End of Stored Events - This specific relay found nothing conflicting
+                                    close();
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error parsing search result from " + relayUrl + ": " + e.getMessage());
+                            }
                         }
-                    }
 
-                    @Override
-                    public void onError(Exception ex) {
-                        Log.e(TAG, "Search Relay Error: " + ex.getMessage());
-                        if (hasResponded.compareAndSet(false, true)) {
-                            new Handler(Looper.getMainLooper()).post(() -> 
-                                callback.onResult(false, "Network error while checking availability.")
-                            );
+                        @Override
+                        public void onClose(int code, String reason, boolean remote) {
+                            latch.countDown(); // Mark this relay as finished
                         }
-                    }
-                };
 
-                client.setConnectionLostTimeout(10);
-                client.connect();
+                        @Override
+                        public void onError(Exception ex) {
+                            Log.e(TAG, "Search Relay Error on " + relayUrl + ": " + ex.getMessage());
+                            latch.countDown(); // Prevent thread locking on error
+                        }
+                    };
 
-                // 5-Second Timeout Safety Net
-                Thread.sleep(5000);
+                    client.setConnectionLostTimeout(10);
+                    client.connect();
+                }
+
+                // Wait up to 6 seconds for all 3 relays to finish searching
+                latch.await(6, TimeUnit.SECONDS);
+
+                // If we get past the latch and haven't triggered a "Taken" response yet, it's available!
                 if (hasResponded.compareAndSet(false, true)) {
-                    client.close();
                     new Handler(Looper.getMainLooper()).post(() -> 
-                        callback.onResult(!isTaken.get(), isTaken.get() ? "Username taken." : "Search timed out, assuming available.")
+                        callback.onResult(!isTaken.get(), isTaken.get() ? "Username taken." : "Username is available!")
                     );
                 }
 
             } catch (Exception e) {
                 if (hasResponded.compareAndSet(false, true)) {
                     new Handler(Looper.getMainLooper()).post(() -> 
-                        callback.onResult(false, "System error during network check.")
+                        callback.onResult(false, "System error during network consensus check.")
                     );
                 }
             }
