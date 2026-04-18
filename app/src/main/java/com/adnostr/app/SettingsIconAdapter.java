@@ -18,6 +18,8 @@ import java.util.List;
  * FEATURE: Unified click interface for Command Popups.
  * ENHANCEMENT: Added My Hashtags Registry icon for Advertisers.
  * ENHANCEMENT: Added Backup Identity icon for JSON Portability.
+ * 
+ * UPGRADE: Integrated Professional Material Icons for all Command functions.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -27,10 +29,10 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     public static final int CMD_CLOUDFLARE = 3;
     public static final int CMD_HISTORY = 4;
     public static final int CMD_RESET = 5;
-    
+
     // Registry Management Identifier
     public static final int CMD_MY_HASHTAGS = 6;
-    
+
     // NEW: Identity Portability Identifier
     public static final int CMD_BACKUP = 7;
 
@@ -46,36 +48,37 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
     /**
      * Constructor filters the icon list based on the User's Role.
+     * UPDATED: Points to new professional R.drawable assets instead of system drawables.
      */
     public SettingsIconAdapter(String userRole, OnSettingClickListener listener) {
         this.listener = listener;
 
         // 1. Profile / Username Icon (Available for Users only)
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
-            items.add(new SettingItem(CMD_PROFILE, "Profile", android.R.drawable.ic_menu_edit));
+            items.add(new SettingItem(CMD_PROFILE, "Profile", R.drawable.ic_cmd_profile));
         }
 
         // 2. Mode Switch Icon (Available to Everyone)
-        items.add(new SettingItem(CMD_MODE_SWITCH, "Switch Mode", android.R.drawable.ic_menu_sort_by_size));
+        items.add(new SettingItem(CMD_MODE_SWITCH, "Switch Mode", R.drawable.ic_cmd_switch));
 
         // 3. CLOUDFLARE STORAGE (Strict: Advertiser Only)
         if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
-            items.add(new SettingItem(CMD_CLOUDFLARE, "Storage", android.R.drawable.ic_menu_upload_you_tube));
-            
+            items.add(new SettingItem(CMD_CLOUDFLARE, "Storage", R.drawable.ic_cmd_storage));
+
             // 4. MY HASHTAGS REGISTRY (Strict: Advertiser Only)
             // Added as part of the Hybrid Hashtag Registry enhancement
-            items.add(new SettingItem(CMD_MY_HASHTAGS, "Registry", android.R.drawable.ic_menu_agenda));
+            items.add(new SettingItem(CMD_MY_HASHTAGS, "Registry", R.drawable.ic_cmd_registry));
         }
 
         // 5. History Shortcut (Everyone)
-        items.add(new SettingItem(CMD_HISTORY, "History", android.R.drawable.ic_menu_recent_history));
+        items.add(new SettingItem(CMD_HISTORY, "History", R.drawable.ic_cmd_history));
 
         // 6. NEW: Identity Backup (Available to Everyone)
-        // Uses the standard Android save icon
-        items.add(new SettingItem(CMD_BACKUP, "Backup", android.R.drawable.ic_menu_save));
+        // Uses the professional cloud-save icon
+        items.add(new SettingItem(CMD_BACKUP, "Backup", R.drawable.ic_cmd_backup));
 
         // 7. System Reset (Everyone)
-        items.add(new SettingItem(CMD_RESET, "Reset App", android.R.drawable.ic_menu_delete));
+        items.add(new SettingItem(CMD_RESET, "Reset App", R.drawable.ic_cmd_reset));
     }
 
     @NonNull
