@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#1E1E1E"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <!-- DRAG HANDLE -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="20dp"
+        android:background="#444444" />
+
+    <!-- SECTION: FONT SIZE -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="FONT SIZE"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="12dp" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:layout_marginBottom="24dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSize14"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:text="14"
+                android:textColor="#FFFFFF"
+                app:strokeColor="#333333"
+                android:layout_marginEnd="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSize18"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:text="18"
+                android:textColor="#FFFFFF"
+                app:strokeColor="#333333"
+                android:layout_marginEnd="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSize24"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:text="24"
+                android:textColor="#FFFFFF"
+                app:strokeColor="#333333"
+                android:layout_marginEnd="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSize30"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:text="30"
+                android:textColor="#FFFFFF"
+                app:strokeColor="#333333"
+                android:layout_marginEnd="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSize36"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:text="36"
+                android:textColor="#FFFFFF"
+                app:strokeColor="#333333" />
+
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- SECTION: FONT FAMILY -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="FONT FAMILY"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"
+        android:layout_marginBottom="12dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFontSans"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Default (Sans Serif)"
+            android:textColor="#FFFFFF"
+            android:gravity="start|center_vertical"
+            android:fontFamily="sans-serif"
+            android:textAllCaps="false" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFontSerif"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Classic (Serif)"
+            android:textColor="#FFFFFF"
+            android:gravity="start|center_vertical"
+            android:fontFamily="serif"
+            android:textAllCaps="false" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFontMono"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Technical (Monospace)"
+            android:textColor="#FFFFFF"
+            android:gravity="start|center_vertical"
+            android:fontFamily="monospace"
+            android:textAllCaps="false" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFontLight"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Modern Light"
+            android:textColor="#FFFFFF"
+            android:gravity="start|center_vertical"
+            android:fontFamily="sans-serif-light"
+            android:textAllCaps="false" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFontCondensed"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Professional Condensed"
+            android:textColor="#FFFFFF"
+            android:gravity="start|center_vertical"
+            android:fontFamily="sans-serif-condensed"
+            android:textAllCaps="false" />
+
+    </LinearLayout>
+
+</LinearLayout>
