@@ -595,8 +595,8 @@ public class CreateAdFragment extends Fragment {
         }
 
         // Split HTML content by sentence endings (. ! ?) while keeping the punctuation.
-        // This looks for punctuation followed by whitespace OR the start of a new HTML tag.
-        String[] sentences = descHtml.split("(?<=[.!?])(?:\\s+|(?=<))");
+        // GLITCH FIX: Added negative lookahead (?!•) to ensure injected bullets aren't orphaned from their text.
+        String[] sentences = descHtml.split("(?<=[.!?])(?:\\s+(?!•)|(?=<))");
 
         int targetImageCount = uploadedMediaUrls.size();
         if (targetImageCount <= 0) targetImageCount = 1;
@@ -604,6 +604,14 @@ public class CreateAdFragment extends Fragment {
         for (int i = 0; i < sentences.length; i++) {
             String currentSentence = sentences[i].trim();
             if (currentSentence.isEmpty()) continue;
+
+            // GLITCH FIX: If a split left an orphaned bullet, push it to the next sentence chunk
+            if (currentSentence.equals("•") || currentSentence.equals("• ") || currentSentence.matches("^(<[^>]+>)*•\\s*$")) {
+                if (i < sentences.length - 1) {
+                    sentences[i + 1] = currentSentence + " " + sentences[i + 1].trim();
+                    continue;
+                }
+            }
 
             if (chunks.size() < targetImageCount) {
                 chunks.add(currentSentence);
