@@ -64,6 +64,9 @@ public class AdTextSliderAdapter extends RecyclerView.Adapter<AdTextSliderAdapte
         // Set base text properties (Spannable HTML will override these for specific edited parts)
         tvDesc.setTextColor(0xFFBDBDBD);
         tvDesc.setTextSize(14);
+        
+        // UI POLISH FIX: Add line spacing for manual bullet list breathing room
+        tvDesc.setLineSpacing(0, 1.2f);
     }
 
     @Override
