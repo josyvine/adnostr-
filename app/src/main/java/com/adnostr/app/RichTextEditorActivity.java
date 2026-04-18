@@ -97,13 +97,9 @@ public class RichTextEditorActivity extends AppCompatActivity {
         binding.btnCancelEditor.setOnClickListener(v -> finish());
 
         // GLITCH FIX: Optimized saving logic to preserve all edits "as is"
+        // MANUAL BULLET BRIDGE: Now using HtmlStandardizer instead of native Html.toHtml()
         binding.btnSaveRichText.setOnClickListener(v -> {
-            String htmlOutput;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                htmlOutput = Html.toHtml(binding.etRichContent.getText(), Html.TO_HTML_PARAGRAPH_LINES_CONSECUTIVE);
-            } else {
-                htmlOutput = Html.toHtml(binding.etRichContent.getText());
-            }
+            String htmlOutput = HtmlStandardizer.toStandardHtml(binding.etRichContent.getText());
 
             Intent resultIntent = new Intent();
             resultIntent.putExtra("FORMATTED_HTML", htmlOutput);
