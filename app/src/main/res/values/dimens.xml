@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NAVIGATION BAR DIMENSIONS -->
+    <!-- Ensures that in Advertiser mode, tabs have enough width to prevent "BRO..." truncation -->
+    <dimen name="tab_min_width">110dp</dimen>
+    <dimen name="tab_height">70dp</dimen>
+    <dimen name="nav_icon_size">24dp</dimen>
+    <dimen name="nav_text_size">11sp</dimen>
+
+    <!-- PROFESSIONAL RICH TEXT EDITOR DIMENSIONS -->
+    <!-- Maintains the industry-standard 48dp touch target with centered 24dp graphics -->
+    <dimen name="editor_toolbar_height">64dp</dimen>
+    <dimen name="editor_icon_size">24dp</dimen>
+    <dimen name="editor_button_padding">12dp</dimen>
+    <dimen name="editor_canvas_padding">24dp</dimen>
+    <dimen name="editor_header_height">64dp</dimen>
+
+    <!-- AD POPUP & BRANDING DIMENSIONS -->
+    <dimen name="branding_bar_height">48dp</dimen>
+    <dimen name="advertiser_logo_size">32dp</dimen>
+    <dimen name="verified_banner_height">24dp</dimen>
+    <dimen name="ad_corner_radius">16dp</dimen>
+
+    <!-- GENERAL COMPONENT SPACING -->
+    <dimen name="spacing_tiny">4dp</dimen>
+    <dimen name="spacing_small">8dp</dimen>
+    <dimen name="spacing_medium">16dp</dimen>
+    <dimen name="spacing_large">24dp</dimen>
+    <dimen name="card_elevation_professional">4dp</dimen>
+    <dimen name="standard_corner_radius">12dp</dimen>
+
+    <!-- FONT SIZES -->
+    <dimen name="text_size_caption">12sp</dimen>
+    <dimen name="text_size_body">14sp</dimen>
+    <dimen name="text_size_subheading">18sp</dimen>
+    <dimen name="text_size_heading">22sp</dimen>
+</resources>
