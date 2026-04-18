@@ -40,6 +40,8 @@ import java.util.concurrent.TimeUnit;
  * FIXED: Role-based separation (3 tabs for User, 5 tabs for Advertiser).
  * FIXED: Overlay Permission (SYSTEM_ALERT_WINDOW) check for background ads.
  * FIXED: Global Ad Listener for Kind 30001 with 'd' tag validation.
+ * 
+ * ENHANCEMENT: Integrated Professional Material Navigation Icons for both User and Advertiser paths.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -82,6 +84,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Initializes ViewPager2 and TabLayout with dynamic labels.
      * This fixes the "squashed" icons by ensuring the tab count matches the role.
+     * UPDATED: Using professional Material icons (ic_nav_...) instead of system drawables.
      */
     private void setupNavigationSystem() {
         String role = db.getUserRole();
@@ -98,15 +101,15 @@ public class MainActivity extends AppCompatActivity {
                 switch (position) {
                     case 0:
                         tab.setText("Interests");
-                        tab.setIcon(android.R.drawable.ic_menu_myplaces);
+                        tab.setIcon(R.drawable.ic_nav_explore);
                         break;
                     case 1:
                         tab.setText("History");
-                        tab.setIcon(android.R.drawable.ic_menu_recent_history);
+                        tab.setIcon(R.drawable.ic_nav_history);
                         break;
                     case 2:
                         tab.setText("Settings");
-                        tab.setIcon(android.R.drawable.ic_menu_preferences);
+                        tab.setIcon(R.drawable.ic_nav_settings);
                         break;
                 }
             } else {
@@ -114,23 +117,23 @@ public class MainActivity extends AppCompatActivity {
                 switch (position) {
                     case 0:
                         tab.setText("Stats");
-                        tab.setIcon(android.R.drawable.ic_menu_sort_by_size);
+                        tab.setIcon(R.drawable.ic_nav_stats);
                         break;
                     case 1:
                         tab.setText("History");
-                        tab.setIcon(android.R.drawable.ic_menu_recent_history);
+                        tab.setIcon(R.drawable.ic_nav_history);
                         break;
                     case 2:
                         tab.setText("Broadcast");
-                        tab.setIcon(android.R.drawable.ic_menu_add);
+                        tab.setIcon(R.drawable.ic_nav_broadcast);
                         break;
                     case 3:
                         tab.setText("Network");
-                        tab.setIcon(android.R.drawable.ic_menu_share);
+                        tab.setIcon(R.drawable.ic_nav_network);
                         break;
                     case 4:
                         tab.setText("Settings");
-                        tab.setIcon(android.R.drawable.ic_menu_preferences);
+                        tab.setIcon(R.drawable.ic_nav_settings);
                         break;
                 }
             }
@@ -211,7 +214,7 @@ public class MainActivity extends AppCompatActivity {
                                 if (tags != null) {
                                     for (int i = 0; i < tags.length(); i++) {
                                         JSONArray tagPair = tags.optJSONArray(i);
-                                        if (tagPair != null && tagPair.length() >= 2) {
+                                        if (tabPair != null && tagPair.length() >= 2) {
                                             if ("d".equals(tagPair.getString(0)) && tagPair.getString(1).startsWith("adnostr_ad_")) {
                                                 isAdBroadcast = true;
                                                 break;
