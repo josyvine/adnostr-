@@ -26,15 +26,19 @@ public class HtmlStandardizer {
 
         StringBuilder sb = new StringBuilder();
         int next;
+        
+        // TRACKER: Ensures we only inject one bullet per bulleted paragraph/line
+        java.util.HashSet<BulletSpan> processedBullets = new java.util.HashSet<>();
+
         for (int i = 0; i < text.length(); i = next) {
             next = text.nextSpanTransition(i, text.length(), Object.class);
-            
+
             Object[] spans = text.getSpans(i, next, Object.class);
             StringBuilder openTags = new StringBuilder();
             StringBuilder closeTags = new StringBuilder();
 
-            // MANUAL BULLET BRIDGE FLAG
-            boolean hasBullet = false;
+            // Track if this specific segment is part of a bulleted list
+            BulletSpan currentBullet = null;
 
             for (Object span : spans) {
                 if (span instanceof StyleSpan) {
@@ -59,7 +63,7 @@ public class HtmlStandardizer {
                     int size = ((AbsoluteSizeSpan) span).getSize();
                     if (size > 24) openTags.append("<big><big>");
                     else if (size > 18) openTags.append("<big>");
-                    
+
                     if (size > 24) closeTags.insert(0, "</big></big>");
                     else if (size > 18) closeTags.insert(0, "</big>");
                 } else if (span instanceof RelativeSizeSpan) {
@@ -69,18 +73,22 @@ public class HtmlStandardizer {
                         closeTags.insert(0, "</h1>");
                     }
                 } else if (span instanceof BulletSpan) {
-                    // FLAGGED: We found a BulletSpan
-                    hasBullet = true;
+                    // FLAGGED: Capture the specific bullet span object
+                    currentBullet = (BulletSpan) span;
                 }
             }
 
-            // INJECT: Manually burn the bullet character into the string builder
-            // before the text segment, ensuring it survives JSON serialization.
-            if (hasBullet) {
-                sb.append("• ");
+            // Append structural/styling tags FIRST
+            sb.append(openTags);
+
+            // INJECT FIX: Burn the bullet character inside the open tags 
+            // (prevents <h1> from causing a line break displacement) 
+            // and wrap it in the proper AdNostr Green color.
+            if (currentBullet != null && !processedBullets.contains(currentBullet)) {
+                sb.append("<font color=\"#4CAF50\">• </font>");
+                processedBullets.add(currentBullet);
             }
 
-            sb.append(openTags);
             // Escape HTML characters in the raw text segment
             String segment = text.subSequence(i, next).toString()
                     .replace("&", "&amp;")
