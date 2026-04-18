@@ -15,20 +15,20 @@ import android.text.style.BulletSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
+import android.text.style.TypefaceSpan;
 import android.text.style.UnderlineSpan;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.PopupWindow;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.ListPopupWindow;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 /**
  * Professional Rich Text Editor Engine.
@@ -42,6 +42,9 @@ import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
  * FIXED: Empty Editor formatting resolved. Styles clicked on an empty line apply to text as you type.
  * ENHANCEMENT: Integrated Modern Popup Sliders for Text Styles, Font Sizes, and Color Palette.
  * GLITCH FIX: Applied standard HTML serialization to ensure edited text displays "as is" in popups.
+ * 
+ * UPGRADE: Replaced vertical number list with BottomSheetDialog Font & Size Picker.
+ * UPGRADE: Added support for 5 Professional Font Families (Sans, Serif, Monospace, Light, Condensed).
  */
 public class RichTextEditorActivity extends AppCompatActivity {
 
@@ -77,7 +80,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
             }
         }
 
-        // 2. Setup Action Bar Logic
+        // 2. Setup Action Bar Logic (Professional Modern 'X' and 'Done')
         binding.btnCancelEditor.setOnClickListener(v -> finish());
 
         // GLITCH FIX: Optimized saving logic to preserve all edits "as is"
@@ -88,7 +91,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
             } else {
                 htmlOutput = Html.toHtml(binding.etRichContent.getText());
             }
-            
+
             Intent resultIntent = new Intent();
             resultIntent.putExtra("FORMATTED_HTML", htmlOutput);
             setResult(RESULT_OK, resultIntent);
@@ -104,9 +107,9 @@ public class RichTextEditorActivity extends AppCompatActivity {
 
     private void setupFormattingButtons() {
         // --- TEXT STYLING POPUP (Bold, Italic, Underline Slider) ---
-        // Replacing the static bold button with the modern text style slider
-        binding.btnBold.setOnClickListener(v -> showTextStylePopup(v));
-        binding.btnItalic.setOnClickListener(v -> showTextStylePopup(v));
+        binding.btnBold.setOnClickListener(v -> toggleStyleSpan(Typeface.BOLD));
+        binding.btnItalic.setOnClickListener(v -> toggleStyleSpan(Typeface.ITALIC));
+        binding.btnUnderline.setOnClickListener(v -> toggleUnderlineSpan());
 
         // --- ALIGNMENT ---
         binding.btnAlignLeft.setOnClickListener(v -> applyAlignment(android.text.Layout.Alignment.ALIGN_NORMAL));
@@ -119,9 +122,39 @@ public class RichTextEditorActivity extends AppCompatActivity {
         // --- SUB-HEADING (H2 STYLE) ---
         binding.btnSubHeading.setOnClickListener(v -> applySubHeadingStyle());
 
-        // --- FONT SIZE & COLOR POPUPS ---
-        binding.btnFontSize.setOnClickListener(v -> showFontSizePopup(v));
+        // --- FONT SETTINGS (Fixes Vertical Displacement Glitch) ---
+        binding.btnFontSize.setOnClickListener(v -> showFontSettingsBottomSheet());
+        binding.btnFontFamily.setOnClickListener(v -> showFontSettingsBottomSheet());
+
+        // --- COLOR POPUP ---
         binding.btnTextColor.setOnClickListener(v -> showColorPopup(v));
+    }
+
+    /**
+     * Microsoft Word Style Bottom Sheet.
+     * FIXES: Vertical number displacement by using a horizontal layout.
+     * ADDS: Professional Font Family selection.
+     */
+    private void showFontSettingsBottomSheet() {
+        BottomSheetDialog bottomSheet = new BottomSheetDialog(this);
+        View view = getLayoutInflater().inflate(R.layout.bottom_sheet_editor_tools, null);
+
+        // --- Size Selectors ---
+        view.findViewById(R.id.btnSize14).setOnClickListener(v -> { applyFontSize(14); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize18).setOnClickListener(v -> { applyFontSize(18); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize24).setOnClickListener(v -> { applyFontSize(24); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize30).setOnClickListener(v -> { applyFontSize(30); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize36).setOnClickListener(v -> { applyFontSize(36); bottomSheet.dismiss(); });
+
+        // --- Font Family Selectors ---
+        view.findViewById(R.id.btnFontSans).setOnClickListener(v -> { applyFontFamily("sans-serif"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontSerif).setOnClickListener(v -> { applyFontFamily("serif"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontMono).setOnClickListener(v -> { applyFontFamily("monospace"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontLight).setOnClickListener(v -> { applyFontFamily("sans-serif-light"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontCondensed).setOnClickListener(v -> { applyFontFamily("sans-serif-condensed"); bottomSheet.dismiss(); });
+
+        bottomSheet.setContentView(view);
+        bottomSheet.show();
     }
 
     /**
@@ -160,29 +193,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
         });
     }
 
-    // =========================================================================
-    // MODERN POPUP SLIDERS & MENUS
-    // =========================================================================
-
-    /**
-     * Microsoft Word style dropdown for exact font sizes.
-     */
-    private void showFontSizePopup(View anchor) {
-        String[] sizes = {"14", "18", "23", "28", "36"};
-        ListPopupWindow listPopupWindow = new ListPopupWindow(this);
-        listPopupWindow.setAnchorView(anchor);
-        listPopupWindow.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, sizes));
-
-        // Ensure it pops up above the toolbar if there isn't space below
-        listPopupWindow.setDropDownGravity(android.view.Gravity.TOP); 
-
-        listPopupWindow.setOnItemClickListener((parent, view, position, id) -> {
-            applyFontSize(Integer.parseInt(sizes[position]));
-            listPopupWindow.dismiss();
-        });
-        listPopupWindow.show();
-    }
-
     /**
      * Horizontal color palette popup showing up to 10 colors.
      */
@@ -193,7 +203,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, 
                 ViewGroup.LayoutParams.WRAP_CONTENT, true);
 
-        // We will wire the RecyclerView from popup_color_palette.xml to the ColorPaletteAdapter
         RecyclerView rvColors = popupView.findViewById(R.id.rvColorPalette);
         rvColors.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
 
@@ -203,7 +212,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
         });
         rvColors.setAdapter(colorAdapter);
 
-        // Show above the control panel
         popupWindow.showAsDropDown(anchor, 0, -anchor.getHeight() - 150);
     }
 
@@ -232,7 +240,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
             popupWindow.dismiss();
         });
 
-        // Show above the control panel
         popupWindow.showAsDropDown(anchor, 0, -anchor.getHeight() - 150);
     }
 
@@ -280,7 +287,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
             end = bounds[1];
         }
 
-        // Handle Empty Editor State
         if (start == end) {
             if (style == Typeface.BOLD) pendingBold = !pendingBold;
             if (style == Typeface.ITALIC) pendingItalic = !pendingItalic;
@@ -353,9 +359,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
         binding.etRichContent.requestFocus();
     }
 
-    /**
-     * FIXED: Implements Bullet Deletion (Toggle On/Off).
-     */
     private void applyBulletSpan() {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
@@ -368,7 +371,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
 
         Spannable spannable = binding.etRichContent.getText();
 
-        // Check if bullet already exists to toggle it OFF
         BulletSpan[] existingSpans = spannable.getSpans(start, end, BulletSpan.class);
         if (existingSpans.length > 0) {
             for (BulletSpan span : existingSpans) {
@@ -399,9 +401,6 @@ public class RichTextEditorActivity extends AppCompatActivity {
         binding.etRichContent.requestFocus();
     }
 
-    /**
-     * Applies an exact font size (e.g., 18, 23) via AbsoluteSizeSpan.
-     */
     private void applyFontSize(int sizeInDip) {
         int start = binding.etRichContent.getSelectionStart();
         int end = binding.etRichContent.getSelectionEnd();
@@ -421,6 +420,30 @@ public class RichTextEditorActivity extends AppCompatActivity {
 
         Spannable spannable = binding.etRichContent.getText();
         spannable.setSpan(new AbsoluteSizeSpan(sizeInDip, true), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        binding.etRichContent.requestFocus();
+    }
+
+    /**
+     * Applies the selected font family to the selected text.
+     */
+    private void applyFontFamily(String family) {
+        int start = binding.etRichContent.getSelectionStart();
+        int end = binding.etRichContent.getSelectionEnd();
+
+        if (start == end) {
+            int[] bounds = getWordBounds(start);
+            start = bounds[0];
+            end = bounds[1];
+        }
+
+        if (start == end) return;
+
+        Spannable spannable = binding.etRichContent.getText();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            spannable.setSpan(new TypefaceSpan(family), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        } else {
+            spannable.setSpan(new TypefaceSpan("monospace"), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
         binding.etRichContent.requestFocus();
     }
 
