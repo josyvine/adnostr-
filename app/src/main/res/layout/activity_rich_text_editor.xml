@@ -19,11 +19,12 @@
 
         <ImageView
             android:id="@+id/btnCancelEditor"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="8dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Cancel"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:src="@drawable/ic_rt_close"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
@@ -64,8 +65,6 @@
         app:layout_constraintBottom_toTopOf="@+id/hsvControlPanel"
         app:layout_constraintTop_toBottomOf="@id/clEditorHeader">
 
-        <!-- FIXED: Added inputType and gravity to ensure Spans render correctly and 
-             formatting stays visible while typing. -->
         <EditText
             android:id="@+id/etRichContent"
             android:layout_width="match_parent"
@@ -82,8 +81,7 @@
     </androidx.core.widget.NestedScrollView>
 
     <!-- MODERN CONTROL ASSISTANCE PANEL (Bottom Formatting Toolbar) -->
-    <!-- FIXED: Ensured IDs match Java listeners and optimized touch targets 
-         to prevent "Placeholder" behavior. -->
+    <!-- FIXED: Redesigned as a professional scrollable ribbon with uniform Material icons. -->
     <HorizontalScrollView
         android:id="@+id/hsvControlPanel"
         android:layout_width="match_parent"
@@ -100,33 +98,35 @@
             android:paddingStart="12dp"
             android:paddingEnd="12dp">
 
-            <!-- ALIGNMENT GROUP -->
+            <!-- ALIGNMENT GROUP (Professional Staggered Lines) -->
             <ImageButton
                 android:id="@+id/btnAlignLeft"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Align Left"
-                android:src="@android:drawable/ic_menu_sort_alphabetically"
+                android:src="@drawable/ic_rt_align_left"
                 app:tint="#B0B0B0" />
 
             <ImageButton
                 android:id="@+id/btnAlignCenter"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Align Center"
-                android:src="@android:drawable/ic_menu_sort_by_size"
+                android:src="@drawable/ic_rt_align_center"
                 app:tint="#B0B0B0" />
 
             <ImageButton
                 android:id="@+id/btnAlignRight"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Align Right"
-                android:rotation="180"
-                android:src="@android:drawable/ic_menu_sort_alphabetically"
+                android:src="@drawable/ic_rt_align_right"
                 app:tint="#B0B0B0" />
 
             <View
@@ -136,49 +136,35 @@
                 android:layout_marginEnd="8dp"
                 android:background="#333333" />
 
-            <!-- LIST STYLES -->
-            <ImageButton
-                android:id="@+id/btnBulletList"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Bullet List"
-                android:src="@android:drawable/ic_menu_agenda"
-                app:tint="#B0B0B0" />
-
-            <ImageButton
-                android:id="@+id/btnNumberList"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Number List"
-                android:src="@android:drawable/ic_menu_my_calendar"
-                app:tint="#B0B0B0" />
-
-            <View
-                android:layout_width="1dp"
-                android:layout_height="24dp"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
-                android:background="#333333" />
-
-            <!-- TEXT FORMATTING (These now launch the Modern Popup Sliders) -->
+            <!-- BASIC FORMATTING (Bold, Italic, Underline) -->
             <ImageButton
                 android:id="@+id/btnBold"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Text Styles Popup"
-                android:src="@android:drawable/ic_menu_edit"
+                android:contentDescription="Bold"
+                android:src="@drawable/ic_rt_bold"
                 app:tint="#B0B0B0" />
 
             <ImageButton
                 android:id="@+id/btnItalic"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Text Styles Popup Alt"
-                android:src="@android:drawable/ic_menu_manage"
+                android:contentDescription="Italic"
+                android:src="@drawable/ic_rt_italic"
+                app:tint="#B0B0B0" />
+
+            <ImageButton
+                android:id="@+id/btnUnderline"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="12dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Underline"
+                android:src="@drawable/ic_rt_underline"
                 app:tint="#B0B0B0" />
 
             <View
@@ -188,17 +174,26 @@
                 android:layout_marginEnd="8dp"
                 android:background="#333333" />
 
-            <!-- SPECIALIZED SUB-HEADING TOOL -->
-            <com.google.android.material.button.MaterialButton
+            <!-- LISTS & HEADERS -->
+            <ImageButton
+                android:id="@+id/btnBulletList"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="12dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Bullet List"
+                android:src="@drawable/ic_rt_bullet"
+                app:tint="#B0B0B0" />
+
+            <ImageButton
                 android:id="@+id/btnSubHeading"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="48dp"
-                android:text="H2"
-                android:textColor="#2196F3"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="12dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Heading 2"
+                android:src="@drawable/ic_rt_header"
+                app:tint="#2196F3" />
 
             <View
                 android:layout_width="1dp"
@@ -207,23 +202,35 @@
                 android:layout_marginEnd="8dp"
                 android:background="#333333" />
 
-            <!-- FONT SIZE & COLOR (These now launch the Modern Popup Menus) -->
+            <!-- TYPOGRAPHY TOOLS (Launches the Bottom Sheet) -->
             <ImageButton
                 android:id="@+id/btnFontSize"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Font Size Menu"
-                android:src="@android:drawable/ic_menu_zoom"
+                android:contentDescription="Font Size"
+                android:src="@drawable/ic_rt_size"
+                app:tint="#B0B0B0" />
+
+            <ImageButton
+                android:id="@+id/btnFontFamily"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="12dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Font Type"
+                android:src="@drawable/ic_rt_font_family"
                 app:tint="#B0B0B0" />
 
             <ImageButton
                 android:id="@+id/btnTextColor"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:padding="12dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Text Color Palette"
-                android:src="@android:drawable/ic_menu_gallery"
+                android:contentDescription="Text Color"
+                android:src="@drawable/ic_rt_color"
                 app:tint="#4CAF50" />
 
         </LinearLayout>
