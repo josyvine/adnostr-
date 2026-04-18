@@ -33,6 +33,9 @@ public class HtmlStandardizer {
             StringBuilder openTags = new StringBuilder();
             StringBuilder closeTags = new StringBuilder();
 
+            // MANUAL BULLET BRIDGE FLAG
+            boolean hasBullet = false;
+
             for (Object span : spans) {
                 if (span instanceof StyleSpan) {
                     int style = ((StyleSpan) span).getStyle();
@@ -66,8 +69,15 @@ public class HtmlStandardizer {
                         closeTags.insert(0, "</h1>");
                     }
                 } else if (span instanceof BulletSpan) {
-                    openTags.append("• ");
+                    // FLAGGED: We found a BulletSpan
+                    hasBullet = true;
                 }
+            }
+
+            // INJECT: Manually burn the bullet character into the string builder
+            // before the text segment, ensuring it survives JSON serialization.
+            if (hasBullet) {
+                sb.append("• ");
             }
 
             sb.append(openTags);
