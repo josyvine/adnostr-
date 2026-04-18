@@ -98,6 +98,34 @@
             android:paddingStart="12dp"
             android:paddingEnd="12dp">
 
+            <!-- UNDO / REDO GROUP (Far Left Priority) -->
+            <ImageButton
+                android:id="@+id/btnUndo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="12dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Undo"
+                android:src="@drawable/ic_rt_undo"
+                app:tint="#B0B0B0" />
+
+            <ImageButton
+                android:id="@+id/btnRedo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:padding="12dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Redo"
+                android:src="@drawable/ic_rt_redo"
+                app:tint="#B0B0B0" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="#333333" />
+
             <!-- ALIGNMENT GROUP (Professional Staggered Lines) -->
             <ImageButton
                 android:id="@+id/btnAlignLeft"
