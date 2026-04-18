@@ -214,7 +214,8 @@ public class MainActivity extends AppCompatActivity {
                                 if (tags != null) {
                                     for (int i = 0; i < tags.length(); i++) {
                                         JSONArray tagPair = tags.optJSONArray(i);
-                                        if (tabPair != null && tagPair.length() >= 2) {
+                                        // FIXED: Corrected typo 'tabPair' to 'tagPair' to resolve build error
+                                        if (tagPair != null && tagPair.length() >= 2) {
                                             if ("d".equals(tagPair.getString(0)) && tagPair.getString(1).startsWith("adnostr_ad_")) {
                                                 isAdBroadcast = true;
                                                 break;
