@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.Html;
 import android.text.Spannable;
+import android.text.SpannableStringBuilder;
 import android.text.TextWatcher;
 import android.text.style.AbsoluteSizeSpan;
 import android.text.style.AlignmentSpan;
@@ -30,6 +31,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.adnostr.app.databinding.ActivityRichTextEditorBinding;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import java.util.LinkedList;
+
 /**
  * Professional Rich Text Editor Engine.
  * FEATURE: Implements Span-based formatting for Bold, Italics, and Alignment.
@@ -45,6 +48,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
  * 
  * UPGRADE: Replaced vertical number list with BottomSheetDialog Font & Size Picker.
  * UPGRADE: Added support for 5 Professional Font Families (Sans, Serif, Monospace, Light, Condensed).
+ * UPGRADE: Implemented Stack-based Undo and Redo functionality with Span preservation.
  */
 public class RichTextEditorActivity extends AppCompatActivity {
 
@@ -57,6 +61,12 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private boolean pendingUnderline = false;
     private int pendingColor = -1;
     private int pendingFontSize = -1;
+
+    // --- UNDO/REDO STATE ENGINE ---
+    private final LinkedList<CharSequence> undoStack = new LinkedList<>();
+    private final LinkedList<CharSequence> redoStack = new LinkedList<>();
+    private boolean isUndoRedoOperation = false;
+    private static final int MAX_STACK_HISTORY = 50;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +90,9 @@ public class RichTextEditorActivity extends AppCompatActivity {
             }
         }
 
+        // Initialize history with the starting state
+        saveStateToUndoStack();
+
         // 2. Setup Action Bar Logic (Professional Modern 'X' and 'Done')
         binding.btnCancelEditor.setOnClickListener(v -> finish());
 
@@ -101,26 +114,54 @@ public class RichTextEditorActivity extends AppCompatActivity {
         // 3. Setup Formatting Controls & Popups
         setupFormattingButtons();
 
-        // 4. Setup Empty Editor Typing Logic
+        // 4. Setup Empty Editor Typing Logic & Undo Tracking
         setupTextWatcher();
     }
 
     private void setupFormattingButtons() {
+        // --- UNDO / REDO ---
+        binding.btnUndo.setOnClickListener(v -> performUndo());
+        binding.btnRedo.setOnClickListener(v -> performRedo());
+
         // --- TEXT STYLING POPUP (Bold, Italic, Underline Slider) ---
-        binding.btnBold.setOnClickListener(v -> toggleStyleSpan(Typeface.BOLD));
-        binding.btnItalic.setOnClickListener(v -> toggleStyleSpan(Typeface.ITALIC));
-        binding.btnUnderline.setOnClickListener(v -> toggleUnderlineSpan());
+        binding.btnBold.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            toggleStyleSpan(Typeface.BOLD);
+        });
+        binding.btnItalic.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            toggleStyleSpan(Typeface.ITALIC);
+        });
+        binding.btnUnderline.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            toggleUnderlineSpan();
+        });
 
         // --- ALIGNMENT ---
-        binding.btnAlignLeft.setOnClickListener(v -> applyAlignment(android.text.Layout.Alignment.ALIGN_NORMAL));
-        binding.btnAlignCenter.setOnClickListener(v -> applyAlignment(android.text.Layout.Alignment.ALIGN_CENTER));
-        binding.btnAlignRight.setOnClickListener(v -> applyAlignment(android.text.Layout.Alignment.ALIGN_OPPOSITE));
+        binding.btnAlignLeft.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            applyAlignment(android.text.Layout.Alignment.ALIGN_NORMAL);
+        });
+        binding.btnAlignCenter.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            applyAlignment(android.text.Layout.Alignment.ALIGN_CENTER);
+        });
+        binding.btnAlignRight.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            applyAlignment(android.text.Layout.Alignment.ALIGN_OPPOSITE);
+        });
 
         // --- LISTS & BULLETS ---
-        binding.btnBulletList.setOnClickListener(v -> applyBulletSpan());
+        binding.btnBulletList.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            applyBulletSpan();
+        });
 
         // --- SUB-HEADING (H2 STYLE) ---
-        binding.btnSubHeading.setOnClickListener(v -> applySubHeadingStyle());
+        binding.btnSubHeading.setOnClickListener(v -> {
+            saveStateToUndoStack();
+            applySubHeadingStyle();
+        });
 
         // --- FONT SETTINGS (Fixes Vertical Displacement Glitch) ---
         binding.btnFontSize.setOnClickListener(v -> showFontSettingsBottomSheet());
@@ -128,6 +169,62 @@ public class RichTextEditorActivity extends AppCompatActivity {
 
         // --- COLOR POPUP ---
         binding.btnTextColor.setOnClickListener(v -> showColorPopup(v));
+    }
+
+    // =========================================================================
+    // UNDO / REDO LOGIC ENGINE
+    // =========================================================================
+
+    /**
+     * Captures a snapshot of the current Spannable state.
+     */
+    private void saveStateToUndoStack() {
+        if (isUndoRedoOperation) return;
+        
+        // Deep copy the current editable text including all Spans
+        undoStack.push(new SpannableStringBuilder(binding.etRichContent.getText()));
+        
+        // Clear redo stack because a new manual change breaks the redo chain
+        redoStack.clear();
+
+        // Enforce history limit
+        if (undoStack.size() > MAX_STACK_HISTORY) {
+            undoStack.removeLast();
+        }
+    }
+
+    private void performUndo() {
+        if (undoStack.isEmpty()) {
+            Toast.makeText(this, "Nothing to undo", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        isUndoRedoOperation = true;
+        // Move current state to Redo stack
+        redoStack.push(new SpannableStringBuilder(binding.etRichContent.getText()));
+        
+        // Restore previous state
+        CharSequence previousState = undoStack.pop();
+        binding.etRichContent.setText(previousState);
+        binding.etRichContent.setSelection(binding.etRichContent.getText().length());
+        isUndoRedoOperation = false;
+    }
+
+    private void performRedo() {
+        if (redoStack.isEmpty()) {
+            Toast.makeText(this, "Nothing to redo", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        isUndoRedoOperation = true;
+        // Move current state back to Undo stack
+        undoStack.push(new SpannableStringBuilder(binding.etRichContent.getText()));
+        
+        // Restore the "undone" state
+        CharSequence nextState = redoStack.pop();
+        binding.etRichContent.setText(nextState);
+        binding.etRichContent.setSelection(binding.etRichContent.getText().length());
+        isUndoRedoOperation = false;
     }
 
     /**
@@ -140,18 +237,18 @@ public class RichTextEditorActivity extends AppCompatActivity {
         View view = getLayoutInflater().inflate(R.layout.bottom_sheet_editor_tools, null);
 
         // --- Size Selectors ---
-        view.findViewById(R.id.btnSize14).setOnClickListener(v -> { applyFontSize(14); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnSize18).setOnClickListener(v -> { applyFontSize(18); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnSize24).setOnClickListener(v -> { applyFontSize(24); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnSize30).setOnClickListener(v -> { applyFontSize(30); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnSize36).setOnClickListener(v -> { applyFontSize(36); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize14).setOnClickListener(v -> { saveStateToUndoStack(); applyFontSize(14); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize18).setOnClickListener(v -> { saveStateToUndoStack(); applyFontSize(18); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize24).setOnClickListener(v -> { saveStateToUndoStack(); applyFontSize(24); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize30).setOnClickListener(v -> { saveStateToUndoStack(); applyFontSize(30); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnSize36).setOnClickListener(v -> { saveStateToUndoStack(); applyFontSize(36); bottomSheet.dismiss(); });
 
         // --- Font Family Selectors ---
-        view.findViewById(R.id.btnFontSans).setOnClickListener(v -> { applyFontFamily("sans-serif"); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnFontSerif).setOnClickListener(v -> { applyFontFamily("serif"); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnFontMono).setOnClickListener(v -> { applyFontFamily("monospace"); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnFontLight).setOnClickListener(v -> { applyFontFamily("sans-serif-light"); bottomSheet.dismiss(); });
-        view.findViewById(R.id.btnFontCondensed).setOnClickListener(v -> { applyFontFamily("sans-serif-condensed"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontSans).setOnClickListener(v -> { saveStateToUndoStack(); applyFontFamily("sans-serif"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontSerif).setOnClickListener(v -> { saveStateToUndoStack(); applyFontFamily("serif"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontMono).setOnClickListener(v -> { saveStateToUndoStack(); applyFontFamily("monospace"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontLight).setOnClickListener(v -> { saveStateToUndoStack(); applyFontFamily("sans-serif-light"); bottomSheet.dismiss(); });
+        view.findViewById(R.id.btnFontCondensed).setOnClickListener(v -> { saveStateToUndoStack(); applyFontFamily("sans-serif-condensed"); bottomSheet.dismiss(); });
 
         bottomSheet.setContentView(view);
         bottomSheet.show();
@@ -164,7 +261,12 @@ public class RichTextEditorActivity extends AppCompatActivity {
     private void setupTextWatcher() {
         binding.etRichContent.addTextChangedListener(new TextWatcher() {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                // If it's a manual keypress and not an Undo operation, save snapshot
+                if (!isUndoRedoOperation && count != after) {
+                    saveStateToUndoStack();
+                }
+            }
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -207,6 +309,7 @@ public class RichTextEditorActivity extends AppCompatActivity {
         rvColors.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
 
         ColorPaletteAdapter colorAdapter = new ColorPaletteAdapter(color -> {
+            saveStateToUndoStack();
             applyColor(color);
             popupWindow.dismiss();
         });
@@ -226,16 +329,19 @@ public class RichTextEditorActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, true);
 
         popupView.findViewById(R.id.btnPopupBold).setOnClickListener(v -> {
+            saveStateToUndoStack();
             toggleStyleSpan(Typeface.BOLD);
             popupWindow.dismiss();
         });
 
         popupView.findViewById(R.id.btnPopupItalic).setOnClickListener(v -> {
+            saveStateToUndoStack();
             toggleStyleSpan(Typeface.ITALIC);
             popupWindow.dismiss();
         });
 
         popupView.findViewById(R.id.btnPopupUnderline).setOnClickListener(v -> {
+            saveStateToUndoStack();
             toggleUnderlineSpan();
             popupWindow.dismiss();
         });
