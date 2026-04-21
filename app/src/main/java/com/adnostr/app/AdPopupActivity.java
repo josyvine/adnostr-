@@ -240,11 +240,15 @@ public class AdPopupActivity extends AppCompatActivity {
         binding.vpAdText.setAdapter(adapter);
         binding.vpAdText.setUserInputEnabled(false); // Only image slider controls text
 
+        // =========================================================================
         // GLITCH FIX: Force re-measurement of the text slider area.
-        // This stops the text from being "hidden" (0px height) until a zoom event occurs.
+        // This stops the text from being "hidden" (0px height) or truncated
+        // until a screen redraw event (like opening and closing the zoom) occurs.
+        // =========================================================================
         binding.vpAdText.post(() -> {
             binding.vpAdText.requestLayout();
-            // A secondary post to ensure ViewPager2 measurement logic catches the change
+            // A secondary post with a small delay ensures the ViewPager2 measurement
+            // logic has time to catch the change and render correctly.
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 binding.vpAdText.invalidate();
                 binding.vpAdText.requestLayout();
@@ -424,4 +428,4 @@ public class AdPopupActivity extends AppCompatActivity {
             ViewHolder(@NonNull View itemView) { super(itemView); }
         }
     }
-} 
+}
