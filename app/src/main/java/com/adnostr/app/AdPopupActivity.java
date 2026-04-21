@@ -424,4 +424,4 @@ public class AdPopupActivity extends AppCompatActivity {
             ViewHolder(@NonNull View itemView) { super(itemView); }
         }
     }
-}
+} 
