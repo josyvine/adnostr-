@@ -310,7 +310,40 @@ public class NostrListenerWorker extends Worker {
                     final String finalSender = senderPubkey;
                     final String finalDecrypted = decryptedJson;
                     final String finalTitle = content.optString("title", "Local Deal Found");
-                    final String finalDesc = content.optString("desc", "A new ad matches your interests.");
+                    
+                    // =========================================================================
+                    // GLITCH FIX: Handle HTML and JSON Arrays for Clean Notification Text
+                    // =========================================================================
+                    String cleanDesc = "A new ad matches your interests.";
+                    try {
+                        Object descObj = content.opt("desc");
+                        String rawDesc = "";
+                        
+                        if (descObj instanceof JSONArray) {
+                            JSONArray descArr = (JSONArray) descObj;
+                            if (descArr.length() > 0) {
+                                rawDesc = descArr.getString(0); // Take the first text chunk
+                            }
+                        } else if (descObj instanceof String) {
+                            rawDesc = (String) descObj;
+                        }
+                        
+                        if (!rawDesc.isEmpty()) {
+                            // Strip HTML tags for standard Android Lock Screen Display
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                                cleanDesc = android.text.Html.fromHtml(rawDesc, android.text.Html.FROM_HTML_MODE_LEGACY).toString();
+                            } else {
+                                cleanDesc = android.text.Html.fromHtml(rawDesc).toString();
+                            }
+                            // Clean up any weird spacing caused by stripped tags
+                            cleanDesc = cleanDesc.trim().replaceAll("\\s+", " ");
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to parse description for notification: " + e.getMessage());
+                    }
+                    final String finalDesc = cleanDesc;
+                    // =========================================================================
+
                     final JSONObject finalOriginalEvent = event;
                     final String finalAdTag = adTag;
 
