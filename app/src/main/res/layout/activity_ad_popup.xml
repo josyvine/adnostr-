@@ -206,7 +206,7 @@
                     android:layout_weight="1"
                     android:clickable="true"
                     android:focusable="true"
-                    android:src="@android:drawable/stat_sys_speakerphone"
+                    android:src="@drawable/ic_whatsapp"
                     android:visibility="gone"
                     app:tint="#25D366"
                     tools:visibility="visible" />
@@ -218,7 +218,7 @@
                     android:layout_weight="1"
                     android:clickable="true"
                     android:focusable="true"
-                    android:src="@android:drawable/ic_menu_call"
+                    android:src="@drawable/ic_call"
                     android:visibility="gone"
                     app:tint="#FFFFFF"
                     tools:visibility="visible" />
@@ -230,7 +230,7 @@
                     android:layout_weight="1"
                     android:clickable="true"
                     android:focusable="true"
-                    android:src="@android:drawable/ic_menu_camera"
+                    android:src="@drawable/ic_instagram"
                     android:visibility="gone"
                     app:tint="#E4405F"
                     tools:visibility="visible" />
@@ -242,7 +242,7 @@
                     android:layout_weight="1"
                     android:clickable="true"
                     android:focusable="true"
-                    android:src="@android:drawable/ic_menu_share"
+                    android:src="@drawable/ic_website"
                     android:visibility="gone"
                     app:tint="#FFFFFF"
                     tools:visibility="visible" />
@@ -254,7 +254,7 @@
                     android:layout_weight="1"
                     android:clickable="true"
                     android:focusable="true"
-                    android:src="@android:drawable/ic_dialog_map"
+                    android:src="@drawable/ic_map"
                     android:visibility="gone"
                     app:tint="#4285F4"
                     tools:visibility="visible" />
