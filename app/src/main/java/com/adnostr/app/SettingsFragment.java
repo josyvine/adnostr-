@@ -1,7 +1,9 @@
 package com.adnostr.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -16,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
@@ -144,6 +147,14 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             case SettingsIconAdapter.CMD_RESET:
                 showResetConfirmation();
                 break;
+            // GLITCH 1 FIX: Handle Personalized Activity Launch
+            case SettingsIconAdapter.CMD_PERSONALIZED:
+                startActivity(new Intent(requireContext(), PersonalizedActivity.class));
+                break;
+            // GLITCH 2 FIX: Handle Browse Advertisers Activity Launch
+            case SettingsIconAdapter.CMD_BROWSE:
+                startActivity(new Intent(requireContext(), BrowseAdvertisersActivity.class));
+                break;
         }
     }
 
@@ -161,23 +172,49 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
         dialogBinding.switchUsernameDiscovery.setChecked(db.isUsernameHidden());
         dialogBinding.switchLiveLocation.setChecked(db.isLiveLocationEnabled());
 
-        // 2. Handle Username Visibility Toggle
+        // 2. GLITCH 4 FIX: Handle Username Visibility Toggle with UI Sync and Rebroadcast
         dialogBinding.switchUsernameDiscovery.setOnCheckedChangeListener((buttonView, isChecked) -> {
             db.setUsernameHidden(isChecked);
-            String msg = isChecked ? "Username will be hidden from broadcasts." : "Username visibility restored.";
+            
+            // Sync logic: Find the User Dashboard Fragment to update header and rebroadcast to Nostr
+            if (getActivity() != null) {
+                ViewPager2 viewPager = getActivity().findViewById(R.id.mainViewPager);
+                if (viewPager != null) {
+                    // Fragments in ViewPager2 are tagged as "f" + position
+                    Fragment dashboardFrag = getParentFragmentManager().findFragmentByTag("f0");
+                    if (dashboardFrag instanceof UserDashboardFragment) {
+                        UserDashboardFragment udf = (UserDashboardFragment) dashboardFrag;
+                        udf.setupIdentityHeader();
+                        udf.broadcastUserInterests();
+                        Log.d(TAG, "Privacy Sync: Dashboard updated and Rebroadcasted.");
+                    }
+                }
+            }
+
+            String msg = isChecked ? "Username hidden locally and on network." : "Username visibility restored.";
+            Toast.makeText(getContext(), msg, Toast.LENGTH_SHORT).show();
             Log.d(TAG, "Privacy: Username Hidden = " + isChecked);
         });
 
-        // 3. Handle Live Location Toggle (Beacon Mode)
+        // 3. GLITCH 3 FIX: Handle Live Location Toggle (Beacon Mode Service)
         dialogBinding.switchLiveLocation.setOnCheckedChangeListener((buttonView, isChecked) -> {
             db.setLiveLocationEnabled(isChecked);
             
-            // Logic for Feature 3: Service control placeholder
-            // In Feature 3, we will add the startService / stopService logic here
             if (isChecked) {
-                Log.d(TAG, "Privacy: Requesting to start Location Beacon Service.");
+                // Check permissions before starting the service
+                if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    ContextCompat.startForegroundService(requireContext(), new Intent(requireContext(), LocationUpdateService.class));
+                    Log.d(TAG, "Privacy: Location Beacon Service Started.");
+                } else {
+                    // Request permission if not granted
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 101);
+                    dialogBinding.switchLiveLocation.setChecked(false); // Reset switch if no permission
+                    db.setLiveLocationEnabled(false);
+                }
             } else {
-                Log.d(TAG, "Privacy: Disabling Location Beacon.");
+                // Stop the beacon service
+                requireContext().stopService(new Intent(requireContext(), LocationUpdateService.class));
+                Log.d(TAG, "Privacy: Location Beacon Service Stopped.");
             }
         });
 
