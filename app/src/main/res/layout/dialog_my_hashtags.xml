@@ -59,14 +59,17 @@
             app:layout_constraintTop_toBottomOf="@+id/tvRegistrySubtitle" />
 
         <!-- LIST OF OWNED HASHTAGS -->
+        <!-- GLITCH 5 FIX: Changed height to wrap_content and added max height constraint -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvOwnedHashtags"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:layout_marginBottom="20dp"
             android:clipToPadding="false"
             android:overScrollMode="never"
+            app:layout_constrainedHeight="true"
+            app:layout_constraintHeight_max="400dp"
             app:layout_constraintBottom_toTopOf="@+id/btnCloseRegistry"
             app:layout_constraintTop_toBottomOf="@+id/viewDivider"
             tools:listitem="@layout/item_owned_hashtag" />
@@ -118,4 +121,4 @@
             app:strokeWidth="1dp" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
-</com.google.android.material.card.MaterialCardView> 
+</com.google.android.material.card.MaterialCardView>
