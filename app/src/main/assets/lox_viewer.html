@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Product Details</title>
+
+<!-- ICONS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<style>
+    :root {
+        --primary: #002f34; /* OLX Teal */
+        --secondary: #25D366; /* WhatsApp Green */
+        --accent: #007bff; /* Blue */
+        --bg: #F2F4F5;
+        --card-bg: #FFFFFF;
+        --text-main: #002f34;
+        --text-muted: #406367;
+        --price: #00a49f;
+    }
+
+    * { box-sizing: border-box; font-family: 'Roboto', sans-serif; }
+
+    body { margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 80px; }
+
+    /* Image Gallery */
+    .gallery-container {
+        background: #000;
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #mainImage {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: #fff;
+    }
+
+    .thumb-strip {
+        display: flex;
+        overflow-x: auto;
+        padding: 10px;
+        background: #fff;
+        gap: 8px;
+        border-bottom: 1px solid #ebedee;
+    }
+
+    .thumb-strip img {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 4px;
+        border: 2px solid transparent;
+        flex-shrink: 0;
+    }
+
+    .thumb-strip img.active {
+        border-color: var(--price);
+    }
+
+    /* Content Area */
+    .content { padding: 16px; background: #fff; margin-bottom: 8px; }
+
+    .price-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .price-tag { font-size: 28px; font-weight: 900; color: var(--text-main); }
+    
+    .mrp-tag { 
+        font-size: 14px; 
+        color: #7f9799; 
+        text-decoration: line-through; 
+        margin-left: 10px; 
+    }
+
+    .share-btn {
+        width: 40px; height: 40px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: #f2f4f5; color: var(--text-main);
+    }
+
+    .title { font-size: 18px; line-height: 1.4; color: var(--text-muted); margin-bottom: 12px; }
+
+    .loc-row { display: flex; align-items: center; gap: 6px; color: #7f9799; font-size: 13px; }
+
+    /* Section Cards */
+    .section-card { background: #fff; padding: 16px; margin-bottom: 8px; }
+    .section-title { 
+        font-size: 16px; font-weight: 700; margin-bottom: 15px; 
+        text-transform: uppercase; letter-spacing: 1px; color: var(--text-main);
+    }
+
+    /* Attributes Grid */
+    .attr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .attr-item { display: flex; flex-direction: column; gap: 2px; }
+    .attr-label { font-size: 12px; color: #7f9799; }
+    .attr-value { font-size: 14px; font-weight: 500; color: var(--text-main); }
+
+    /* Description */
+    .desc-text { font-size: 15px; line-height: 1.6; color: var(--text-muted); white-space: pre-line; }
+
+    /* Seller Info */
+    .seller-card { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+    .seller-avatar { 
+        width: 50px; height: 50px; background: #ebedee; 
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-weight: 700; color: var(--price); font-size: 20px;
+    }
+    .seller-meta { flex: 1; }
+    .seller-name { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
+    .seller-joined { font-size: 12px; color: #7f9799; }
+
+    /* Sticky Bottom Bar */
+    .action-bar {
+        position: fixed; bottom: 0; left: 0; width: 100%;
+        background: #fff; padding: 12px 16px;
+        display: flex; gap: 12px; box-shadow: 0 -4px 10px rgba(0,0,0,0.08);
+    }
+
+    .btn {
+        flex: 1; height: 48px; border-radius: 4px; display: flex;
+        align-items: center; justify-content: center; gap: 8px;
+        text-decoration: none; font-weight: 700; font-size: 15px;
+    }
+
+    .btn-chat { background: var(--text-main); color: #fff; }
+    .btn-call { border: 2px solid var(--text-main); color: var(--text-main); }
+    .btn-whatsapp { background: var(--secondary); color: #fff; }
+
+    /* Featured Badge */
+    .featured-badge {
+        position: absolute; top: 12px; left: 12px;
+        background: #ffce32; color: #002f34;
+        padding: 4px 8px; font-size: 11px; font-weight: 700;
+        border-radius: 2px; text-transform: uppercase;
+    }
+
+</style>
+</head>
+
+<body>
+
+    <!-- GALLERY -->
+    <div class="gallery-container">
+        <span id="featuredBadge" class="featured-badge" style="display:none;">Featured</span>
+        <img id="mainImage" src="" alt="Product Image">
+    </div>
+    <div class="thumb-strip" id="thumbStrip">
+        <!-- JS will populate thumbnails -->
+    </div>
+
+    <!-- MAIN DETAILS -->
+    <div class="content">
+        <div class="price-row">
+            <div class="price-tag" id="priceDisplay">₹ 0</div>
+            <div class="share-btn"><i class="fa-solid fa-share-nodes"></i></div>
+        </div>
+        <div id="mrpRow" style="margin-top: -10px; margin-bottom: 10px; display: none;">
+            <span class="mrp-tag" id="mrpDisplay">MRP ₹ 0</span>
+            <span id="discountBadge" style="color: var(--secondary); font-size: 12px; font-weight: 700;"></span>
+        </div>
+        <div class="title" id="titleDisplay">Loading product...</div>
+        <div class="loc-row">
+            <i class="fa-solid fa-location-dot"></i>
+            <span id="locationDisplay">Location</span>
+        </div>
+    </div>
+
+    <!-- SPECIFICATIONS -->
+    <div class="section-card">
+        <div class="section-title">Details & Specs</div>
+        <div class="attr-grid">
+            <div class="attr-item">
+                <span class="attr-label">Brand</span>
+                <span class="attr-value" id="brandDisplay">-</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">Condition</span>
+                <span class="attr-value" id="condDisplay">-</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">Color</span>
+                <span class="attr-value" id="colorDisplay">-</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">Storage / Size</span>
+                <span class="attr-value" id="sizeDisplay">-</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">Delivery</span>
+                <span class="attr-value" id="deliveryDisplay">-</span>
+            </div>
+            <div class="attr-item">
+                <span class="attr-label">Stock</span>
+                <span class="attr-value" id="stockDisplay">-</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- DESCRIPTION -->
+    <div class="section-card">
+        <div class="section-title">Description</div>
+        <div class="desc-text" id="descDisplay">
+            No description provided.
+        </div>
+    </div>
+
+    <!-- SELLER INFO -->
+    <div class="section-card">
+        <div class="section-title">Seller Information</div>
+        <div class="seller-card">
+            <div class="seller-avatar" id="sellerInitial">S</div>
+            <div class="seller-meta">
+                <div class="seller-name" id="sellerName">Seller Name</div>
+                <div class="seller-joined">✔ Verified AdNostr Seller</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STICKY ACTION BAR -->
+    <div class="action-bar">
+        <a href="#" id="callBtn" class="btn btn-call">
+            <i class="fa-solid fa-phone"></i> Call
+        </a>
+        <a href="#" id="chatBtn" class="btn btn-chat">
+            <i class="fa-solid fa-comment-dots"></i> Chat
+        </a>
+        <a href="#" id="waBtn" class="btn btn-whatsapp" style="display:none;">
+            <i class="fa-brands fa-whatsapp"></i> WhatsApp
+        </a>
+    </div>
+
+    <script>
+        /**
+         * This function is called by the Android Native code.
+         * @param {string} jsonString - The product data downloaded from Cloudflare.
+         */
+        function renderProduct(jsonString) {
+            try {
+                const data = JSON.parse(jsonString);
+
+                // 1. Title & Price
+                document.getElementById('titleDisplay').innerText = data.title;
+                document.getElementById('priceDisplay').innerText = "₹ " + data.price;
+                
+                if (data.mrp && parseInt(data.mrp) > parseInt(data.price)) {
+                    document.getElementById('mrpRow').style.display = "block";
+                    document.getElementById('mrpDisplay').innerText = "MRP ₹ " + data.mrp;
+                    let savings = Math.round(((data.mrp - data.price) / data.mrp) * 100);
+                    document.getElementById('discountBadge').innerText = savings + "% OFF";
+                }
+
+                // 2. Images
+                if (data.images && data.images.length > 0) {
+                    const mainImg = document.getElementById('mainImage');
+                    mainImg.src = data.images[0];
+                    
+                    const strip = document.getElementById('thumbStrip');
+                    strip.innerHTML = "";
+                    data.images.forEach((url, index) => {
+                        const img = document.createElement('img');
+                        img.src = url;
+                        if(index === 0) img.className = "active";
+                        img.onclick = function() {
+                            mainImg.src = url;
+                            document.querySelectorAll('.thumb-strip img').forEach(t => t.classList.remove('active'));
+                            img.classList.add('active');
+                        };
+                        strip.appendChild(img);
+                    });
+                }
+
+                // 3. Location
+                document.getElementById('locationDisplay').innerText = data.location.city + " (" + data.location.pincode + ")";
+
+                // 4. Specs
+                document.getElementById('brandDisplay').innerText = data.brand || "N/A";
+                document.getElementById('condDisplay').innerText = data.condition || "N/A";
+                document.getElementById('colorDisplay').innerText = data.variants.color || "N/A";
+                document.getElementById('sizeDisplay').innerText = data.variants.size || "N/A";
+                document.getElementById('deliveryDisplay').innerText = data.delivery.type;
+                document.getElementById('stockDisplay').innerText = data.inventory.quantity + " Units";
+
+                // 5. Description
+                document.getElementById('descDisplay').innerText = data.description;
+
+                // 6. Seller
+                document.getElementById('sellerName').innerText = data.seller.name;
+                document.getElementById('sellerInitial').innerText = data.seller.name.charAt(0).toUpperCase();
+
+                // 7. Action Buttons
+                if (data.seller.show_phone && data.seller.phone) {
+                    document.getElementById('callBtn').href = "tel:" + data.seller.phone;
+                    document.getElementById('waBtn').href = "https://wa.me/" + data.seller.phone.replace(/\D/g,'');
+                    document.getElementById('waBtn').style.display = "flex";
+                } else {
+                    document.getElementById('callBtn').style.display = "none";
+                }
+
+                if (!data.seller.enable_chat) {
+                    document.getElementById('chatBtn').style.display = "none";
+                }
+
+                // 8. Badges
+                if (data.is_featured) {
+                    document.getElementById('featuredBadge').style.display = "block";
+                }
+
+            } catch (e) {
+                document.body.innerHTML = "<div style='padding:50px; text-align:center;'>Error loading product data.</div>";
+            }
+        }
+    </script>
+</body>
+</html>
