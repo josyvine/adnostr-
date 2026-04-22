@@ -23,6 +23,7 @@ import androidx.viewpager2.widget.ViewPager2;
 import com.adnostr.app.databinding.DialogCloudflareConfigBinding;
 import com.adnostr.app.databinding.DialogIdentityBackupBinding;
 import com.adnostr.app.databinding.DialogModeSwitchBinding;
+import com.adnostr.app.databinding.DialogPrivacySettingsBinding;
 import com.adnostr.app.databinding.DialogUsernameSetupBinding;
 import com.adnostr.app.databinding.FragmentSettingsBinding;
 
@@ -33,6 +34,7 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * FEATURE: Functions now launch in professionally rendered square icon popups.
  * ENHANCEMENT: Added My Hashtags deed registry for advertisers.
  * ENHANCEMENT: Added JSON Identity Portability (Backup & Restore).
+ * ENHANCEMENT: Added Privacy Command Center for anonymity and location controls (Feature 1).
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -124,6 +126,9 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             case SettingsIconAdapter.CMD_MODE_SWITCH:
                 showModeSwitchDialog();
                 break;
+            case SettingsIconAdapter.CMD_PRIVACY:
+                showPrivacyDialog();
+                break;
             case SettingsIconAdapter.CMD_CLOUDFLARE:
                 showCloudflareDialog();
                 break;
@@ -140,6 +145,44 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 showResetConfirmation();
                 break;
         }
+    }
+
+    /**
+     * FEATURE 1: Privacy Command Center Dialog.
+     * Manages toggles for Username Anonymity and Live Location broadcasting.
+     */
+    private void showPrivacyDialog() {
+        DialogPrivacySettingsBinding dialogBinding = DialogPrivacySettingsBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(dialogBinding.getRoot())
+                .create();
+
+        // 1. Load current states from Database
+        dialogBinding.switchUsernameDiscovery.setChecked(db.isUsernameHidden());
+        dialogBinding.switchLiveLocation.setChecked(db.isLiveLocationEnabled());
+
+        // 2. Handle Username Visibility Toggle
+        dialogBinding.switchUsernameDiscovery.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            db.setUsernameHidden(isChecked);
+            String msg = isChecked ? "Username will be hidden from broadcasts." : "Username visibility restored.";
+            Log.d(TAG, "Privacy: Username Hidden = " + isChecked);
+        });
+
+        // 3. Handle Live Location Toggle (Beacon Mode)
+        dialogBinding.switchLiveLocation.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            db.setLiveLocationEnabled(isChecked);
+            
+            // Logic for Feature 3: Service control placeholder
+            // In Feature 3, we will add the startService / stopService logic here
+            if (isChecked) {
+                Log.d(TAG, "Privacy: Requesting to start Location Beacon Service.");
+            } else {
+                Log.d(TAG, "Privacy: Disabling Location Beacon.");
+            }
+        });
+
+        dialogBinding.btnCancelPrivacy.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
     }
 
     /**
