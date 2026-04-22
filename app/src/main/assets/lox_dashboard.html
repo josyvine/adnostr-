@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Post Ad Dashboard</title>
+
+<!-- ICONS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<style>
+    :root {
+        --primary: #FF6A00;
+        --primary-dark: #E65C00;
+        --bg: #F4F6F8;
+        --card-bg: #FFFFFF;
+        --text-main: #1A1D20;
+        --text-muted: #6B7280;
+        --border: #E5E7EB;
+    }
+
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+    body { margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 90px; }
+
+    /* Header */
+    .header {
+        background: var(--card-bg); padding: 18px 20px; font-size: 20px; font-weight: 700;
+        position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        display: flex; align-items: center; gap: 10px;
+    }
+
+    .container { padding: 15px; max-width: 800px; margin: 0 auto; }
+
+    /* Card Sections */
+    .section {
+        background: var(--card-bg); border-radius: 16px; padding: 20px;
+        margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .section h2 {
+        font-size: 16px; margin: 0 0 15px 0; color: var(--text-main);
+        display: flex; align-items: center; gap: 8px; font-weight: 600;
+    }
+    .section h2 i { color: var(--primary); }
+
+    /* Inputs */
+    .form-group { margin-bottom: 15px; }
+    .form-group:last-child { margin-bottom: 0; }
+    
+    label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;}
+    
+    input[type="text"], input[type="number"], select, textarea {
+        width: 100%; padding: 14px; border-radius: 10px; border: 1.5px solid var(--border);
+        font-size: 16px; /* 16px prevents iOS auto-zoom */
+        background: #FAFAFA; transition: border 0.2s; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); background: #FFF; }
+    textarea { resize: vertical; min-height: 100px; }
+
+    .row { display: flex; gap: 15px; }
+    .row .form-group { flex: 1; margin-bottom: 0; }
+
+    /* Media Upload Box */
+    .upload-box {
+        border: 2px dashed var(--border); padding: 30px 15px; text-align: center;
+        border-radius: 12px; background: #FAFAFA; cursor: pointer; position: relative;
+    }
+    .upload-box i { font-size: 32px; color: var(--primary); margin-bottom: 10px; }
+    .upload-box p { margin: 0; font-size: 14px; color: var(--text-muted); font-weight: 500;}
+    .upload-box input[type="file"] {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+    }
+
+    /* iOS Style Toggle Switch */
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+    .toggle-label { font-size: 15px; font-weight: 500; color: var(--text-main); }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Sticky Bottom Button */
+    .bottom-bar {
+        position: fixed; bottom: 0; left: 0; width: 100%; background: var(--card-bg);
+        padding: 15px 20px; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); z-index: 100;
+    }
+    .btn-submit {
+        width: 100%; max-width: 800px; margin: 0 auto; display: block;
+        background: var(--primary); color: white; padding: 16px; border: none;
+        border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;
+        transition: background 0.2s; box-shadow: 0 4px 12px rgba(255, 106, 0, 0.3);
+    }
+    .btn-submit:active { background: var(--primary-dark); transform: scale(0.98); }
+    .btn-submit i { margin-right: 8px; }
+
+</style>
+</head>
+
+<body>
+
+<div class="header">
+    <i class="fa-solid fa-bullhorn" style="color: var(--primary);"></i> Post Advertisement
+</div>
+
+<div class="container">
+
+    <!-- CATEGORY -->
+    <div class="section">
+        <h2><i class="fa-solid fa-list"></i> Category</h2>
+        <div class="form-group">
+            <select id="cat">
+                <option>Mobiles</option>
+                <option>Vehicles</option>
+                <option>Electronics</option>
+                <option>Property</option>
+                <option>Jobs</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- BASIC INFO -->
+    <div class="section">
+        <h2><i class="fa-solid fa-circle-info"></i> Basic Details</h2>
+        <div class="form-group">
+            <label>Ad Title</label>
+            <input type="text" id="title" placeholder="e.g. iPhone 13 128GB Excellent Condition">
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <textarea id="desc" placeholder="Provide detailed information about your product..."></textarea>
+        </div>
+        <div class="row">
+            <div class="form-group">
+                <label>Brand</label>
+                <input type="text" id="brand" placeholder="e.g. Apple">
+            </div>
+            <div class="form-group">
+                <label>Condition</label>
+                <select id="condition">
+                    <option>New</option>
+                    <option>Used</option>
+                    <option>Refurbished</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- MEDIA -->
+    <div class="section">
+        <h2><i class="fa-solid fa-image"></i> Media</h2>
+        <div class="upload-box">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <p>Tap to upload images</p>
+            <input type="file" id="mediaUpload" multiple accept="image/*">
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 10px;">Images will be securely encrypted on your device.</p>
+    </div>
+
+    <!-- PRICE -->
+    <div class="section">
+        <h2><i class="fa-solid fa-tag"></i> Pricing</h2>
+        <div class="row">
+            <div class="form-group">
+                <label>Selling Price (₹)</label>
+                <input type="number" id="price" placeholder="0">
+            </div>
+            <div class="form-group">
+                <label>Original MRP (₹)</label>
+                <input type="number" id="mrp" placeholder="0">
+            </div>
+        </div>
+        <div class="toggle-row" style="margin-top: 15px;">
+            <span class="toggle-label">Negotiable Price</span>
+            <label class="switch"><input type="checkbox" id="nego"><span class="slider"></span></label>
+        </div>
+    </div>
+
+    <!-- LOCATION -->
+    <div class="section">
+        <h2><i class="fa-solid fa-location-dot"></i> Location</h2>
+        <div class="row">
+            <div class="form-group">
+                <label>City</label>
+                <input type="text" id="city" placeholder="e.g. Mumbai">
+            </div>
+            <div class="form-group">
+                <label>Pincode</label>
+                <input type="text" id="pincode" placeholder="e.g. 400001">
+            </div>
+        </div>
+    </div>
+
+    <!-- DELIVERY -->
+    <div class="section">
+        <h2><i class="fa-solid fa-truck"></i> Delivery</h2>
+        <div class="form-group">
+            <label>Delivery Option</label>
+            <select id="delivery_type">
+                <option>Pickup Only</option>
+                <option>Courier</option>
+                <option>Free Delivery</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-top:15px;">
+            <label>Estimated Time</label>
+            <select id="delivery_time">
+                <option>Same Day</option>
+                <option>1-3 Days</option>
+                <option>3-7 Days</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- INVENTORY & VARIANTS -->
+    <div class="section">
+        <h2><i class="fa-solid fa-box"></i> Inventory & Variants</h2>
+        <div class="row">
+            <div class="form-group">
+                <label>Quantity</label>
+                <input type="number" id="qty" value="1">
+            </div>
+            <div class="form-group">
+                <label>SKU (Optional)</label>
+                <input type="text" id="sku" placeholder="ABC-123">
+            </div>
+        </div>
+        <div class="row" style="margin-top: 15px;">
+            <div class="form-group">
+                <label>Color</label>
+                <input type="text" id="color" placeholder="e.g. Black">
+            </div>
+            <div class="form-group">
+                <label>Size / Storage</label>
+                <input type="text" id="size" placeholder="e.g. 128GB">
+            </div>
+        </div>
+    </div>
+
+    <!-- SELLER & PROMOTION -->
+    <div class="section">
+        <h2><i class="fa-solid fa-user-shield"></i> Settings & Promotion</h2>
+        <div class="form-group">
+            <label>Seller Name</label>
+            <input type="text" id="seller_name" placeholder="Your Business Name">
+        </div>
+        <div class="form-group" style="margin-top: 15px;">
+            <label>WhatsApp / Phone</label>
+            <input type="text" id="phone" placeholder="+91">
+        </div>
+        
+        <div style="height: 1px; background: var(--border); margin: 20px 0;"></div>
+
+        <div class="toggle-row">
+            <span class="toggle-label">Enable In-App Chat</span>
+            <label class="switch"><input type="checkbox" id="opt_chat" checked><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+            <span class="toggle-label">Show Phone Number Publicly</span>
+            <label class="switch"><input type="checkbox" id="opt_phone" checked><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+            <span class="toggle-label" style="color:var(--primary); font-weight:700;"><i class="fa-solid fa-star"></i> Feature this Ad</span>
+            <label class="switch"><input type="checkbox" id="opt_feature"><span class="slider"></span></label>
+        </div>
+    </div>
+
+</div>
+
+<!-- STICKY BOTTOM BAR -->
+<div class="bottom-bar">
+    <button class="btn-submit" onclick="submitToAndroid()">
+        <i class="fa-solid fa-paper-plane"></i> Upload & Publish to Cloudflare
+    </button>
+</div>
+
+<!-- JAVASCRIPT BRIDGE TO ANDROID -->
+<script>
+    function submitToAndroid() {
+        // Collect all data into a JSON object
+        const productData = {
+            category: document.getElementById('cat').value,
+            title: document.getElementById('title').value,
+            description: document.getElementById('desc').value,
+            brand: document.getElementById('brand').value,
+            condition: document.getElementById('condition').value,
+            price: document.getElementById('price').value,
+            mrp: document.getElementById('mrp').value,
+            is_negotiable: document.getElementById('nego').checked,
+            location: {
+                city: document.getElementById('city').value,
+                pincode: document.getElementById('pincode').value
+            },
+            delivery: {
+                type: document.getElementById('delivery_type').value,
+                estimated_time: document.getElementById('delivery_time').value
+            },
+            inventory: {
+                quantity: document.getElementById('qty').value,
+                sku: document.getElementById('sku').value
+            },
+            variants: {
+                color: document.getElementById('color').value,
+                size: document.getElementById('size').value
+            },
+            seller: {
+                name: document.getElementById('seller_name').value,
+                phone: document.getElementById('phone').value,
+                enable_chat: document.getElementById('opt_chat').checked,
+                show_phone: document.getElementById('opt_phone').checked
+            },
+            is_featured: document.getElementById('opt_feature').checked,
+            
+            // Native Android app will handle the actual image to base64/Cloudflare logic,
+            // but we leave a placeholder here so the JSON structure is complete.
+            images: [] 
+        };
+
+        // Basic validation
+        if (!productData.title || !productData.price) {
+            alert("Please fill in the Title and Price.");
+            return;
+        }
+
+        // Pass the JSON string to the Android WebView Interface
+        // 'AndroidBridge' is the object name we will register in CreateProductActivity.java
+        if (window.AndroidBridge) {
+            window.AndroidBridge.processProductData(JSON.stringify(productData));
+        } else {
+            // Fallback for browser testing
+            console.log("AndroidBridge not found. Outputting JSON:");
+            console.log(JSON.stringify(productData, null, 2));
+            alert("Ready to publish! (Check console for JSON payload)");
+        }
+    }
+</script>
+
+</body>
+</html>
