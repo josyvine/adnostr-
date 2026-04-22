@@ -152,8 +152,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
      * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
      * UPDATED: Clears technicalLogs and prints mathematical signing diagnostics (k, e, parity).
      * ENHANCEMENT: Interests are now wrapped in Master App Encryption for dark pool privacy.
+     * GLITCH 4 FIX: Made public so it can be called from SettingsFragment.
      */
-    private void broadcastUserInterests() {
+    public void broadcastUserInterests() {
         Set<String> followed = db.getInterests();
         if (followed.isEmpty()) return;
 
@@ -477,12 +478,16 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     /**
      * ENHANCEMENT: Populates the UI header with the user's Username and PubKey.
      * This confirms that the identity from the JSON Passport was loaded correctly.
+     * GLITCH 4 FIX: Updated to respect Privacy Mode and changed to public visibility.
      */
-    private void setupIdentityHeader() {
+    public void setupIdentityHeader() {
         String username = db.getUsername();
         String pubKey = db.getPublicKey();
 
-        if (username != null && !username.isEmpty()) {
+        // GLITCH 4 FIX: Force "Anonymous User" display if privacy mode is active
+        if (db.isUsernameHidden()) {
+            binding.tvUsername.setText("Anonymous User");
+        } else if (username != null && !username.isEmpty()) {
             binding.tvUsername.setText("Welcome, " + username);
         } else {
             binding.tvUsername.setText("Anonymous User");
