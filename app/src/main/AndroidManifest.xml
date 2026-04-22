@@ -13,8 +13,11 @@
     <!-- MANDATORY FOR ANDROID 14 (API 34): Allows the P2P node to share data in the background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    
+    <!-- FEATURE 3: Mandatory for Live Location Beacon on Android 14+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
-    <!-- Advertiser GPS Location for generating shop map links -->
+    <!-- Advertiser GPS Location for generating shop map links and Nearby Feature -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -108,9 +111,53 @@
             android:exported="false"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
+        <!-- FEATURE 4: Personalized Topics Selector -->
+        <activity
+            android:name=".PersonalizedActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- FEATURE 4: Browse Advertisers Directory -->
+        <activity
+            android:name=".BrowseAdvertisersActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- FEATURE 5: Product Detail Activity (WebView Viewer) -->
+        <activity
+            android:name=".ProductDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- FEATURE 5: Advertiser Marketplace Profile -->
+        <activity
+            android:name=".AdvertiserProfileActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- FEATURE 5: Create Product Listing (WebView Dashboard) -->
+        <activity
+            android:name=".CreateProductActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
         <!-- ================================================================= -->
-        <!-- DECENTRALIZED P2P NODE SERVICE -->
+        <!-- SERVICES -->
         <!-- ================================================================= -->
+
+        <!-- FEATURE 3: Live Location Beacon Service -->
+        <service
+            android:name=".LocationUpdateService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- ORIGINAL: DECENTRALIZED P2P NODE SERVICE -->
         <service
             android:name=".IPFSNodeService"
             android:enabled="true"
