@@ -62,7 +62,7 @@ public class AdvertiserProfileAdapter extends RecyclerView.Adapter<AdvertiserPro
         public void bind(BrowseAdvertisersActivity.AdvertiserProfile profile, OnProfileClickListener listener) {
             // 1. Set Identity Info
             binding.tvBusinessName.setText(profile.name);
-            
+
             // 2. Clear and Populate Topic Chips dynamically
             binding.cgBusinessTopics.removeAllViews();
             if (profile.topics != null) {
@@ -81,6 +81,8 @@ public class AdvertiserProfileAdapter extends RecyclerView.Adapter<AdvertiserPro
 
         /**
          * Helper to create a stylized small chip for the business category.
+         * FIXED: Replaced invalid method call with setEnsureMinTouchTargetSize(false) 
+         * to allow compact rendering and resolve build failure.
          */
         private void addCategoryChip(String text) {
             Chip chip = new Chip(itemView.getContext());
@@ -88,10 +90,14 @@ public class AdvertiserProfileAdapter extends RecyclerView.Adapter<AdvertiserPro
             chip.setChipBackgroundColorResource(R.color.hfs_border_grey);
             chip.setTextColor(itemView.getResources().getColor(android.R.color.darker_gray));
             chip.setTextSize(10f);
-            chip.setChipMinTouchTargetSize(0); // Compact style for lists
+            
+            // CRITICAL FIX: The previous method did not exist in the Java API.
+            // This achieves the same "Compact" goal by disabling the 48dp target enforcement.
+            chip.setEnsureMinTouchTargetSize(false); 
+            
             chip.setClickable(false);
             chip.setCheckable(false);
-            
+
             // Ensure chips wrap content properly in the flow layout
             binding.cgBusinessTopics.addView(chip);
         }
