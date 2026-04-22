@@ -16,7 +16,7 @@
         android:text="Mobiles &amp; Tech"
         android:textColor="#FFFFFF"
         android:textSize="17sp"
-        android:textStyle="medium"
+        android:textStyle="bold"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/cbTopicSelection"
         app:layout_constraintStart_toStartOf="parent"
