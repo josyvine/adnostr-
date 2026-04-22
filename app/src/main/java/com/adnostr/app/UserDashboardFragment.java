@@ -38,6 +38,7 @@ import java.util.Set;
  * ENHANCEMENT: Implements Phantom Ad Blocklist and Master App-Level Decryption.
  * ENHANCEMENT: Integrated User-Side Trust Filter (Hashtag Registry check) for live traffic.
  * ENHANCEMENT: Integrated Identity Header to display restored Username and PubKey from JSON.
+ * ENHANCEMENT: Respects Privacy Command Center "Hide Username" flag (Feature 1).
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -168,9 +169,16 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
             // Re-identify username for reach discovery
             String contentStr = "";
-            String savedName = db.getUsername();
-            if (savedName != null && !savedName.isEmpty()) {
-                contentStr = savedName; 
+            
+            // FEATURE 1: Privacy Check for Username Anonymity
+            // Only set contentStr to username if privacy toggle allows it
+            if (!db.isUsernameHidden()) {
+                String savedName = db.getUsername();
+                if (savedName != null && !savedName.isEmpty()) {
+                    contentStr = savedName; 
+                }
+            } else {
+                Log.d(TAG, "Privacy: Anonymity active. Username excluded from Kind 30001.");
             }
 
             // ENHANCEMENT: Master App-Level Encryption
