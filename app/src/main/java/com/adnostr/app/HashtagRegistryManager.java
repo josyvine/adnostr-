@@ -3,6 +3,7 @@ package com.adnostr.app;
 import android.content.Context;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -33,6 +34,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * FEATURE: Proof-of-Ownership via earliest "created_at" timestamp.
  * FEATURE: Registry Deed d-tag: "adnostr_hashtag_owner:[tag]".
  * FEATURE: Real-time network verification of hashtag availability.
+ * UPDATED: Added Hashtag Release logic (Kind 5) for Feature 2.
  */
 public class HashtagRegistryManager {
 
@@ -162,7 +164,77 @@ public class HashtagRegistryManager {
     }
 
     /**
+     * FEATURE 2: Releases an owned hashtag by broadcasting a Kind 5 Deletion event.
+     * Logic: Finds the deed ID on the network, targets it with NIP-09, and wipes local DB.
+     */
+    public static void releaseDeed(Context context, String tag, String privKey, String pubKey, RegistryActionCallback callback) {
+        new Thread(() -> {
+            try {
+                String cleanTag = tag.toLowerCase().replace("#", "");
+                String targetDTag = "adnostr_hashtag_owner:" + cleanTag;
+                final List<JSONObject> results = Collections.synchronizedList(new ArrayList<>());
+                
+                AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+                Set<String> relays = db.getRelayPool();
+                final CountDownLatch latch = new CountDownLatch(relays.size());
+
+                // 1. Find the exact event ID of the current deed
+                JSONObject filter = new JSONObject();
+                filter.put("kinds", new JSONArray().put(30001));
+                filter.put("#d", new JSONArray().put(targetDTag));
+                filter.put("authors", new JSONArray().put(pubKey));
+
+                String subId = "find-id-" + UUID.randomUUID().toString().substring(0, 4);
+                String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
+
+                for (String url : relays) {
+                    connectAndFetchDeeds(url, req, results, latch);
+                }
+                latch.await(5, TimeUnit.SECONDS);
+
+                if (results.isEmpty()) {
+                    if (callback != null) callback.onComplete(false);
+                    return;
+                }
+
+                String eventIdToDelete = results.get(0).getString("id");
+
+                // 2. Construct Kind 5 (Event Deletion)
+                JSONObject deletionEvent = new JSONObject();
+                deletionEvent.put("kind", 5);
+                deletionEvent.put("pubkey", pubKey);
+                deletionEvent.put("created_at", System.currentTimeMillis() / 1000);
+                deletionEvent.put("content", "Hashtag #" + cleanTag + " released by owner.");
+
+                JSONArray tags = new JSONArray();
+                JSONArray eTagPair = new JSONArray();
+                eTagPair.put("e");
+                eTagPair.put(eventIdToDelete);
+                tags.put(eTagPair);
+                deletionEvent.put("tags", tags);
+
+                JSONObject signedDeletion = NostrEventSigner.signEvent(privKey, deletionEvent);
+
+                if (signedDeletion != null) {
+                    NostrPublisher.publishToPool(relays, signedDeletion, (relayUrl, success, message) -> {});
+                    
+                    // 3. Update Local Storage
+                    db.removeOwnedHashtag(cleanTag);
+                    if (callback != null) callback.onComplete(true);
+                } else {
+                    if (callback != null) callback.onComplete(false);
+                }
+
+            } catch (Exception e) {
+                Log.e(TAG, "Release failure: " + e.getMessage());
+                if (callback != null) callback.onComplete(false);
+            }
+        }).start();
+    }
+
+    /**
      * Displays the Command Center "My Hashtags" Registry Dialog.
+     * UPDATED: Implements list rendering and "Release" button actions (Feature 2).
      */
     public static void showRegistryDialog(Context context, FragmentManager fragmentManager) {
         DialogMyHashtagsBinding binding = DialogMyHashtagsBinding.inflate(LayoutInflater.from(context));
@@ -171,16 +243,50 @@ public class HashtagRegistryManager {
                 .create();
 
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+        
+        // 1. Set up Registry List logic
         List<String> ownedList = new ArrayList<>(db.getOwnedHashtags());
 
         if (ownedList.isEmpty()) {
-            // Logic to show "No tags owned" placeholder in UI if needed
-        }
+            binding.llEmptyRegistry.setVisibility(View.VISIBLE);
+            binding.rvOwnedHashtags.setVisibility(View.GONE);
+        } else {
+            binding.llEmptyRegistry.setVisibility(View.GONE);
+            binding.rvOwnedHashtags.setVisibility(View.VISIBLE);
 
-        // Setup the list of owned hashtags
-        binding.rvOwnedHashtags.setLayoutManager(new LinearLayoutManager(context));
-        // Note: You would create a small inner adapter here or a separate file for item_owned_hashtag
-        // For this logic, we assume the adapter binds the list to the RV.
+            binding.rvOwnedHashtags.setLayoutManager(new LinearLayoutManager(context));
+            
+            OwnedHashtagAdapter adapter = new OwnedHashtagAdapter(ownedList, new OwnedHashtagAdapter.OnReleaseClickListener() {
+                @Override
+                public void onReleaseClicked(String tag, int position) {
+                    Toast.makeText(context, "Releasing #" + tag + "...", Toast.LENGTH_SHORT).show();
+                    
+                    releaseDeed(context, tag, db.getPrivateKey(), db.getPublicKey(), success -> {
+                        if (success) {
+                            ownedList.remove(position);
+                            // Ensure UI updates on main thread
+                            if (context instanceof android.app.Activity) {
+                                ((android.app.Activity) context).runOnUiThread(() -> {
+                                    adapter.notifyItemRemoved(position);
+                                    if (ownedList.isEmpty()) {
+                                        binding.llEmptyRegistry.setVisibility(View.VISIBLE);
+                                        binding.rvOwnedHashtags.setVisibility(View.GONE);
+                                    }
+                                    Toast.makeText(context, "Hashtag Released.", Toast.LENGTH_SHORT).show();
+                                });
+                            }
+                        } else {
+                            if (context instanceof android.app.Activity) {
+                                ((android.app.Activity) context).runOnUiThread(() -> 
+                                    Toast.makeText(context, "Release failed. Check network.", Toast.LENGTH_SHORT).show()
+                                );
+                            }
+                        }
+                    });
+                }
+            });
+            binding.rvOwnedHashtags.setAdapter(adapter);
+        }
 
         binding.btnCloseRegistry.setOnClickListener(v -> dialog.dismiss());
         dialog.show();
