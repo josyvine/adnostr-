@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
  * 
  * ENHANCEMENT: Integrated Professional Material Navigation Icons for both User and Advertiser paths.
  * ENHANCEMENT: Implemented dynamic TabMode switching to prevent text truncation in Advertiser mode.
+ * ENHANCEMENT: Added "Nearby" tab for real-time discovery (Feature 3).
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -69,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
         // 2. Setup the Toolbar
         setSupportActionBar(binding.toolbar);
 
-        // 3. Setup Dynamic Navigation System (User: 3 Tabs, Advertiser: 5 Tabs)
+        // 3. Setup Dynamic Navigation System (Now including Nearby and Publisher tabs)
         setupNavigationSystem();
 
         // 4. Request Permissions for GPS, Media, and Overlays
@@ -87,6 +88,7 @@ public class MainActivity extends AppCompatActivity {
      * This fixes the "squashed" icons by ensuring the tab count matches the role.
      * UPDATED: Using professional Material icons (ic_nav_...) instead of system drawables.
      * UPDATED: Implements dynamic MODE_SCROLLABLE for Advertisers to prevent text truncation.
+     * FEATURE 3: Added Nearby Tab logic.
      */
     private void setupNavigationSystem() {
         String role = db.getUserRole();
@@ -94,11 +96,11 @@ public class MainActivity extends AppCompatActivity {
         binding.mainViewPager.setAdapter(pagerAdapter);
 
         // Fix swipe performance
-        binding.mainViewPager.setOffscreenPageLimit(5); 
+        binding.mainViewPager.setOffscreenPageLimit(7); 
 
         // ENHANCEMENT: Dynamic Tab Mode selection
-        // For 3 tabs (User), Fixed mode is perfect. 
-        // For 5 tabs (Advertiser), Scrollable mode prevents "STA...", "HIS..." truncation.
+        // For 3-4 tabs (User), Fixed mode is perfect. 
+        // For 5-7 tabs (Advertiser), Scrollable mode prevents "STA...", "HIS..." truncation.
         if (RoleSelectionActivity.ROLE_USER.equals(role)) {
             binding.tabLayout.setTabMode(TabLayout.MODE_FIXED);
         } else {
@@ -108,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
         // Link TabLayout with dynamic logic to ensure icons and names render correctly
         new TabLayoutMediator(binding.tabLayout, binding.mainViewPager, (tab, position) -> {
             if (RoleSelectionActivity.ROLE_USER.equals(role)) {
-                // USER LABELS (3 ITEMS)
+                // USER LABELS (4 ITEMS)
                 switch (position) {
                     case 0:
                         tab.setText("Interests");
@@ -119,12 +121,17 @@ public class MainActivity extends AppCompatActivity {
                         tab.setIcon(R.drawable.ic_nav_history);
                         break;
                     case 2:
+                        // FEATURE 3
+                        tab.setText("Nearby");
+                        tab.setIcon(R.drawable.ic_nav_nearby);
+                        break;
+                    case 3:
                         tab.setText("Settings");
                         tab.setIcon(R.drawable.ic_nav_settings);
                         break;
                 }
             } else {
-                // ADVERTISER LABELS (5 ITEMS)
+                // ADVERTISER LABELS (Now handles Publisher and Nearby)
                 switch (position) {
                     case 0:
                         tab.setText("Stats");
@@ -143,6 +150,16 @@ public class MainActivity extends AppCompatActivity {
                         tab.setIcon(R.drawable.ic_nav_network);
                         break;
                     case 4:
+                        // FEATURE 5 (Placeholder for now, handles indexing logic)
+                        tab.setText("Publisher");
+                        tab.setIcon(R.drawable.ic_nav_publisher);
+                        break;
+                    case 5:
+                        // FEATURE 3
+                        tab.setText("Nearby");
+                        tab.setIcon(R.drawable.ic_nav_nearby);
+                        break;
+                    case 6:
                         tab.setText("Settings");
                         tab.setIcon(R.drawable.ic_nav_settings);
                         break;
@@ -156,6 +173,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Handles Location, Storage, and Notification permissions.
+     * FEATURE 3: Ensure location permissions are strictly checked for Nearby features.
      */
     private void checkAndRequestAppPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -169,12 +187,18 @@ public class MainActivity extends AppCompatActivity {
 
         List<String> permissions = new ArrayList<>();
         permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
             permissions.add(Manifest.permission.POST_NOTIFICATIONS);
         } else {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+        
+        // Android 14 Foreground Service requirement
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            permissions.add(Manifest.permission.FOREGROUND_SERVICE_LOCATION);
         }
 
         List<String> listPermissionsNeeded = new ArrayList<>();
@@ -225,7 +249,6 @@ public class MainActivity extends AppCompatActivity {
                                 if (tags != null) {
                                     for (int i = 0; i < tags.length(); i++) {
                                         JSONArray tagPair = tags.optJSONArray(i);
-                                        // FIXED: Corrected typo 'tabPair' to 'tagPair' to resolve build error
                                         if (tagPair != null && tagPair.length() >= 2) {
                                             if ("d".equals(tagPair.getString(0)) && tagPair.getString(1).startsWith("adnostr_ad_")) {
                                                 isAdBroadcast = true;
