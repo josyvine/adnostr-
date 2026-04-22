@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginVertical="8dp"
+    app:cardBackgroundColor="#1E1E1E"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
+    app:strokeColor="#333333"
+    app:strokeWidth="1dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <!-- BUSINESS LOGO / ICON -->
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/ivBusinessLogo"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="#121212"
+            android:padding="12dp"
+            android:src="@drawable/ic_cmd_browse"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.MaterialComponents.SmallComponent"
+            app:tint="#2196F3" />
+
+        <!-- BUSINESS NAME -->
+        <TextView
+            android:id="@+id/tvBusinessName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="Premium Tech Store"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@+id/ivArrowGo"
+            app:layout_constraintStart_toEndOf="@+id/ivBusinessLogo"
+            app:layout_constraintTop_toTopOf="@+id/ivBusinessLogo" />
+
+        <!-- VERIFIED STATUS -->
+        <TextView
+            android:id="@+id/tvBusinessVerified"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="✔ Verified Advertiser"
+            android:textColor="#4CAF50"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="@+id/tvBusinessName"
+            app:layout_constraintTop_toBottomOf="@+id/tvBusinessName" />
+
+        <!-- CATEGORY CHIPS (TOPICS) -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/cgBusinessTopics"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/ivBusinessLogo">
+
+            <!-- Dynamic Chips will be injected here by the adapter -->
+            <com.google.android.material.chip.Chip
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mobiles"
+                android:textColor="#888888"
+                android:textSize="10sp"
+                app:chipBackgroundColor="#121212"
+                app:chipMinTouchTargetSize="0dp"
+                app:chipStrokeColor="#333333"
+                app:chipStrokeWidth="1dp"
+                tools:ignore="SmallSp" />
+
+        </com.google.android.material.chip.ChipGroup>
+
+        <!-- VIEW INDICATOR -->
+        <ImageView
+            android:id="@+id/ivArrowGo"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:alpha="0.3"
+            android:src="@android:drawable/ic_media_play"
+            app:layout_constraintBottom_toBottomOf="@+id/ivBusinessLogo"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/ivBusinessLogo"
+            app:tint="#FFFFFF" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>
