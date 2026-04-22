@@ -34,11 +34,12 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
+            android:layout_marginEnd="12dp"
             android:text="#kochi"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
-            app:layout_constraintEnd_toStartOf="@+id/tvOwnershipLabel"
+            app:layout_constraintEnd_toStartOf="@+id/btnReleaseHashtag"
             app:layout_constraintStart_toEndOf="@+id/ivOwnedStatusIcon"
             app:layout_constraintTop_toTopOf="parent" />
 
@@ -56,19 +57,24 @@
             app:layout_constraintStart_toStartOf="@+id/tvOwnedTagName"
             app:layout_constraintTop_toBottomOf="@+id/tvOwnedTagName" />
 
-        <!-- LOCK INDICATOR -->
-        <TextView
-            android:id="@+id/tvOwnershipLabel"
+        <!-- FEATURE 2: RELEASE ACTION BUTTON -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnReleaseHashtag"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@android:color/transparent"
-            android:text="LOCKED"
-            android:textColor="#2196F3"
-            android:textSize="10sp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:text="RELEASE"
+            android:textColor="#FF5252"
+            android:textSize="11sp"
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toTopOf="parent"
+            app:rippleColor="#33FF5252" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView>
