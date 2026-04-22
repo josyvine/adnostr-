@@ -16,6 +16,7 @@ import java.util.Set;
  * UPDATED: Added KEY_OWNED_HASHTAGS to manage claimed private hashtags (Hybrid Registry).
  * UPDATED: Added Advertiser Logo URL and ID keys for Branding/UI overhaul.
  * ENHANCEMENT: Added batchRestoreAccount for JSON Identity Portability.
+ * ENHANCEMENT: Added Privacy Command Center keys for Username visibility and Live Location.
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  * FIXED: Changed from .apply() to .commit() to ensure JSON restoration sticks on restart.
  */
@@ -58,6 +59,10 @@ public class AdNostrDatabaseHelper {
 
     // HASHTAG REGISTRY (NEW)
     private static final String KEY_OWNED_HASHTAGS = "my_owned_hashtags_registry";
+
+    // PRIVACY COMMAND CENTER KEYS
+    private static final String KEY_USERNAME_HIDDEN = "privacy_username_hidden";
+    private static final String KEY_LIVE_LOCATION_ENABLED = "privacy_live_location_enabled";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -343,6 +348,26 @@ public class AdNostrDatabaseHelper {
         Set<String> owned = new HashSet<>(getOwnedHashtags());
         owned.remove(tag.toLowerCase().replace("#", ""));
         saveOwnedHashtags(owned);
+    }
+
+    // =========================================================================
+    // PRIVACY COMMAND CENTER METHODS (NEW)
+    // =========================================================================
+
+    public void setUsernameHidden(boolean isHidden) {
+        prefs.edit().putBoolean(KEY_USERNAME_HIDDEN, isHidden).apply();
+    }
+
+    public boolean isUsernameHidden() {
+        return prefs.getBoolean(KEY_USERNAME_HIDDEN, false);
+    }
+
+    public void setLiveLocationEnabled(boolean isEnabled) {
+        prefs.edit().putBoolean(KEY_LIVE_LOCATION_ENABLED, isEnabled).apply();
+    }
+
+    public boolean isLiveLocationEnabled() {
+        return prefs.getBoolean(KEY_LIVE_LOCATION_ENABLED, false);
     }
 
     // =========================================================================
