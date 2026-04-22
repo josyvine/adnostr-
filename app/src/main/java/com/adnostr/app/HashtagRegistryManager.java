@@ -81,7 +81,7 @@ public class HashtagRegistryManager {
     private static int checkOwnershipInternal(Context context, String tag, String myPubkey) {
         final String targetDTag = "adnostr_hashtag_owner:" + tag.toLowerCase().replace("#", "");
         final List<JSONObject> deedsFound = Collections.synchronizedList(new ArrayList<>());
-        
+
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
         Set<String> relays = db.getRelayPool();
         final CountDownLatch latch = new CountDownLatch(relays.size());
@@ -149,7 +149,7 @@ public class HashtagRegistryManager {
                 NostrPublisher.publishToPool(relayPool, signedDeed, (relayUrl, success, message) -> {
                     // Logs handled by global publisher
                 });
-                
+
                 // Save locally so the app remembers
                 AdNostrDatabaseHelper.getInstance(context).addOwnedHashtag(cleanTag);
                 if (callback != null) callback.onComplete(true);
@@ -173,7 +173,7 @@ public class HashtagRegistryManager {
                 String cleanTag = tag.toLowerCase().replace("#", "");
                 String targetDTag = "adnostr_hashtag_owner:" + cleanTag;
                 final List<JSONObject> results = Collections.synchronizedList(new ArrayList<>());
-                
+
                 AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
                 Set<String> relays = db.getRelayPool();
                 final CountDownLatch latch = new CountDownLatch(relays.size());
@@ -217,7 +217,7 @@ public class HashtagRegistryManager {
 
                 if (signedDeletion != null) {
                     NostrPublisher.publishToPool(relays, signedDeletion, (relayUrl, success, message) -> {});
-                    
+
                     // 3. Update Local Storage
                     db.removeOwnedHashtag(cleanTag);
                     if (callback != null) callback.onComplete(true);
@@ -243,7 +243,7 @@ public class HashtagRegistryManager {
                 .create();
 
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
-        
+
         // 1. Set up Registry List logic
         List<String> ownedList = new ArrayList<>(db.getOwnedHashtags());
 
@@ -255,19 +255,26 @@ public class HashtagRegistryManager {
             binding.rvOwnedHashtags.setVisibility(View.VISIBLE);
 
             binding.rvOwnedHashtags.setLayoutManager(new LinearLayoutManager(context));
-            
-            OwnedHashtagAdapter adapter = new OwnedHashtagAdapter(ownedList, new OwnedHashtagAdapter.OnReleaseClickListener() {
+
+            // CRITICAL FIX: Use an array to store the adapter reference. 
+            // This allows the listener to access the adapter before the assignment is complete.
+            final OwnedHashtagAdapter[] adapterWrapper = new OwnedHashtagAdapter[1];
+
+            adapterWrapper[0] = new OwnedHashtagAdapter(ownedList, new OwnedHashtagAdapter.OnReleaseClickListener() {
                 @Override
                 public void onReleaseClicked(String tag, int position) {
                     Toast.makeText(context, "Releasing #" + tag + "...", Toast.LENGTH_SHORT).show();
-                    
+
                     releaseDeed(context, tag, db.getPrivateKey(), db.getPublicKey(), success -> {
                         if (success) {
                             ownedList.remove(position);
                             // Ensure UI updates on main thread
                             if (context instanceof android.app.Activity) {
                                 ((android.app.Activity) context).runOnUiThread(() -> {
-                                    adapter.notifyItemRemoved(position);
+                                    // Use the wrapped reference to notify removal
+                                    if (adapterWrapper[0] != null) {
+                                        adapterWrapper[0].notifyItemRemoved(position);
+                                    }
                                     if (ownedList.isEmpty()) {
                                         binding.llEmptyRegistry.setVisibility(View.VISIBLE);
                                         binding.rvOwnedHashtags.setVisibility(View.GONE);
@@ -285,7 +292,7 @@ public class HashtagRegistryManager {
                     });
                 }
             });
-            binding.rvOwnedHashtags.setAdapter(adapter);
+            binding.rvOwnedHashtags.setAdapter(adapterWrapper[0]);
         }
 
         binding.btnCloseRegistry.setOnClickListener(v -> dialog.dismiss());
