@@ -40,6 +40,10 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     // FEATURE 1: Privacy Command Identifier
     public static final int CMD_PRIVACY = 8;
 
+    // GLITCH 1 & 2 FIX: New Command Identifiers
+    public static final int CMD_PERSONALIZED = 9;
+    public static final int CMD_BROWSE = 10;
+
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
 
@@ -67,6 +71,14 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
         // 3. FEATURE 1: Privacy Command Center (Available to Everyone)
         items.add(new SettingItem(CMD_PRIVACY, "Privacy", R.drawable.ic_cmd_privacy));
+
+        // GLITCH 1 FIX: Personalized Icon (Available to Everyone)
+        items.add(new SettingItem(CMD_PERSONALIZED, "Personalized", R.drawable.ic_cmd_personalized));
+
+        // GLITCH 2 FIX: Browse Icon (Available to Users)
+        if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
+            items.add(new SettingItem(CMD_BROWSE, "Browse", R.drawable.ic_cmd_browse));
+        }
 
         // 4. CLOUDFLARE STORAGE (Strict: Advertiser Only)
         if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
