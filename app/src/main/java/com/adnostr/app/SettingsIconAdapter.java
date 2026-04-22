@@ -18,6 +18,7 @@ import java.util.List;
  * FEATURE: Unified click interface for Command Popups.
  * ENHANCEMENT: Added My Hashtags Registry icon for Advertisers.
  * ENHANCEMENT: Added Backup Identity icon for JSON Portability.
+ * ENHANCEMENT: Added Privacy Command Center icon for all roles (Feature 1).
  * 
  * UPGRADE: Integrated Professional Material Icons for all Command functions.
  */
@@ -35,6 +36,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
     // NEW: Identity Portability Identifier
     public static final int CMD_BACKUP = 7;
+
+    // FEATURE 1: Privacy Command Identifier
+    public static final int CMD_PRIVACY = 8;
 
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
@@ -61,23 +65,26 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         // 2. Mode Switch Icon (Available to Everyone)
         items.add(new SettingItem(CMD_MODE_SWITCH, "Switch Mode", R.drawable.ic_cmd_switch));
 
-        // 3. CLOUDFLARE STORAGE (Strict: Advertiser Only)
+        // 3. FEATURE 1: Privacy Command Center (Available to Everyone)
+        items.add(new SettingItem(CMD_PRIVACY, "Privacy", R.drawable.ic_cmd_privacy));
+
+        // 4. CLOUDFLARE STORAGE (Strict: Advertiser Only)
         if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
             items.add(new SettingItem(CMD_CLOUDFLARE, "Storage", R.drawable.ic_cmd_storage));
 
-            // 4. MY HASHTAGS REGISTRY (Strict: Advertiser Only)
+            // 5. MY HASHTAGS REGISTRY (Strict: Advertiser Only)
             // Added as part of the Hybrid Hashtag Registry enhancement
             items.add(new SettingItem(CMD_MY_HASHTAGS, "Registry", R.drawable.ic_cmd_registry));
         }
 
-        // 5. History Shortcut (Everyone)
+        // 6. History Shortcut (Everyone)
         items.add(new SettingItem(CMD_HISTORY, "History", R.drawable.ic_cmd_history));
 
-        // 6. NEW: Identity Backup (Available to Everyone)
+        // 7. NEW: Identity Backup (Available to Everyone)
         // Uses the professional cloud-save icon
         items.add(new SettingItem(CMD_BACKUP, "Backup", R.drawable.ic_cmd_backup));
 
-        // 7. System Reset (Everyone)
+        // 8. System Reset (Everyone)
         items.add(new SettingItem(CMD_RESET, "Reset App", R.drawable.ic_cmd_reset));
     }
 
