@@ -26,6 +26,7 @@ import okhttp3.Response;
  * FEATURE: Auth via Secret-Token provided in Advertiser Settings.
  * FEATURE: Single-click physical wipe (HTTP DELETE) logic.
  * FEATURE: Detailed forensic logging for the Technical Network Console.
+ * ENHANCEMENT: Added JSON file upload/download for Feature 5 (Marketplace).
  * 
  * FIXED: Deletion logic now extracts clean IDs from full URLs to ensure R2 physical wipe success.
  */
@@ -42,6 +43,14 @@ public class CloudflareHelper {
         void onStatusUpdate(String log);
         void onSuccess(String uploadedUrl, String fileId);
         void onFailure(Exception e);
+    }
+
+    /**
+     * Specialized callback for downloading product JSON data.
+     */
+    public interface JsonDownloadCallback {
+        void onDownloadSuccess(String jsonContent);
+        void onDownloadFailure(Exception e);
     }
 
     public CloudflareHelper() {
@@ -132,6 +141,85 @@ public class CloudflareHelper {
             postLog(callback, "!!! PREPARATION ERROR: " + e.getMessage() + "\n");
             postFailure(callback, e);
         }
+    }
+
+    /**
+     * FEATURE 5: Uploads a raw JSON string as a file to the Cloudflare Worker.
+     */
+    public void uploadJsonFile(Context context, String jsonContent, String fileName, CloudflareCallback callback) {
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+        String workerUrl = db.getCloudflareWorkerUrl();
+        String secretToken = db.getCloudflareSecretToken();
+
+        if (workerUrl == null || workerUrl.isEmpty()) {
+            postFailure(callback, new Exception("Worker URL missing."));
+            return;
+        }
+
+        try {
+            RequestBody fileBody = RequestBody.create(jsonContent, MediaType.parse("application/json; charset=utf-8"));
+            MultipartBody requestBody = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", fileName, fileBody)
+                    .build();
+
+            Request request = new Request.Builder()
+                    .url(workerUrl)
+                    .post(requestBody)
+                    .addHeader("Secret-Token", secretToken)
+                    .build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    postFailure(callback, e);
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String rawBody = response.body() != null ? response.body().string() : "";
+                    if (response.isSuccessful()) {
+                        try {
+                            JSONObject result = new JSONObject(rawBody);
+                            postSuccess(callback, result.getString("url"), result.optString("id", ""));
+                        } catch (Exception e) {
+                            postFailure(callback, e);
+                        }
+                    } else {
+                        postFailure(callback, new Exception("Upload Rejected: " + response.code()));
+                    }
+                }
+            });
+
+        } catch (Exception e) {
+            postFailure(callback, e);
+        }
+    }
+
+    /**
+     * FEATURE 5: Fetches a JSON file from a public Cloudflare URL.
+     */
+    public void downloadJsonFile(String url, JsonDownloadCallback callback) {
+        Request request = new Request.Builder().url(url).get().build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                if (callback != null) mainHandler.post(() -> callback.onDownloadFailure(e));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful() && response.body() != null) {
+                    String content = response.body().string();
+                    if (callback != null) mainHandler.post(() -> callback.onDownloadSuccess(content));
+                } else {
+                    if (callback != null) mainHandler.post(() -> 
+                        callback.onDownloadFailure(new Exception("Download Error: " + response.code()))
+                    );
+                }
+            }
+        });
     }
 
     /**
