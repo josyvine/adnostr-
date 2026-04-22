@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Primary Filter Option -->
+    <item
+        android:id="@+id/action_filter_rated"
+        android:title="Top Rated"
+        app:showAsAction="never" />
+
+    <!-- Secondary Filter Option -->
+    <item
+        android:id="@+id/action_filter_nearest"
+        android:title="Nearest to Me"
+        app:showAsAction="never" />
+
+    <!-- Refresh Action -->
+    <item
+        android:id="@+id/action_refresh_directory"
+        android:icon="@android:drawable/ic_menu_rotate"
+        android:title="Refresh Scan"
+        app:showAsAction="ifRoom" />
+
+</menu>
