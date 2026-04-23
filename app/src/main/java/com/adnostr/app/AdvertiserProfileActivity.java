@@ -26,6 +26,7 @@ import java.util.UUID;
  * FIXED (Glitch 6): Enforced the "#t" tag requirement in the relay query filter to match
  * the broadcast protocol from CreateProductActivity, ensuring relays return the events.
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep storefront diagnostics.
+ * CRASH FIX: Enforced UI Thread execution for logForensic and UI updates to prevent CalledFromWrongThreadException.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -120,7 +121,7 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
             logForensic("REQ_OUT: " + req);
 
-            wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
+            wsManager.addStatusListener(new WebSocketClientManager.RelayStatusListener() {
                 @Override 
                 public void onRelayConnected(String url) { 
                     logForensic("RELAY_TCP_OK: " + url + " - Deploying REQ filter.");
@@ -137,6 +138,7 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
                 @Override
                 public void onMessageReceived(String url, String message) {
+                    // FIXED: UI Thread switch required for processing marketplace data
                     runOnUiThread(() -> processStoreEvent(message));
                 }
             });
@@ -195,13 +197,25 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
         }
     }
 
-    private void logForensic(String msg) {
-        storefrontLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
-        RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("STORE_LOG");
-        if (report != null) {
-            report.updateTechnicalLogs("Forensic Store Scan", storefrontLogs.toString());
-        }
-        Log.d(TAG, msg);
+    /**
+     * FIXED: Wrapped forensic logging in runOnUiThread to prevent crash during background relay reports.
+     */
+    private void logForensic(final String msg) {
+        runOnUiThread(() -> {
+            storefrontLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+            RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("STORE_LOG");
+            if (report != null) {
+                report.updateTechnicalLogs("Forensic Store Scan", storefrontLogs.toString());
+            }
+            Log.d(TAG, msg);
+        });
+    }
+
+    @Override
+    public void onDestroy() {
+        // Cleaning up listeners to prevent memory leaks when storefront is closed
+        wsManager.shutdown(); 
+        super.onDestroy();
     }
 
     @Override
