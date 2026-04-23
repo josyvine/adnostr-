@@ -28,6 +28,7 @@ import java.util.UUID;
  * FEATURE 4: Browse Advertisers Directory.
  * Logic: Fetches Kind 30003 (Sets) from relays -> Filters by matching Topics -> Displays Directory.
  * Allows users to find businesses relevant to their "Personalized" profile.
+ * FORENSIC UPDATE: Integrated RelayReportDialog for deep search diagnostics.
  */
 public class BrowseAdvertisersActivity extends AppCompatActivity {
 
@@ -40,6 +41,9 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
     private final List<AdvertiserProfile> filteredList = new ArrayList<>();
     private AdvertiserProfileAdapter adapter;
     private Set<String> myTopics;
+
+    // Forensic Log Accumulator
+    private final StringBuilder searchLogs = new StringBuilder();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -83,7 +87,11 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
     private void setupSearchView() {
         binding.searchViewAdvertisers.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
-            public boolean onQueryTextSubmit(String query) { return false; }
+            public boolean onQueryTextSubmit(String query) { 
+                // Manual search triggers the diagnostic console
+                startAdvertiserDiscovery();
+                return true; 
+            }
 
             @Override
             public boolean onQueryTextChange(String newText) {
@@ -95,8 +103,20 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
 
     /**
      * Subscribes to Kind 30003 events to find advertiser topic sets.
+     * UPDATED: Triggers Forensic Diagnostic Console.
      */
     private void startAdvertiserDiscovery() {
+        searchLogs.setLength(0);
+        logForensic("=== INITIATING DIRECTORY DISCOVERY ===");
+        logForensic("MY_INTERESTS: " + myTopics.toString());
+
+        RelayReportDialog report = RelayReportDialog.newInstance(
+                "DIRECTORY CONSOLE", 
+                "Searching for Topic Sets...", 
+                searchLogs.toString()
+        );
+        report.showSafe(getSupportFragmentManager(), "SEARCH_LOG");
+
         binding.pbBrowseLoading.setVisibility(View.VISIBLE);
         fullList.clear();
         filteredList.clear();
@@ -110,10 +130,22 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
             String subId = "browse-" + UUID.randomUUID().toString().substring(0, 6);
             String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
+            logForensic("REQ_OUT: " + req);
+
             wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
-                @Override public void onRelayConnected(String url) { wsManager.subscribe(url, req); }
-                @Override public void onRelayDisconnected(String url, String reason) {}
-                @Override public void onError(String url, Exception ex) {}
+                @Override 
+                public void onRelayConnected(String url) { 
+                    logForensic("RELAY_CONN: " + url + " - Re-sending REQ.");
+                    wsManager.subscribe(url, req); 
+                }
+
+                @Override public void onRelayDisconnected(String url, String reason) {
+                    logForensic("RELAY_DISC: " + url + " (" + reason + ")");
+                }
+
+                @Override public void onError(String url, Exception ex) {
+                    logForensic("SOCKET_ERR: " + url + " - " + ex.toString());
+                }
 
                 @Override
                 public void onMessageReceived(String url, String message) {
@@ -124,6 +156,7 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
             wsManager.connectPool(db.getRelayPool());
 
         } catch (Exception e) {
+            logForensic("CRITICAL_ERR: " + e.getMessage());
             Log.e(TAG, "Discovery Error: " + e.getMessage());
             binding.pbBrowseLoading.setVisibility(View.GONE);
         }
@@ -140,9 +173,14 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
                 String pubkey = event.getString("pubkey");
                 String content = event.getString("content");
 
+                logForensic("EVENT_IN: Set received from " + pubkey.substring(0, 8));
+
                 // Check for duplicate profiles from different relays
                 for (AdvertiserProfile p : fullList) {
-                    if (p.pubkey.equals(pubkey)) return;
+                    if (p.pubkey.equals(pubkey)) {
+                        logForensic("DUP_SKIP: Profile already cached.");
+                        return;
+                    }
                 }
 
                 // 1. Parse Advertiser Topics
@@ -163,19 +201,37 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
                 }
 
                 if (isMatch) {
-                    // Logic: Normally we'd fetch Kind 0 for the real name, 
-                    // for now we use a truncated pubkey as a placeholder.
+                    logForensic("MATCH_FOUND: Pubkey " + pubkey.substring(0, 8) + " matches topics.");
                     String name = "Business " + pubkey.substring(0, 6);
                     fullList.add(new AdvertiserProfile(pubkey, name, advTopics));
                     filterResults(binding.searchViewAdvertisers.getQuery().toString());
+                } else {
+                    logForensic("MATCH_REJECT: No overlapping topics for this profile.");
                 }
 
             } else if ("EOSE".equals(type)) {
+                logForensic("STATUS_EOSE: Relay search completed.");
                 binding.pbBrowseLoading.setVisibility(View.GONE);
-                if (fullList.isEmpty()) binding.tvNoAdvertisers.setVisibility(View.VISIBLE);
+                if (fullList.isEmpty()) {
+                    binding.tvNoAdvertisers.setVisibility(View.VISIBLE);
+                    logForensic("RESULT: 0 matching advertisers found in global pool.");
+                }
+            } else if ("NOTICE".equals(type)) {
+                logForensic("RELAY_NOTICE: " + msg.optString(1));
             }
 
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logForensic("PARSE_FAIL: Malformed event discarded.");
+        }
+    }
+
+    private void logForensic(String msg) {
+        searchLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+        RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("SEARCH_LOG");
+        if (report != null) {
+            report.updateTechnicalLogs("Forensic Directory Scan", searchLogs.toString());
+        }
+        Log.d(TAG, msg);
     }
 
     private void filterResults(String query) {
@@ -196,7 +252,6 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        // Placeholder for future filters (Top Rated, Nearest, etc.)
         getMenuInflater().inflate(R.menu.menu_browse_advertisers, menu);
         return true;
     }
