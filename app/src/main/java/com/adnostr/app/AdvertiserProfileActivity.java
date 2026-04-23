@@ -23,6 +23,8 @@ import java.util.UUID;
  * FEATURE 5: Advertiser Marketplace Storefront.
  * Logic: Receives a Pubkey -> Queries Relays for that Author's Kind 30005 events.
  * Displays the product catalog for a specific business.
+ * FIXED (Glitch 6): Enforced the "#t" tag requirement in the relay query filter to match
+ * the broadcast protocol from CreateProductActivity, ensuring relays return the events.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -82,6 +84,7 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
     /**
      * Subscribes to Kind 30005 events authored by the specific target advertiser.
+     * FIXED: Added the #t filter to ensure proper indexing and retrieval from relays.
      */
     private void fetchAdvertiserProducts() {
         binding.pbProfileLoading.setVisibility(View.VISIBLE);
@@ -92,6 +95,9 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
             JSONObject filter = new JSONObject();
             filter.put("kinds", new JSONArray().put(30005));
             filter.put("authors", new JSONArray().put(targetPubkey));
+            
+            // CRITICAL FIX: Ensure we only fetch events tagged as marketplace_product
+            filter.put("#t", new JSONArray().put("marketplace_product"));
 
             String subId = "store-" + UUID.randomUUID().toString().substring(0, 6);
             String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
