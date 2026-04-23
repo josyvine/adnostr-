@@ -44,6 +44,7 @@ import java.util.concurrent.TimeUnit;
  * ENHANCEMENT: Integrated Professional Material Navigation Icons for both User and Advertiser paths.
  * ENHANCEMENT: Implemented dynamic TabMode switching to prevent text truncation in Advertiser mode.
  * ENHANCEMENT: Added "Nearby" tab for real-time discovery (Feature 3).
+ * FIXED (Glitch 4): Forced MODE_SCROLLABLE for User role to prevent text truncation on tab labels.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -89,6 +90,7 @@ public class MainActivity extends AppCompatActivity {
      * UPDATED: Using professional Material icons (ic_nav_...) instead of system drawables.
      * UPDATED: Implements dynamic MODE_SCROLLABLE for Advertisers to prevent text truncation.
      * FEATURE 3: Added Nearby Tab logic.
+     * FIXED: Enabled Scrollable mode for both roles to prevent truncated text in User mode.
      */
     private void setupNavigationSystem() {
         String role = db.getUserRole();
@@ -99,13 +101,9 @@ public class MainActivity extends AppCompatActivity {
         binding.mainViewPager.setOffscreenPageLimit(7); 
 
         // ENHANCEMENT: Dynamic Tab Mode selection
-        // For 3-4 tabs (User), Fixed mode is perfect. 
-        // For 5-7 tabs (Advertiser), Scrollable mode prevents "STA...", "HIS..." truncation.
-        if (RoleSelectionActivity.ROLE_USER.equals(role)) {
-            binding.tabLayout.setTabMode(TabLayout.MODE_FIXED);
-        } else {
-            binding.tabLayout.setTabMode(TabLayout.MODE_SCROLLABLE);
-        }
+        // FIXED: Replaced MODE_FIXED with MODE_SCROLLABLE for Users to stop text truncation.
+        // Professional scrollable mode ensures labels like "INTERESTS" and "HISTORY" render fully.
+        binding.tabLayout.setTabMode(TabLayout.MODE_SCROLLABLE);
 
         // Link TabLayout with dynamic logic to ensure icons and names render correctly
         new TabLayoutMediator(binding.tabLayout, binding.mainViewPager, (tab, position) -> {
