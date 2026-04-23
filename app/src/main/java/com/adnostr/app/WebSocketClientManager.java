@@ -1,6 +1,8 @@
 package com.adnostr.app;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import org.java_websocket.client.WebSocketClient;
@@ -28,6 +30,7 @@ import java.util.List;
  * FORENSIC UPDATE: Implemented race-condition fix for already-connected relays.
  * CRITICAL FIX FOR POPUP: Converted to Multi-Listener Observer Pattern to prevent Fragments 
  * from overwriting the Global MainActivity ad listener.
+ * CRASH FIX: Enforced all listener callbacks on the Main Thread to prevent CalledFromWrongThreadException.
  */
 public class WebSocketClientManager {
 
@@ -45,6 +48,9 @@ public class WebSocketClientManager {
 
     // FIXED: Support for multiple listeners so Activity and Fragments don't collide
     private final List<RelayStatusListener> listeners = new CopyOnWriteArrayList<>();
+    
+    // CRASH FIX: Handler to dispatch events to the Main UI Thread
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
 
     public interface RelayStatusListener {
         void onRelayConnected(String url);
@@ -139,10 +145,12 @@ public class WebSocketClientManager {
                 // FORENSIC LOG: Identifying existing tunnel reuse
                 addToLog("TCP_REUSE: Re-using existing open tunnel for " + relayUrl);
                 
-                // CRITICAL FIX FOR POPUP: Notify all registered listeners of the existing connection
-                for (RelayStatusListener listener : listeners) {
-                    listener.onRelayConnected(relayUrl);
-                }
+                // CRITICAL FIX: Notify all registered listeners on the Main Thread
+                mHandler.post(() -> {
+                    for (RelayStatusListener listener : listeners) {
+                        listener.onRelayConnected(relayUrl);
+                    }
+                });
 
                 // Connection exists; try to subscribe if listening
                 subscribeToUserInterests(existing, relayUrl);
@@ -162,9 +170,12 @@ public class WebSocketClientManager {
                     // Subscribe to user interests on connection open
                     subscribeToUserInterests(this, relayUrl);
 
-                    for (RelayStatusListener listener : listeners) {
-                        listener.onRelayConnected(relayUrl);
-                    }
+                    // CRASH FIX: Dispatch to listeners on Main Thread
+                    mHandler.post(() -> {
+                        for (RelayStatusListener listener : listeners) {
+                            listener.onRelayConnected(relayUrl);
+                        }
+                    });
                 }
 
                 @Override
@@ -172,9 +183,12 @@ public class WebSocketClientManager {
                     // FORENSIC: Capture raw incoming JSON frame
                     addToLog("FRAME_RECV FROM [" + relayUrl + "]:\n" + message);
 
-                    for (RelayStatusListener listener : listeners) {
-                        listener.onMessageReceived(relayUrl, message);
-                    }
+                    // CRASH FIX: Dispatch to listeners on Main Thread
+                    mHandler.post(() -> {
+                        for (RelayStatusListener listener : listeners) {
+                            listener.onMessageReceived(relayUrl, message);
+                        }
+                    });
                 }
 
                 @Override
@@ -186,9 +200,12 @@ public class WebSocketClientManager {
                     String source = remote ? "Remote Relay" : "Local App";
                     addToLog("TCP_CLOSED: " + relayUrl + "\nCode: " + code + "\nReason: " + reason + "\nSource: " + source);
                     
-                    for (RelayStatusListener listener : listeners) {
-                        listener.onRelayDisconnected(relayUrl, reason);
-                    }
+                    // CRASH FIX: Dispatch to listeners on Main Thread
+                    mHandler.post(() -> {
+                        for (RelayStatusListener listener : listeners) {
+                            listener.onRelayDisconnected(relayUrl, reason);
+                        }
+                    });
                 }
 
                 @Override
@@ -199,9 +216,12 @@ public class WebSocketClientManager {
                     // FORENSIC: Full stack trace for identifying socket timeouts or SSL issues
                     addToLog("NETWORK_ERROR: " + relayUrl + "\nException: " + ex.toString());
                     
-                    for (RelayStatusListener listener : listeners) {
-                        listener.onError(relayUrl, ex);
-                    }
+                    // CRASH FIX: Dispatch to listeners on Main Thread
+                    mHandler.post(() -> {
+                        for (RelayStatusListener listener : listeners) {
+                            listener.onError(relayUrl, ex);
+                        }
+                    });
                 }
             };
 
