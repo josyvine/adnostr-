@@ -45,6 +45,7 @@ import java.util.concurrent.TimeUnit;
  * ENHANCEMENT: Implemented dynamic TabMode switching to prevent text truncation in Advertiser mode.
  * ENHANCEMENT: Added "Nearby" tab for real-time discovery (Feature 3).
  * FIXED (Glitch 4): Forced MODE_SCROLLABLE for User role to prevent text truncation on tab labels.
+ * CRITICAL FIX FOR POPUP: Switched to addStatusListener to support the Global Ad Observer pattern.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -214,9 +215,11 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Monitors Relays for Kind 30001 Ads.
      * Validates 'd' tag to filter out User Interest broadcasts.
+     * FIXED FOR POPUP: Uses addStatusListener to ensure MainActivity always stays attached 
+     * and triggers the AdPopupActivity regardless of fragment state.
      */
     private void setupGlobalAdListener() {
-        wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
+        wsManager.addStatusListener(new WebSocketClientManager.RelayStatusListener() {
             @Override
             public void onRelayConnected(String url) {
                 Log.d(TAG, "Connected to " + url);
