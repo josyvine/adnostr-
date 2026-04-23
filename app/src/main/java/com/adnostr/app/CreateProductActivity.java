@@ -23,13 +23,15 @@ import com.adnostr.app.databinding.ActivityCreateProductBinding;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.UUID;
 
 /**
  * FEATURE 5: Product Creator Activity.
- * Hosts the lox_dashboard.html in a WebView and bridges data to Nostr.
- * Logic: Dashboard (HTML) -> JS Bridge (Java) -> Cloudflare (JSON File) -> Nostr (Kind 30005 Pointer).
- * FIXED (Glitch 5): Implemented WebChromeClient and ActivityResultLauncher to handle HTML file uploads.
+ * FIXED: Image pipeline now uploads to R2 and pushes URLs back to HTML.
+ * FIXED: Detailed Forensic Logging integrated via logTechnicalEvent bridge.
+ * FIXED: Implements Preview logic to staging viewer before broadcast.
  */
 public class CreateProductActivity extends AppCompatActivity {
 
@@ -39,9 +41,11 @@ public class CreateProductActivity extends AppCompatActivity {
     private CloudflareHelper cloudHelper;
     private WebSocketClientManager wsManager;
 
-    // Callbacks for the WebView File Chooser
     private ValueCallback<Uri[]> uploadMessage;
     private ActivityResultLauncher<Intent> filePickerLauncher;
+    
+    // Forensic log accumulator
+    private final StringBuilder technicalConsole = new StringBuilder();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,42 +58,70 @@ public class CreateProductActivity extends AppCompatActivity {
         cloudHelper = new CloudflareHelper();
         wsManager = WebSocketClientManager.getInstance();
 
-        // Register the file picker result handler
         filePickerLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
-                    if (uploadMessage == null) return;
                     if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-                        Uri[] results = null;
-                        // Handle multiple selection if the intent supports it
+                        // FIX: Instead of just returning URIs to WebView, Android handles the upload
                         if (result.getData().getClipData() != null) {
                             int count = result.getData().getClipData().getItemCount();
-                            results = new Uri[count];
                             for (int i = 0; i < count; i++) {
-                                results[i] = result.getData().getClipData().getItemAt(i).getUri();
+                                handleNativeImageUpload(result.getData().getClipData().getItemAt(i).getUri());
                             }
                         } else if (result.getData().getData() != null) {
-                            // Handle single selection
-                            results = new Uri[]{result.getData().getData()};
+                            handleNativeImageUpload(result.getData().getData());
                         }
-                        uploadMessage.onReceiveValue(results);
-                    } else {
-                        // User cancelled the picker
-                        uploadMessage.onReceiveValue(null);
                     }
-                    uploadMessage = null; // Reset callback
+                    if (uploadMessage != null) {
+                        uploadMessage.onReceiveValue(null); // Reset standard picker
+                        uploadMessage = null;
+                    }
                 }
         );
 
         setupWebView();
-
         binding.btnBackCreator.setOnClickListener(v -> finish());
     }
 
     /**
-     * Configures the WebView to support the modern Dashboard features.
-     * FIXED (Glitch 5): Added WebChromeClient to bridge HTML file inputs to Android Intents.
+     * Reads image bytes, uploads to Cloudflare, and injects URL back into HTML grid.
      */
+    private void handleNativeImageUpload(Uri uri) {
+        try {
+            logTechnicalEvent("PICKER: Selected URI " + uri.toString());
+            InputStream iStream = getContentResolver().openInputStream(uri);
+            ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = iStream.read(buffer)) != -1) {
+                byteBuffer.write(buffer, 0, len);
+            }
+            byte[] rawBytes = byteBuffer.toByteArray();
+
+            logTechnicalEvent("R2: Uploading binary blob (" + rawBytes.length + " bytes)...");
+
+            cloudHelper.uploadMedia(this, rawBytes, "prod_" + System.currentTimeMillis() + ".jpg", new CloudflareHelper.CloudflareCallback() {
+                @Override public void onStatusUpdate(String log) { logTechnicalEvent("R2_TRACE: " + log); }
+
+                @Override
+                public void onSuccess(String uploadedUrl, String fileId) {
+                    runOnUiThread(() -> {
+                        logTechnicalEvent("R2_SUCCESS: " + uploadedUrl);
+                        // Push URL back into the HTML JavaScript function
+                        binding.wvProductCreator.evaluateJavascript("addUploadedImageUrl('" + uploadedUrl + "')", null);
+                    });
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    runOnUiThread(() -> logTechnicalEvent("R2_ERROR: " + e.getMessage()));
+                }
+            });
+        } catch (Exception e) {
+            logTechnicalEvent("IO_ERROR: " + e.getMessage());
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private void setupWebView() {
         WebSettings settings = binding.wvProductCreator.getSettings();
@@ -100,110 +132,100 @@ public class CreateProductActivity extends AppCompatActivity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
 
-        // Register the JS Bridge so the HTML can talk to Android
         binding.wvProductCreator.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
 
         binding.wvProductCreator.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                Log.d(TAG, "Marketplace Dashboard Loaded successfully.");
+                logTechnicalEvent("WEBVIEW: Dashboard DOM Loaded.");
             }
         });
 
-        // Set the WebChromeClient to handle <input type="file">
         binding.wvProductCreator.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                // Ensure any existing callback is cleared
-                if (uploadMessage != null) {
-                    uploadMessage.onReceiveValue(null);
-                    uploadMessage = null;
-                }
-
                 uploadMessage = filePathCallback;
-
                 Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("image/*");
-                // Enable multi-select if the HTML input specifies 'multiple'
-                if (fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
-                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-                }
-
-                try {
-                    filePickerLauncher.launch(intent);
-                } catch (Exception e) {
-                    uploadMessage = null;
-                    Toast.makeText(CreateProductActivity.this, "Cannot open file chooser", Toast.LENGTH_SHORT).show();
-                    return false;
-                }
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                filePickerLauncher.launch(intent);
                 return true;
             }
         });
 
-        // Load the local HTML asset
         binding.wvProductCreator.loadUrl("file:///android_asset/lox_dashboard.html");
     }
 
-    /**
-     * JavaScript Interface Bridge.
-     * This class receives the product JSON from the HTML form.
-     */
     public class WebAppInterface {
         @JavascriptInterface
-        public void processProductData(String jsonString) {
-            runOnUiThread(() -> handleIncomingProduct(jsonString));
+        public void logTechnicalEvent(String msg) {
+            technicalConsole.append(msg).append("\n");
+            Log.d(TAG, "Forensic: " + msg);
+        }
+
+        @JavascriptInterface
+        public void processProductData(String jsonString, String mode) {
+            runOnUiThread(() -> {
+                if ("PREVIEW".equals(mode)) {
+                    logTechnicalEvent("ACTION: Launching staging viewer...");
+                    Intent intent = new Intent(CreateProductActivity.this, ProductPreviewActivity.class);
+                    intent.putExtra("PRODUCT_JSON", jsonString);
+                    startActivity(intent);
+                } else {
+                    logTechnicalEvent("ACTION: Initiating legacy publish flow...");
+                    handleIncomingProduct(jsonString);
+                }
+            });
         }
     }
 
-    /**
-     * CORE LOGIC: Orchestrates the Marketplace Publishing Flow.
-     */
     private void handleIncomingProduct(String rawJson) {
+        logTechnicalEvent("PUBLISH: Form data received. Size: " + rawJson.length());
+        
+        RelayReportDialog report = RelayReportDialog.newInstance("MARKETPLACE PUBLISH", "Uploading metadata...", technicalConsole.toString());
+        report.showSafe(getSupportFragmentManager(), "MARKET_LOG");
+
         try {
             JSONObject productData = new JSONObject(rawJson);
             String title = productData.getString("title");
             String price = productData.getString("price");
 
-            Toast.makeText(this, "Uploading Listing to Cloudflare...", Toast.LENGTH_SHORT).show();
-
-            // STEP 1: Upload the full heavy JSON to Private Cloudflare R2
             String fileName = "product_" + System.currentTimeMillis() + ".json";
             cloudHelper.uploadJsonFile(this, rawJson, fileName, new CloudflareHelper.CloudflareCallback() {
                 @Override
-                public void onStatusUpdate(String log) { Log.d(TAG, log); }
+                public void onStatusUpdate(String log) {
+                    logTechnicalEvent("CF_TRACE: " + log);
+                    runOnUiThread(() -> report.updateTechnicalLogs("Cloudflare Storage Link Active", technicalConsole.toString()));
+                }
 
                 @Override
                 public void onSuccess(String uploadedUrl, String fileId) {
-                    // STEP 2: Broadcast the lightweight Kind 30005 Pointer to Nostr Relays
                     broadcastMarketplacePointer(title, price, uploadedUrl);
+                    runOnUiThread(() -> report.updateTechnicalLogs("Broadcasting to Nostr...", technicalConsole.toString()));
                 }
 
                 @Override
                 public void onFailure(Exception e) {
-                    Toast.makeText(CreateProductActivity.this, "Cloudflare Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    runOnUiThread(() -> {
+                        logTechnicalEvent("CF_FAIL: " + e.getMessage());
+                        report.updateTechnicalLogs("CRITICAL ERROR", technicalConsole.toString());
+                    });
                 }
             });
-
         } catch (Exception e) {
-            Log.e(TAG, "Product processing failed: " + e.getMessage());
-            Toast.makeText(this, "JSON Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            logTechnicalEvent("PARSE_ERROR: " + e.getMessage());
         }
     }
 
-    /**
-     * Broadcasts the Kind 30005 pointer event to the network.
-     */
     private void broadcastMarketplacePointer(String title, String price, String cloudflareUrl) {
         try {
-            // 1. Construct the content payload (Simple metadata + Link)
             JSONObject pointerContent = new JSONObject();
             pointerContent.put("title", title);
             pointerContent.put("price", price);
             pointerContent.put("json_url", cloudflareUrl);
 
-            // 2. Prepare Kind 30005 (Marketplace Pointer)
             JSONObject event = new JSONObject();
             event.put("kind", 30005);
             event.put("pubkey", db.getPublicKey());
@@ -211,36 +233,32 @@ public class CreateProductActivity extends AppCompatActivity {
             event.put("content", pointerContent.toString());
 
             JSONArray tags = new JSONArray();
-            // d-tag for replaceable marketplace events
             JSONArray dTag = new JSONArray();
             dTag.put("d");
             dTag.put("adnostr_listing_" + UUID.randomUUID().toString().substring(0, 8));
             tags.put(dTag);
             
-            // t-tags for directory discovery
             JSONArray tTag = new JSONArray();
             tTag.put("t");
             tTag.put("marketplace_product");
             tags.put(tTag);
-            
             event.put("tags", tags);
 
-            // 3. Sign and Broadcast to all active relays
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
             if (signedEvent != null) {
+                logTechnicalEvent("NOSTR: Signed Kind 30005. ID: " + signedEvent.getString("id"));
                 wsManager.broadcastEvent(signedEvent.toString());
-                Log.i(TAG, "Marketplace Pointer Live: " + cloudflareUrl);
-                
-                Toast.makeText(this, "Product Published Successfully!", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Published Successfully!", Toast.LENGTH_LONG).show();
                 finish();
-            } else {
-                throw new Exception("Signing failed");
             }
-
         } catch (Exception e) {
-            Log.e(TAG, "Nostr Broadcast Failed: " + e.getMessage());
-            Toast.makeText(this, "Network error. Please try again.", Toast.LENGTH_SHORT).show();
+            logTechnicalEvent("SIGN_FAIL: " + e.getMessage());
         }
+    }
+
+    private void logTechnicalEvent(String msg) {
+        technicalConsole.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+        Log.d(TAG, msg);
     }
 
     @Override
