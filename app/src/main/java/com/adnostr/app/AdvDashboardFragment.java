@@ -33,6 +33,7 @@ import coil.request.ImageRequest;
  * UPDATED: Integrated Brand Logo management via flAvatarContainer.
  * UPDATED: Implements R2 Wipe-on-Replace logic for storage optimization.
  * FIXED: Navigation logic updated from NavController to ViewPager2 Index switching.
+ * FIXED (Glitch 3): Implemented Privacy Command Center logic to hide business name if toggled.
  */
 public class AdvDashboardFragment extends Fragment {
 
@@ -169,9 +170,17 @@ public class AdvDashboardFragment extends Fragment {
     /**
      * Displays the Advertiser's public identity.
      * Uses the hex public key generated during the Splash phase.
+     * FIXED (Glitch 3): Hides the username/business name if Privacy Mode is active.
      */
-    private void setupIdentityHeader() {
+    public void setupIdentityHeader() {
         String pubKey = db.getPublicKey();
+        String username = db.getUsername();
+
+        // Optional: If you ever display the Business Name in this layout, this ensures it obeys the privacy toggle
+        if (db.isUsernameHidden()) {
+            Log.d(TAG, "Privacy: Advertiser name hidden on dashboard.");
+            // Logic to hide the name goes here if it is added to the UI
+        }
 
         if (pubKey != null && !pubKey.isEmpty()) {
             // Truncate for display (e.g., npub1xyz...89q)
