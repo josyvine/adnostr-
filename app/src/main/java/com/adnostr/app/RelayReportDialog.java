@@ -28,6 +28,7 @@ import com.adnostr.app.databinding.DialogRelayReportBinding;
  * UPDATED: Integrated support for detailed HTTP/Encryption error logging 
  * for the Blossom/NIP-96 media enhancement.
  * FIXED: Added Auto-Scroll logic to ensure long forensic dumps are visible at the bottom.
+ * CRASH FIX: Enforced Main Thread execution for all UI updates to prevent CalledFromWrongThreadException.
  */
 public class RelayReportDialog extends DialogFragment {
 
@@ -129,18 +130,22 @@ public class RelayReportDialog extends DialogFragment {
      * Public method to update logs while the dialog is visible.
      * Used to push real-time Blossom upload status and AES encryption diagnostics.
      * FIXED: Now automatically scrolls to the bottom so newest forensic data is visible.
+     * FIXED: Enforced UI thread safety via binding.getRoot().post() to handle background WebSocket events.
      */
-    public void updateTechnicalLogs(String newSummary, String newLogs) {
+    public void updateTechnicalLogs(final String newSummary, final String newLogs) {
         if (binding != null) {
-            binding.tvNetworkSummary.setText(newSummary);
-            binding.tvConsoleLog.setText(newLogs);
-
-            // AUTO-SCROLL FIX: Ensure we always see the latest Forensic Rejection Reason
+            // CRITICAL FIX: Ensure all UI work is offloaded to the Main Thread
             binding.getRoot().post(() -> {
-                if (binding != null && binding.tvConsoleLog.getParent() instanceof android.view.View) {
-                    View parent = (View) binding.tvConsoleLog.getParent();
-                    if (parent instanceof android.widget.ScrollView || parent instanceof androidx.core.widget.NestedScrollView) {
-                        parent.scrollTo(0, binding.tvConsoleLog.getBottom());
+                if (binding != null) {
+                    binding.tvNetworkSummary.setText(newSummary);
+                    binding.tvConsoleLog.setText(newLogs);
+
+                    // AUTO-SCROLL FIX: Ensure we always see the latest Forensic Rejection Reason
+                    if (binding.tvConsoleLog.getParent() instanceof android.view.View) {
+                        View parent = (View) binding.tvConsoleLog.getParent();
+                        if (parent instanceof android.widget.ScrollView || parent instanceof androidx.core.widget.NestedScrollView) {
+                            parent.scrollTo(0, binding.tvConsoleLog.getBottom());
+                        }
                     }
                 }
             });
