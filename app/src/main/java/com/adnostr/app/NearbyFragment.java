@@ -36,6 +36,7 @@ import java.util.UUID;
  * FIXED: Role-based filtering to ensure Users see Advertisers, and Advertisers see Users.
  * FIXED: Self-filtering to ensure your own beacon doesn't show up on your radar.
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep diagnostic logs on refresh.
+ * CRASH FIX: Enforced runOnUiThread in logDiagnostic and used addStatusListener to prevent Popup interference.
  */
 public class NearbyFragment extends Fragment {
 
@@ -50,6 +51,9 @@ public class NearbyFragment extends Fragment {
     private Location myCurrentLocation;
     private final List<NearbyUser> nearbyList = new ArrayList<>();
     private NearbyAdapter adapter;
+    
+    // FIXED: Added member variable for listener tracking
+    private WebSocketClientManager.RelayStatusListener mRelayListener;
 
     // Forensic Log Accumulator
     private final StringBuilder diagnosticLogs = new StringBuilder();
@@ -101,7 +105,7 @@ public class NearbyFragment extends Fragment {
             } else {
                 logDiagnostic("GPS_FAIL: LastLocation returned null. Ensure GPS is ON and App has permission.");
                 Log.w(TAG, "Location null. Retrying scan...");
-                binding.swipeRefreshNearby.setRefreshing(false);
+                if (binding != null) binding.swipeRefreshNearby.setRefreshing(false);
             }
         });
     }
@@ -125,7 +129,8 @@ public class NearbyFragment extends Fragment {
             logDiagnostic("REQ_START: Initiating Kind 30004 subscription.");
             logDiagnostic("SUB_ID: " + subId);
 
-            wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
+            // FIXED: Using addStatusListener with member variable tracking
+            mRelayListener = new WebSocketClientManager.RelayStatusListener() {
                 @Override 
                 public void onRelayConnected(String url) { 
                     logDiagnostic("RELAY_ACTIVE: " + url + " - Sending REQ frame.");
@@ -146,7 +151,9 @@ public class NearbyFragment extends Fragment {
                         getActivity().runOnUiThread(() -> processNearbyEvent(message));
                     }
                 }
-            });
+            };
+            
+            wsManager.addStatusListener(mRelayListener);
 
             // Connect to bootstrap if not already active
             wsManager.connectPool(db.getRelayPool());
@@ -164,7 +171,7 @@ public class NearbyFragment extends Fragment {
             if (!"EVENT".equals(msg.getString(0))) {
                 if ("EOSE".equals(msg.getString(0))) {
                     logDiagnostic("EVENT_EOSE: Relay search completed.");
-                    binding.swipeRefreshNearby.setRefreshing(false);
+                    if (binding != null) binding.swipeRefreshNearby.setRefreshing(false);
                 }
                 return;
             }
@@ -195,25 +202,20 @@ public class NearbyFragment extends Fragment {
             String role = locData.optString("role", "USER");
             String name = locData.optString("name", "Anonymous");
 
-            // =========================================================================
-            // FIXED (GLITCHES 1, 2, & 9): RADAR FILTERING LOGIC
-            // =========================================================================
+            // RADAR FILTERING LOGIC
             String myPubkey = db.getPublicKey();
             String myRole = db.getUserRole();
 
-            // Self Filter: Prevent seeing yourself on the radar
             if (senderPubkey.equals(myPubkey)) {
                 logDiagnostic("FILTER_SELF: Dropping my own beacon.");
                 return;
             }
 
-            // Role Filter for USERS: Only show ADVERTISERS
             if (RoleSelectionActivity.ROLE_USER.equals(myRole) && !RoleSelectionActivity.ROLE_ADVERTISER.equals(role)) {
                 logDiagnostic("FILTER_ROLE: Dropped USER (I am in Consumer Mode).");
                 return;
             }
             
-            // Role Filter for ADVERTISERS: Only show USERS
             if (RoleSelectionActivity.ROLE_ADVERTISER.equals(myRole) && !RoleSelectionActivity.ROLE_USER.equals(role)) {
                 logDiagnostic("FILTER_ROLE: Dropped ADVERTISER (I am in Business Mode).");
                 return;
@@ -235,19 +237,14 @@ public class NearbyFragment extends Fragment {
         }
     }
 
-    /**
-     * Logic: Add new discovery -> Filter duplicates by Pubkey -> Sort by distance.
-     */
     private void updateNearbyList(NearbyUser user) {
-        // Prevent duplicate entries for the same pubkey
         for (int i = 0; i < nearbyList.size(); i++) {
             if (nearbyList.get(i).pubkey.equals(user.pubkey)) {
-                nearbyList.set(i, user); // Update with latest distance
+                nearbyList.set(i, user);
                 sortAndNotify();
                 return;
             }
         }
-
         nearbyList.add(user);
         sortAndNotify();
     }
@@ -256,16 +253,15 @@ public class NearbyFragment extends Fragment {
         Collections.sort(nearbyList, (o1, o2) -> Double.compare(o1.distance, o2.distance));
         adapter.notifyDataSetChanged();
         
-        if (nearbyList.isEmpty()) {
-            binding.llNoNearby.setVisibility(View.VISIBLE);
-        } else {
-            binding.llNoNearby.setVisibility(View.GONE);
+        if (binding != null) {
+            if (nearbyList.isEmpty()) {
+                binding.llNoNearby.setVisibility(View.VISIBLE);
+            } else {
+                binding.llNoNearby.setVisibility(View.GONE);
+            }
         }
     }
 
-    /**
-     * Updated: Triggers Forensic Diagnostic Dialog.
-     */
     private void refreshNearbyScan() {
         diagnosticLogs.setLength(0);
         logDiagnostic("=== INITIATING DIAGNOSTIC RADAR SCAN ===");
@@ -282,20 +278,22 @@ public class NearbyFragment extends Fragment {
         requestMySnapshotLocation();
     }
 
-    private void logDiagnostic(String msg) {
-        diagnosticLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
-        // Update dialog if visible
-        if (isAdded()) {
-            RelayReportDialog report = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("NEARBY_LOG");
-            if (report != null) {
-                report.updateTechnicalLogs("Forensic Scan in Progress", diagnosticLogs.toString());
+    /**
+     * FIXED: Wrapped UI updates in runOnUiThread to prevent crash during background relay reports.
+     */
+    private void logDiagnostic(final String msg) {
+        if (getActivity() == null) return;
+        getActivity().runOnUiThread(() -> {
+            diagnosticLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+            if (isAdded()) {
+                RelayReportDialog report = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("NEARBY_LOG");
+                if (report != null) {
+                    report.updateTechnicalLogs("Forensic Scan in Progress", diagnosticLogs.toString());
+                }
             }
-        }
+        });
     }
 
-    /**
-     * Standard Haversine math to calculate distance between two GPS points in KM.
-     */
     private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
         double theta = lon1 - lon2;
         double dist = Math.sin(Math.toRadians(lat1)) * Math.sin(Math.toRadians(lat2))
@@ -306,19 +304,21 @@ public class NearbyFragment extends Fragment {
         return dist * 60 * 1.1515 * 1.609344;
     }
 
+    /**
+     * FIXED FOR POPUP: Unregister listener to ensure MainActivity remains the master trigger.
+     */
     @Override
     public void onDestroyView() {
+        if (wsManager != null && mRelayListener != null) {
+            wsManager.removeStatusListener(mRelayListener);
+        }
         super.onDestroyView();
         binding = null;
     }
 
-    /**
-     * Simple internal model for discovered users.
-     */
     public static class NearbyUser {
         String name, role, pubkey;
         double distance;
-
         NearbyUser(String n, String r, double d, String p) {
             this.name = n; this.role = r; this.distance = d; this.pubkey = p;
         }
