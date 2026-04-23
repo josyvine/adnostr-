@@ -25,6 +25,7 @@ import java.util.UUID;
  * Displays the product catalog for a specific business.
  * FIXED (Glitch 6): Enforced the "#t" tag requirement in the relay query filter to match
  * the broadcast protocol from CreateProductActivity, ensuring relays return the events.
+ * FORENSIC UPDATE: Integrated RelayReportDialog for deep storefront diagnostics.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -37,6 +38,9 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
     private String businessName;
     private final List<AdsPublisherFragment.ProductListing> productList = new ArrayList<>();
     private ProductBrowseAdapter adapter;
+
+    // Forensic Log Accumulator
+    private final StringBuilder storefrontLogs = new StringBuilder();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,8 +89,20 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
     /**
      * Subscribes to Kind 30005 events authored by the specific target advertiser.
      * FIXED: Added the #t filter to ensure proper indexing and retrieval from relays.
+     * UPDATED: Triggers Forensic Diagnostic Console.
      */
     private void fetchAdvertiserProducts() {
+        storefrontLogs.setLength(0);
+        logForensic("=== INITIATING STOREFRONT DISCOVERY ===");
+        logForensic("TARGET_AUTHOR: " + targetPubkey);
+
+        RelayReportDialog report = RelayReportDialog.newInstance(
+                "STOREFRONT CONSOLE", 
+                "Retrieving Catalog for " + businessName + "...", 
+                storefrontLogs.toString()
+        );
+        report.showSafe(getSupportFragmentManager(), "STORE_LOG");
+
         binding.pbProfileLoading.setVisibility(View.VISIBLE);
         productList.clear();
         adapter.notifyDataSetChanged();
@@ -102,10 +118,22 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
             String subId = "store-" + UUID.randomUUID().toString().substring(0, 6);
             String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
+            logForensic("REQ_OUT: " + req);
+
             wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
-                @Override public void onRelayConnected(String url) { wsManager.subscribe(url, req); }
-                @Override public void onRelayDisconnected(String url, String reason) {}
-                @Override public void onError(String url, Exception ex) {}
+                @Override 
+                public void onRelayConnected(String url) { 
+                    logForensic("RELAY_TCP_OK: " + url + " - Deploying REQ filter.");
+                    wsManager.subscribe(url, req); 
+                }
+
+                @Override public void onRelayDisconnected(String url, String reason) {
+                    logForensic("RELAY_LOST: " + url + " (" + reason + ")");
+                }
+
+                @Override public void onError(String url, Exception ex) {
+                    logForensic("SOCKET_ERR: " + url + " - " + ex.toString());
+                }
 
                 @Override
                 public void onMessageReceived(String url, String message) {
@@ -113,9 +141,11 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
                 }
             });
 
+            // FIXED: Using Pool management with automatic open-socket detection
             wsManager.connectPool(db.getRelayPool());
 
         } catch (Exception e) {
+            logForensic("SETUP_ERR: " + e.getMessage());
             Log.e(TAG, "Storefront query failed: " + e.getMessage());
             binding.pbProfileLoading.setVisibility(View.GONE);
         }
@@ -136,22 +166,42 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
                 String price = meta.optString("price", "0");
                 String jsonUrl = meta.optString("json_url", "");
 
+                logForensic("POINTER_IN: Found item '" + title + "' hosted at CF R2.");
+
                 // Prevent duplicates
                 for (AdsPublisherFragment.ProductListing p : productList) {
-                    if (p.jsonUrl.equals(jsonUrl)) return;
+                    if (p.jsonUrl.equals(jsonUrl)) {
+                        logForensic("DUP_SKIP: Listing already in UI.");
+                        return;
+                    }
                 }
 
                 productList.add(new AdsPublisherFragment.ProductListing(title, price, jsonUrl));
                 adapter.notifyItemInserted(productList.size() - 1);
 
             } else if ("EOSE".equals(type)) {
+                logForensic("STATUS_EOSE: Relay search finished.");
                 binding.pbProfileLoading.setVisibility(View.GONE);
                 if (productList.isEmpty()) {
+                    logForensic("RESULT_NULL: Author has no active 30005 events on this node.");
                     binding.tvNoStoreProducts.setVisibility(View.VISIBLE);
                 }
+            } else if ("NOTICE".equals(type)) {
+                logForensic("NOTICE_FROM_RELAY: " + msg.optString(1));
             }
 
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            logForensic("PARSE_FAIL: Discarded invalid JSON pointer.");
+        }
+    }
+
+    private void logForensic(String msg) {
+        storefrontLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+        RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("STORE_LOG");
+        if (report != null) {
+            report.updateTechnicalLogs("Forensic Store Scan", storefrontLogs.toString());
+        }
+        Log.d(TAG, msg);
     }
 
     @Override
