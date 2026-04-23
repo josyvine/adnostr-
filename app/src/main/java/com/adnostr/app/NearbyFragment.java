@@ -32,6 +32,8 @@ import java.util.UUID;
  * FEATURE 3: Nearby Discovery Fragment.
  * Listens for Kind 30004 (Location Beacons) and displays users within 50km.
  * Logic: Get My GPS -> Subscribe Kind 30004 -> Decrypt -> Calculate Proximity -> Sort & Display.
+ * FIXED: Role-based filtering to ensure Users see Advertisers, and Advertisers see Users.
+ * FIXED: Self-filtering to ensure your own beacon doesn't show up on your radar.
  */
 public class NearbyFragment extends Fragment {
 
@@ -143,6 +145,7 @@ public class NearbyFragment extends Fragment {
 
             JSONObject event = msg.getJSONObject(2);
             String encryptedContent = event.getString("content");
+            String senderPubkey = event.getString("pubkey");
 
             // 1. Decrypt using Master App Key
             String decryptedJson = EncryptionUtils.decryptPayload(encryptedContent);
@@ -153,11 +156,32 @@ public class NearbyFragment extends Fragment {
             String role = locData.optString("role", "USER");
             String name = locData.optString("name", "Anonymous");
 
+            // =========================================================================
+            // FIXED (GLITCHES 1, 2, & 9): RADAR FILTERING LOGIC
+            // =========================================================================
+            String myPubkey = db.getPublicKey();
+            String myRole = db.getUserRole();
+
+            // Self Filter: Prevent seeing yourself on the radar
+            if (senderPubkey.equals(myPubkey)) {
+                return;
+            }
+
+            // Role Filter for USERS: Only show ADVERTISERS
+            if (RoleSelectionActivity.ROLE_USER.equals(myRole) && !RoleSelectionActivity.ROLE_ADVERTISER.equals(role)) {
+                return;
+            }
+            
+            // Role Filter for ADVERTISERS: Only show USERS
+            if (RoleSelectionActivity.ROLE_ADVERTISER.equals(myRole) && !RoleSelectionActivity.ROLE_USER.equals(role)) {
+                return;
+            }
+
             // 2. Proximity Calculation (Haversine)
             double distance = calculateDistance(myCurrentLocation.getLatitude(), myCurrentLocation.getLongitude(), lat, lon);
 
             if (distance <= MAX_DISTANCE_KM) {
-                updateNearbyList(new NearbyUser(name, role, distance, event.getString("pubkey")));
+                updateNearbyList(new NearbyUser(name, role, distance, senderPubkey));
             }
 
         } catch (Exception ignored) {}
