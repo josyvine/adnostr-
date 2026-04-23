@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * to identify why ads or search reach may be failing.
  * FIXED: Subscription logic now uses dynamic IDs to prevent relay rejection.
  * FIXED: Included Kind 5 (Deletions) in the subscription filter so the foreground app can wipe deleted ads.
+ * FORENSIC UPDATE: Implemented race-condition fix for already-connected relays.
  */
 public class WebSocketClientManager {
 
@@ -35,7 +36,8 @@ public class WebSocketClientManager {
 
     // Technical live log for the detailed technical popup console
     private final StringBuilder liveLogs = new StringBuilder();
-    private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+    // Millisecond precision for forensic debugging
+    private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault());
 
     // Callback to notify UI components of network changes
     private RelayStatusListener statusListener;
@@ -74,9 +76,10 @@ public class WebSocketClientManager {
      */
     private synchronized void addToLog(String message) {
         String time = timeFormat.format(new Date());
+        // PREPEND to the log so the newest network events appear at the top
         liveLogs.insert(0, "[" + time + "] " + message + "\n\n");
-        if (liveLogs.length() > 50000) {
-            liveLogs.setLength(40000);
+        if (liveLogs.length() > 60000) {
+            liveLogs.setLength(50000); // Prevent memory bloat while keeping 50k chars of history
         }
     }
 
@@ -94,7 +97,7 @@ public class WebSocketClientManager {
     public void connectPool(Set<String> relayUrls) {
         if (relayUrls == null || relayUrls.isEmpty()) return;
 
-        addToLog("NETWORK: Connecting to pool of " + relayUrls.size() + " relays.");
+        addToLog("NETWORK_POOL: Initiating connections to " + relayUrls.size() + " decentralized nodes.");
         for (String url : relayUrls) {
             connectRelay(url);
         }
@@ -102,13 +105,23 @@ public class WebSocketClientManager {
 
     /**
      * Attempts to connect to a decentralized relay if not already active.
+     * FIXED: Added race-condition logic to handle already-connected sockets immediately.
      */
     public void connectRelay(final String relayUrl) {
         if (relayUrl == null || !relayUrl.startsWith("wss://")) return;
 
         if (activeRelays.containsKey(relayUrl)) {
             WebSocketClient existing = activeRelays.get(relayUrl);
-            if (existing != null && !existing.isClosed()) {
+            if (existing != null && existing.isOpen()) {
+                // FORENSIC LOG: Identifying existing tunnel reuse
+                addToLog("TCP_REUSE: Re-using existing open tunnel for " + relayUrl);
+                
+                // CRITICAL FIX: If the Activity (Browse/Nearby) is new but the Relay is old,
+                // we must manually trigger the callback so the Activity can send its REQ.
+                if (statusListener != null) {
+                    statusListener.onRelayConnected(relayUrl);
+                }
+
                 // Connection exists; try to subscribe if listening
                 subscribeToUserInterests(existing, relayUrl);
                 return;
@@ -122,7 +135,7 @@ public class WebSocketClientManager {
                     Log.i(TAG, "Relay Connection Established: " + relayUrl);
                     activeRelays.put(relayUrl, this);
 
-                    addToLog("CONNECTED: " + relayUrl);
+                    addToLog("TCP_OPEN: Connection successful to " + relayUrl + "\nHandshake: 101 Switching Protocols");
 
                     // Subscribe to user interests on connection open
                     subscribeToUserInterests(this, relayUrl);
@@ -134,7 +147,8 @@ public class WebSocketClientManager {
 
                 @Override
                 public void onMessage(String message) {
-                    addToLog("RECV from " + relayUrl + ":\n" + message);
+                    // FORENSIC: Capture raw incoming JSON frame
+                    addToLog("FRAME_RECV FROM [" + relayUrl + "]:\n" + message);
 
                     if (statusListener != null) {
                         statusListener.onMessageReceived(relayUrl, message);
@@ -145,7 +159,11 @@ public class WebSocketClientManager {
                 public void onClose(int code, String reason, boolean remote) {
                     Log.w(TAG, "Relay Closed [" + relayUrl + "]: " + reason);
                     activeRelays.remove(relayUrl);
-                    addToLog("CLOSED: " + relayUrl + " (Reason: " + reason + ")");
+                    
+                    // FORENSIC: Identifying termination source
+                    String source = remote ? "Remote Relay" : "Local App";
+                    addToLog("TCP_CLOSED: " + relayUrl + "\nCode: " + code + "\nReason: " + reason + "\nSource: " + source);
+                    
                     if (statusListener != null) {
                         statusListener.onRelayDisconnected(relayUrl, reason);
                     }
@@ -155,7 +173,10 @@ public class WebSocketClientManager {
                 public void onError(Exception ex) {
                     Log.e(TAG, "Relay Failure [" + relayUrl + "]: " + ex.getMessage());
                     activeRelays.remove(relayUrl);
-                    addToLog("ERROR: " + relayUrl + " - " + ex.getMessage());
+                    
+                    // FORENSIC: Full stack trace for identifying socket timeouts or SSL issues
+                    addToLog("NETWORK_ERROR: " + relayUrl + "\nException: " + ex.toString());
+                    
                     if (statusListener != null) {
                         statusListener.onError(relayUrl, ex);
                     }
@@ -166,7 +187,7 @@ public class WebSocketClientManager {
             client.connect();
 
         } catch (Exception e) {
-            addToLog("CRITICAL: Setup failed for " + relayUrl);
+            addToLog("SETUP_CRITICAL: Initial WebSocket failure for " + relayUrl + "\nError: " + e.getMessage());
             Log.e(TAG, "Initial WebSocket setup failed for " + relayUrl + ": " + e.getMessage());
         }
     }
@@ -183,14 +204,14 @@ public class WebSocketClientManager {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(appContext);
 
             if (!db.isListening()) {
-                addToLog("SUBSCRIPTION: Monitoring is OFF. Waiting for user to Start Ads.");
+                addToLog("MONITORING_PAUSED: Monitoring is OFF. Skipping subscription for " + url);
                 return;
             }
 
             Set<String> interests = db.getInterests();
 
             if (interests.isEmpty()) {
-                addToLog("SUBSCRIPTION: Empty interest list for " + url + ". No tags to watch.");
+                addToLog("SUBSCRIPTION_WARNING: Interest list is empty. No filters sent to " + url);
                 return;
             }
 
@@ -216,10 +237,11 @@ public class WebSocketClientManager {
             String rawJson = req.toString();
             client.send(rawJson);
 
-            addToLog("SENT REQ (" + subId + ") to " + url + ":\n" + rawJson);
+            // FORENSIC: Log the exact subscription message sent
+            addToLog("FRAME_SEND (REQ) TO [" + url + "]:\n" + rawJson);
 
         } catch (Exception e) {
-            addToLog("SUB ERROR: " + e.getMessage());
+            addToLog("SUB_ERROR: JSON construction failed. " + e.getMessage());
         }
     }
 
@@ -227,7 +249,7 @@ public class WebSocketClientManager {
      * Broadcasts subscription REQ to all currently connected relays.
      */
     public void resubscribeAll() {
-        addToLog("SYSTEM: Resubscribing all relays to current interest list...");
+        addToLog("SYSTEM_EVENT: Global resubscription triggered by UI state change.");
         for (Map.Entry<String, WebSocketClient> entry : activeRelays.entrySet()) {
             subscribeToUserInterests(entry.getValue(), entry.getKey());
         }
@@ -238,7 +260,7 @@ public class WebSocketClientManager {
      */
     public void broadcastEvent(String eventJson) {
         if (activeRelays.isEmpty()) {
-            addToLog("BROADCAST FAILED: No active connections available.");
+            addToLog("BROADCAST_FAILURE: 0 active relay connections. Payload discarded.");
             return;
         }
 
@@ -250,16 +272,21 @@ public class WebSocketClientManager {
             if (client != null && client.isOpen()) {
                 client.send(nostrMessage);
                 sentCount++;
+                // FORENSIC: Trace transmission to each node in the pool
+                addToLog("FRAME_SEND (EVENT) TO [" + entry.getKey() + "]:\n" + nostrMessage);
             }
         }
-        addToLog("BROADCAST: Sent to " + sentCount + " relays.\nPAYLOAD: " + eventJson);
+        Log.d(TAG, "Broadcast completed to " + sentCount + " relays.");
     }
 
     public void subscribe(String relayUrl, String subscriptionJson) {
         WebSocketClient client = activeRelays.get(relayUrl);
         if (client != null && client.isOpen()) {
             client.send(subscriptionJson);
-            addToLog("MANUAL REQ to " + relayUrl + ":\n" + subscriptionJson);
+            // FORENSIC: Trace manual REQ (Browse/Nearby/Directory)
+            addToLog("FRAME_SEND (MANUAL_REQ) TO [" + relayUrl + "]:\n" + subscriptionJson);
+        } else {
+            addToLog("REQ_FAILED: Relay [" + relayUrl + "] is not connected.");
         }
     }
 
@@ -267,7 +294,7 @@ public class WebSocketClientManager {
         WebSocketClient client = activeRelays.remove(relayUrl);
         if (client != null) {
             client.close();
-            addToLog("MANUAL DISCONNECT: " + relayUrl);
+            addToLog("MANUAL_DISCONNECT: Closed tunnel to " + relayUrl);
         }
     }
 
@@ -276,7 +303,7 @@ public class WebSocketClientManager {
             disconnectRelay(url);
         }
         activeRelays.clear();
-        addToLog("SYSTEM: All relay connections terminated.");
+        addToLog("SYSTEM_SHUTDOWN: All WebSocket connections have been terminated.");
     }
 
     public int getConnectedRelayCount() {
