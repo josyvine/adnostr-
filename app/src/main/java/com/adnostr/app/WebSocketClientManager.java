@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.List;
 
 /**
  * Decentralized Network Manager.
@@ -24,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * FIXED: Subscription logic now uses dynamic IDs to prevent relay rejection.
  * FIXED: Included Kind 5 (Deletions) in the subscription filter so the foreground app can wipe deleted ads.
  * FORENSIC UPDATE: Implemented race-condition fix for already-connected relays.
+ * CRITICAL FIX FOR POPUP: Converted to Multi-Listener Observer Pattern to prevent Fragments 
+ * from overwriting the Global MainActivity ad listener.
  */
 public class WebSocketClientManager {
 
@@ -39,8 +43,8 @@ public class WebSocketClientManager {
     // Millisecond precision for forensic debugging
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault());
 
-    // Callback to notify UI components of network changes
-    private RelayStatusListener statusListener;
+    // FIXED: Support for multiple listeners so Activity and Fragments don't collide
+    private final List<RelayStatusListener> listeners = new CopyOnWriteArrayList<>();
 
     public interface RelayStatusListener {
         void onRelayConnected(String url);
@@ -67,8 +71,27 @@ public class WebSocketClientManager {
         this.appContext = context.getApplicationContext();
     }
 
+    /**
+     * UPDATED: Adds a listener to the pool instead of overwriting existing ones.
+     */
+    public void addStatusListener(RelayStatusListener listener) {
+        if (listener != null && !listeners.contains(listener)) {
+            listeners.add(listener);
+        }
+    }
+
+    /**
+     * UPDATED: Removes a specific listener to prevent memory leaks.
+     */
+    public void removeStatusListener(RelayStatusListener listener) {
+        listeners.remove(listener);
+    }
+
+    /**
+     * Legacy support: Adds the listener to the list.
+     */
     public void setStatusListener(RelayStatusListener listener) {
-        this.statusListener = listener;
+        addStatusListener(listener);
     }
 
     /**
@@ -116,10 +139,9 @@ public class WebSocketClientManager {
                 // FORENSIC LOG: Identifying existing tunnel reuse
                 addToLog("TCP_REUSE: Re-using existing open tunnel for " + relayUrl);
                 
-                // CRITICAL FIX: If the Activity (Browse/Nearby) is new but the Relay is old,
-                // we must manually trigger the callback so the Activity can send its REQ.
-                if (statusListener != null) {
-                    statusListener.onRelayConnected(relayUrl);
+                // CRITICAL FIX FOR POPUP: Notify all registered listeners of the existing connection
+                for (RelayStatusListener listener : listeners) {
+                    listener.onRelayConnected(relayUrl);
                 }
 
                 // Connection exists; try to subscribe if listening
@@ -140,8 +162,8 @@ public class WebSocketClientManager {
                     // Subscribe to user interests on connection open
                     subscribeToUserInterests(this, relayUrl);
 
-                    if (statusListener != null) {
-                        statusListener.onRelayConnected(relayUrl);
+                    for (RelayStatusListener listener : listeners) {
+                        listener.onRelayConnected(relayUrl);
                     }
                 }
 
@@ -150,8 +172,8 @@ public class WebSocketClientManager {
                     // FORENSIC: Capture raw incoming JSON frame
                     addToLog("FRAME_RECV FROM [" + relayUrl + "]:\n" + message);
 
-                    if (statusListener != null) {
-                        statusListener.onMessageReceived(relayUrl, message);
+                    for (RelayStatusListener listener : listeners) {
+                        listener.onMessageReceived(relayUrl, message);
                     }
                 }
 
@@ -164,8 +186,8 @@ public class WebSocketClientManager {
                     String source = remote ? "Remote Relay" : "Local App";
                     addToLog("TCP_CLOSED: " + relayUrl + "\nCode: " + code + "\nReason: " + reason + "\nSource: " + source);
                     
-                    if (statusListener != null) {
-                        statusListener.onRelayDisconnected(relayUrl, reason);
+                    for (RelayStatusListener listener : listeners) {
+                        listener.onRelayDisconnected(relayUrl, reason);
                     }
                 }
 
@@ -177,8 +199,8 @@ public class WebSocketClientManager {
                     // FORENSIC: Full stack trace for identifying socket timeouts or SSL issues
                     addToLog("NETWORK_ERROR: " + relayUrl + "\nException: " + ex.toString());
                     
-                    if (statusListener != null) {
-                        statusListener.onError(relayUrl, ex);
+                    for (RelayStatusListener listener : listeners) {
+                        listener.onError(relayUrl, ex);
                     }
                 }
             };
