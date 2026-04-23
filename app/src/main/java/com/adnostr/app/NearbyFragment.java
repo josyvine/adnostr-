@@ -1,6 +1,7 @@
 package com.adnostr.app;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Bundle;
@@ -34,6 +35,7 @@ import java.util.UUID;
  * Logic: Get My GPS -> Subscribe Kind 30004 -> Decrypt -> Calculate Proximity -> Sort & Display.
  * FIXED: Role-based filtering to ensure Users see Advertisers, and Advertisers see Users.
  * FIXED: Self-filtering to ensure your own beacon doesn't show up on your radar.
+ * FORENSIC UPDATE: Integrated RelayReportDialog for deep diagnostic logs on refresh.
  */
 public class NearbyFragment extends Fragment {
 
@@ -48,6 +50,9 @@ public class NearbyFragment extends Fragment {
     private Location myCurrentLocation;
     private final List<NearbyUser> nearbyList = new ArrayList<>();
     private NearbyAdapter adapter;
+
+    // Forensic Log Accumulator
+    private final StringBuilder diagnosticLogs = new StringBuilder();
 
     @Nullable
     @Override
@@ -82,15 +87,19 @@ public class NearbyFragment extends Fragment {
      * Retrieves the device's current location once to establish a center point for discovery.
      */
     private void requestMySnapshotLocation() {
+        logDiagnostic("GPS_SCAN: Requesting current device coordinates...");
         if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            logDiagnostic("GPS_ERROR: Permission ACCESS_FINE_LOCATION denied.");
             return;
         }
 
         fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
             if (location != null) {
                 myCurrentLocation = location;
+                logDiagnostic("GPS_SUCCESS: My Loc -> Lat: " + location.getLatitude() + ", Lon: " + location.getLongitude());
                 startDiscoverySubscription();
             } else {
+                logDiagnostic("GPS_FAIL: LastLocation returned null. Ensure GPS is ON and App has permission.");
                 Log.w(TAG, "Location null. Retrying scan...");
                 binding.swipeRefreshNearby.setRefreshing(false);
             }
@@ -113,10 +122,23 @@ public class NearbyFragment extends Fragment {
             String subId = "nearby-" + UUID.randomUUID().toString().substring(0, 6);
             String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
+            logDiagnostic("REQ_START: Initiating Kind 30004 subscription.");
+            logDiagnostic("SUB_ID: " + subId);
+
             wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
-                @Override public void onRelayConnected(String url) { wsManager.subscribe(url, req); }
-                @Override public void onRelayDisconnected(String url, String reason) {}
-                @Override public void onError(String url, Exception ex) {}
+                @Override 
+                public void onRelayConnected(String url) { 
+                    logDiagnostic("RELAY_ACTIVE: " + url + " - Sending REQ frame.");
+                    wsManager.subscribe(url, req); 
+                }
+                
+                @Override public void onRelayDisconnected(String url, String reason) {
+                    logDiagnostic("RELAY_LOST: " + url + " (Reason: " + reason + ")");
+                }
+                
+                @Override public void onError(String url, Exception ex) {
+                    logDiagnostic("SOCKET_ERROR: " + url + " - " + ex.getMessage());
+                }
 
                 @Override
                 public void onMessageReceived(String url, String message) {
@@ -130,6 +152,7 @@ public class NearbyFragment extends Fragment {
             wsManager.connectPool(db.getRelayPool());
 
         } catch (Exception e) {
+            logDiagnostic("CRITICAL_SUB_FAIL: " + e.getMessage());
             Log.e(TAG, "Subscription failure: " + e.getMessage());
         }
     }
@@ -139,16 +162,32 @@ public class NearbyFragment extends Fragment {
             if (!rawMessage.startsWith("[")) return;
             JSONArray msg = new JSONArray(rawMessage);
             if (!"EVENT".equals(msg.getString(0))) {
-                if ("EOSE".equals(msg.getString(0))) binding.swipeRefreshNearby.setRefreshing(false);
+                if ("EOSE".equals(msg.getString(0))) {
+                    logDiagnostic("EVENT_EOSE: Relay search completed.");
+                    binding.swipeRefreshNearby.setRefreshing(false);
+                }
                 return;
             }
 
             JSONObject event = msg.getJSONObject(2);
+            int kind = event.optInt("kind", -1);
+            if (kind != 30004) return;
+
             String encryptedContent = event.getString("content");
             String senderPubkey = event.getString("pubkey");
 
+            logDiagnostic("EVENT_RECV: Received beacon from " + senderPubkey.substring(0, 8));
+
             // 1. Decrypt using Master App Key
-            String decryptedJson = EncryptionUtils.decryptPayload(encryptedContent);
+            String decryptedJson;
+            try {
+                decryptedJson = EncryptionUtils.decryptPayload(encryptedContent);
+                logDiagnostic("DECRYPT_OK: Forensic payload unwrapped.");
+            } catch (Exception e) {
+                logDiagnostic("DECRYPT_FAIL: Beacon discarded (Not AdNostr Protocol).");
+                return;
+            }
+
             JSONObject locData = new JSONObject(decryptedJson);
 
             double lat = locData.getDouble("lat");
@@ -164,27 +203,36 @@ public class NearbyFragment extends Fragment {
 
             // Self Filter: Prevent seeing yourself on the radar
             if (senderPubkey.equals(myPubkey)) {
+                logDiagnostic("FILTER_SELF: Dropping my own beacon.");
                 return;
             }
 
             // Role Filter for USERS: Only show ADVERTISERS
             if (RoleSelectionActivity.ROLE_USER.equals(myRole) && !RoleSelectionActivity.ROLE_ADVERTISER.equals(role)) {
+                logDiagnostic("FILTER_ROLE: Dropped USER (I am in Consumer Mode).");
                 return;
             }
             
             // Role Filter for ADVERTISERS: Only show USERS
             if (RoleSelectionActivity.ROLE_ADVERTISER.equals(myRole) && !RoleSelectionActivity.ROLE_USER.equals(role)) {
+                logDiagnostic("FILTER_ROLE: Dropped ADVERTISER (I am in Business Mode).");
                 return;
             }
 
             // 2. Proximity Calculation (Haversine)
             double distance = calculateDistance(myCurrentLocation.getLatitude(), myCurrentLocation.getLongitude(), lat, lon);
+            logDiagnostic("PROXIMITY_CALC: Distance is " + String.format("%.2f", distance) + " km");
 
             if (distance <= MAX_DISTANCE_KM) {
+                logDiagnostic("RADAR_ACCEPT: Found " + name + " within range.");
                 updateNearbyList(new NearbyUser(name, role, distance, senderPubkey));
+            } else {
+                logDiagnostic("RADAR_REJECT: Target is outside 50km radius.");
             }
 
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            logDiagnostic("PARSE_ERROR: Received malformed JSON from relay.");
+        }
     }
 
     /**
@@ -215,9 +263,34 @@ public class NearbyFragment extends Fragment {
         }
     }
 
+    /**
+     * Updated: Triggers Forensic Diagnostic Dialog.
+     */
     private void refreshNearbyScan() {
+        diagnosticLogs.setLength(0);
+        logDiagnostic("=== INITIATING DIAGNOSTIC RADAR SCAN ===");
+        logDiagnostic("ACTIVE_ROLE: " + db.getUserRole());
+        
+        RelayReportDialog report = RelayReportDialog.newInstance(
+                "NEARBY RADAR CONSOLE", 
+                "Scanning GPS Beacons...", 
+                diagnosticLogs.toString()
+        );
+        report.showSafe(getChildFragmentManager(), "NEARBY_LOG");
+
         binding.swipeRefreshNearby.setRefreshing(true);
         requestMySnapshotLocation();
+    }
+
+    private void logDiagnostic(String msg) {
+        diagnosticLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+        // Update dialog if visible
+        if (isAdded()) {
+            RelayReportDialog report = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("NEARBY_LOG");
+            if (report != null) {
+                report.updateTechnicalLogs("Forensic Scan in Progress", diagnosticLogs.toString());
+            }
+        }
     }
 
     /**
