@@ -19,6 +19,7 @@ import java.util.Set;
  * ENHANCEMENT: Added Privacy Command Center keys for Username visibility and Live Location.
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  * FIXED: Changed from .apply() to .commit() to ensure JSON restoration sticks on restart.
+ * FIXED: Role-based key separation for Interests and Privacy to prevent data bleeding between roles.
  */
 public class AdNostrDatabaseHelper {
 
@@ -170,7 +171,7 @@ public class AdNostrDatabaseHelper {
     }
 
     public String getUserRole() {
-        return prefs.getString(KEY_USER_ROLE, null);
+        return prefs.getString(KEY_USER_ROLE, "");
     }
 
     public void setSetupComplete(boolean status) {
@@ -194,7 +195,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // HASHTAG MANAGEMENT
+    // HASHTAG MANAGEMENT (FIXED FOR ROLE COLLISION)
     // =========================================================================
 
     public void saveAvailableHashtags(Set<String> hashtagPool) {
@@ -209,12 +210,20 @@ public class AdNostrDatabaseHelper {
         return prefs.getStringSet(KEY_AVAILABLE_HASHTAGS, defaults);
     }
 
+    /**
+     * FIXED: Appends the current role to the key to prevent bleeding between User/Advertiser interests.
+     */
     public void saveInterests(Set<String> interests) {
-        prefs.edit().putStringSet(KEY_USER_INTERESTS, interests).apply();
+        String role = getUserRole();
+        prefs.edit().putStringSet(KEY_USER_INTERESTS + "_" + role, interests).apply();
     }
 
+    /**
+     * FIXED: Retrieves interests based on the active role.
+     */
     public Set<String> getInterests() {
-        return prefs.getStringSet(KEY_USER_INTERESTS, new HashSet<>());
+        String role = getUserRole();
+        return prefs.getStringSet(KEY_USER_INTERESTS + "_" + role, new HashSet<>());
     }
 
     // =========================================================================
@@ -351,23 +360,39 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // PRIVACY COMMAND CENTER METHODS (NEW)
+    // PRIVACY COMMAND CENTER METHODS (FIXED FOR ROLE COLLISION)
     // =========================================================================
 
+    /**
+     * FIXED: Appends the current role to ensure privacy settings are independent.
+     */
     public void setUsernameHidden(boolean isHidden) {
-        prefs.edit().putBoolean(KEY_USERNAME_HIDDEN, isHidden).apply();
+        String role = getUserRole();
+        prefs.edit().putBoolean(KEY_USERNAME_HIDDEN + "_" + role, isHidden).apply();
     }
 
+    /**
+     * FIXED: Retrieves privacy state for the active role.
+     */
     public boolean isUsernameHidden() {
-        return prefs.getBoolean(KEY_USERNAME_HIDDEN, false);
+        String role = getUserRole();
+        return prefs.getBoolean(KEY_USERNAME_HIDDEN + "_" + role, false);
     }
 
+    /**
+     * FIXED: Appends current role to the live location key.
+     */
     public void setLiveLocationEnabled(boolean isEnabled) {
-        prefs.edit().putBoolean(KEY_LIVE_LOCATION_ENABLED, isEnabled).apply();
+        String role = getUserRole();
+        prefs.edit().putBoolean(KEY_LIVE_LOCATION_ENABLED + "_" + role, isEnabled).apply();
     }
 
+    /**
+     * FIXED: Retrieves live location state for the active role.
+     */
     public boolean isLiveLocationEnabled() {
-        return prefs.getBoolean(KEY_LIVE_LOCATION_ENABLED, false);
+        String role = getUserRole();
+        return prefs.getBoolean(KEY_LIVE_LOCATION_ENABLED + "_" + role, false);
     }
 
     // =========================================================================
@@ -390,8 +415,8 @@ public class AdNostrDatabaseHelper {
         // 2. Restore Role
         if (role != null && !role.isEmpty()) editor.putString(KEY_USER_ROLE, role);
 
-        // 3. Restore Interests (For Users)
-        if (interests != null) editor.putStringSet(KEY_USER_INTERESTS, interests);
+        // 3. Restore Interests (For Users) - Uses role-aware key logic
+        if (interests != null) editor.putStringSet(KEY_USER_INTERESTS + "_" + role, interests);
 
         // 4. Restore Private Cloudflare Credentials (For Advertisers)
         if (cfUrl != null) editor.putString(KEY_CLOUDFLARE_WORKER_URL, cfUrl);
