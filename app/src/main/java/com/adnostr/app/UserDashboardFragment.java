@@ -38,7 +38,7 @@ import java.util.Set;
  * ENHANCEMENT: Implements Phantom Ad Blocklist and Master App-Level Decryption.
  * ENHANCEMENT: Integrated User-Side Trust Filter (Hashtag Registry check) for live traffic.
  * ENHANCEMENT: Integrated Identity Header to display restored Username and PubKey from JSON.
- * ENHANCEMENT: Respects Privacy Command Center "Hide Username" flag (Feature 1).
+ * FIXED (Glitch 3): Respects Privacy Command Center "Hide Username" flag strictly.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -478,13 +478,13 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     /**
      * ENHANCEMENT: Populates the UI header with the user's Username and PubKey.
      * This confirms that the identity from the JSON Passport was loaded correctly.
-     * GLITCH 4 FIX: Updated to respect Privacy Mode and changed to public visibility.
+     * FIXED: GLITCH 3 - Now strictly enforces Privacy Mode, hiding the username if the toggle is on.
      */
     public void setupIdentityHeader() {
         String username = db.getUsername();
         String pubKey = db.getPublicKey();
 
-        // GLITCH 4 FIX: Force "Anonymous User" display if privacy mode is active
+        // FIXED: Force "Anonymous User" display if privacy mode is active
         if (db.isUsernameHidden()) {
             binding.tvUsername.setText("Anonymous User");
         } else if (username != null && !username.isEmpty()) {
