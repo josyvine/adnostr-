@@ -39,6 +39,7 @@ import java.util.Set;
  * ENHANCEMENT: Integrated User-Side Trust Filter (Hashtag Registry check) for live traffic.
  * ENHANCEMENT: Integrated Identity Header to display restored Username and PubKey from JSON.
  * FIXED (Glitch 3): Respects Privacy Command Center "Hide Username" flag strictly.
+ * CRITICAL FIX FOR POPUP: Switched to addStatusListener to prevent overwriting MainActivity logic.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -48,6 +49,9 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     private HashtagAdapter adapter;
     private List<String> hashtagPool;
     private WebSocketClientManager wsManager;
+    
+    // FIXED: Added member variable to track the listener for clean removal
+    private WebSocketClientManager.RelayStatusListener mRelayListener;
 
     // Technical Log Accumulator for the Network Console
     private final StringBuilder technicalLogs = new StringBuilder();
@@ -236,8 +240,11 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
         }
     }
 
+    /**
+     * FIXED FOR POPUP: Using addStatusListener so the Fragment doesn't disable MainActivity popups.
+     */
     private void setupNetworkStatusListener() {
-        wsManager.setStatusListener(new WebSocketClientManager.RelayStatusListener() {
+        mRelayListener = new WebSocketClientManager.RelayStatusListener() {
             @Override
             public void onRelayConnected(String url) {
                 technicalLogs.append("[CONNECTED] ").append(url).append("\n");
@@ -434,7 +441,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                     });
                 }
             }
-        });
+        };
+        
+        // FIXED FOR POPUP: add listener to the pool
+        wsManager.addStatusListener(mRelayListener);
     }
 
     /**
@@ -481,6 +491,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
      * FIXED: GLITCH 3 - Now strictly enforces Privacy Mode, hiding the username if the toggle is on.
      */
     public void setupIdentityHeader() {
+        if (binding == null) return;
         String username = db.getUsername();
         String pubKey = db.getPublicKey();
 
@@ -524,6 +535,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     }
 
     private void updateListeningUI() {
+        if (binding == null) return;
         boolean isListening = db.isListening();
         if (isListening) {
             binding.llListeningState.setVisibility(View.VISIBLE);
@@ -557,6 +569,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     @Override
     public void onDestroyView() {
+        // FIXED FOR POPUP: Unregister listener to keep MainActivity as the master popup trigger
+        if (wsManager != null && mRelayListener != null) {
+            wsManager.removeStatusListener(mRelayListener);
+        }
         super.onDestroyView();
         binding = null;
     }
