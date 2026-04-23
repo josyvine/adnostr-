@@ -146,6 +146,13 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
+        <!-- FIXED: FEATURE 5: Product Preview Activity (WebView Staging) -->
+        <activity
+            android:name=".ProductPreviewActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
         <!-- ================================================================= -->
         <!-- SERVICES -->
         <!-- ================================================================= -->
