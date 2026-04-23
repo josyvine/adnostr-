@@ -21,7 +21,7 @@
 
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 
-    body { margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 90px; }
+    body { margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 120px; }
 
     /* Header */
     .header {
@@ -52,7 +52,7 @@
     
     input[type="text"], input[type="number"], select, textarea {
         width: 100%; padding: 14px; border-radius: 10px; border: 1.5px solid var(--border);
-        font-size: 16px; /* 16px prevents iOS auto-zoom */
+        font-size: 16px; 
         background: #FAFAFA; transition: border 0.2s; outline: none;
     }
     input:focus, select:focus, textarea:focus { border-color: var(--primary); background: #FFF; }
@@ -61,7 +61,7 @@
     .row { display: flex; gap: 15px; }
     .row .form-group { flex: 1; margin-bottom: 0; }
 
-    /* Media Upload Box */
+    /* Media Upload Box & Thumbnails */
     .upload-box {
         border: 2px dashed var(--border); padding: 30px 15px; text-align: center;
         border-radius: 12px; background: #FAFAFA; cursor: pointer; position: relative;
@@ -70,6 +70,20 @@
     .upload-box p { margin: 0; font-size: 14px; color: var(--text-muted); font-weight: 500;}
     .upload-box input[type="file"] {
         position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+    }
+
+    #thumbnailGrid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 15px;
+    }
+    .thumb-wrapper {
+        width: 100%; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+        background: #eee; position: relative; border: 1px solid var(--border);
+    }
+    .thumb-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+    .thumb-loader {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center;
+        font-size: 10px; color: var(--primary); font-weight: 700;
     }
 
     /* iOS Style Toggle Switch */
@@ -86,15 +100,18 @@
     .bottom-bar {
         position: fixed; bottom: 0; left: 0; width: 100%; background: var(--card-bg);
         padding: 15px 20px; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); z-index: 100;
+        display: flex; gap: 10px;
     }
     .btn-submit {
-        width: 100%; max-width: 800px; margin: 0 auto; display: block;
-        background: var(--primary); color: white; padding: 16px; border: none;
-        border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;
+        flex: 2; background: var(--primary); color: white; padding: 16px; border: none;
+        border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
         transition: background 0.2s; box-shadow: 0 4px 12px rgba(255, 106, 0, 0.3);
     }
-    .btn-submit:active { background: var(--primary-dark); transform: scale(0.98); }
-    .btn-submit i { margin-right: 8px; }
+    .btn-preview {
+        flex: 1; background: #333; color: white; padding: 16px; border: none;
+        border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
+    }
+    .btn-submit:active, .btn-preview:active { transform: scale(0.98); }
 
 </style>
 </head>
@@ -107,7 +124,6 @@
 
 <div class="container">
 
-    <!-- CATEGORY -->
     <div class="section">
         <h2><i class="fa-solid fa-list"></i> Category</h2>
         <div class="form-group">
@@ -121,7 +137,6 @@
         </div>
     </div>
 
-    <!-- BASIC INFO -->
     <div class="section">
         <h2><i class="fa-solid fa-circle-info"></i> Basic Details</h2>
         <div class="form-group">
@@ -148,18 +163,17 @@
         </div>
     </div>
 
-    <!-- MEDIA -->
     <div class="section">
         <h2><i class="fa-solid fa-image"></i> Media</h2>
         <div class="upload-box">
             <i class="fa-solid fa-cloud-arrow-up"></i>
             <p>Tap to upload images</p>
-            <input type="file" id="mediaUpload" multiple accept="image/*">
+            <input type="file" id="mediaUpload" multiple accept="image/*" onchange="triggerNativeUpload(this)">
         </div>
-        <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 10px;">Images will be securely encrypted on your device.</p>
+        <div id="thumbnailGrid"></div>
+        <p style="font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 10px;">Images are encrypted and hosted on your Private Cloudflare R2.</p>
     </div>
 
-    <!-- PRICE -->
     <div class="section">
         <h2><i class="fa-solid fa-tag"></i> Pricing</h2>
         <div class="row">
@@ -178,7 +192,6 @@
         </div>
     </div>
 
-    <!-- LOCATION -->
     <div class="section">
         <h2><i class="fa-solid fa-location-dot"></i> Location</h2>
         <div class="row">
@@ -193,7 +206,6 @@
         </div>
     </div>
 
-    <!-- DELIVERY -->
     <div class="section">
         <h2><i class="fa-solid fa-truck"></i> Delivery</h2>
         <div class="form-group">
@@ -214,7 +226,6 @@
         </div>
     </div>
 
-    <!-- INVENTORY & VARIANTS -->
     <div class="section">
         <h2><i class="fa-solid fa-box"></i> Inventory & Variants</h2>
         <div class="row">
@@ -239,7 +250,6 @@
         </div>
     </div>
 
-    <!-- SELLER & PROMOTION -->
     <div class="section">
         <h2><i class="fa-solid fa-user-shield"></i> Settings & Promotion</h2>
         <div class="form-group">
@@ -269,17 +279,48 @@
 
 </div>
 
-<!-- STICKY BOTTOM BAR -->
 <div class="bottom-bar">
-    <button class="btn-submit" onclick="submitToAndroid()">
-        <i class="fa-solid fa-paper-plane"></i> Upload & Publish to Cloudflare
+    <button class="btn-preview" onclick="prepareData('PREVIEW')">
+        <i class="fa-solid fa-eye"></i> Preview
+    </button>
+    <button class="btn-submit" onclick="prepareData('PUBLISH')">
+        <i class="fa-solid fa-cloud-arrow-up"></i> Publish to Cloud
     </button>
 </div>
 
-<!-- JAVASCRIPT BRIDGE TO ANDROID -->
 <script>
-    function submitToAndroid() {
-        // Collect all data into a JSON object
+    let uploadedImageUrls = [];
+
+    // FORENSIC LOGGING BRIDGE
+    function logToAndroid(msg, isError = false) {
+        if (window.AndroidBridge) {
+            window.AndroidBridge.logTechnicalEvent("[" + new Date().toLocaleTimeString() + "] [BROWSER] " + msg);
+        }
+    }
+
+    // Capture browser errors
+    window.onerror = function(m, u, l) { logToAndroid("JS Error: " + m + " at " + l, true); };
+
+    function triggerNativeUpload(input) {
+        logToAndroid("File picker triggered. Handing over to Android for R2 Encryption/Upload.");
+        // The actual file handling is intercepted by WebChromeClient in CreateProductActivity
+    }
+
+    /**
+     * Called by Android Native code after successful R2 upload
+     * @param {string} url - The final Cloudflare HTTPS URL
+     */
+    function addUploadedImageUrl(url) {
+        uploadedImageUrls.push(url);
+        const grid = document.getElementById('thumbnailGrid');
+        const div = document.createElement('div');
+        div.className = 'thumb-wrapper';
+        div.innerHTML = `<img src="${url}"><div class="thumb-loader"><i class="fa-solid fa-check"></i></div>`;
+        grid.appendChild(div);
+        logToAndroid("Thumbnail rendered for: " + url);
+    }
+
+    function prepareData(mode) {
         const productData = {
             category: document.getElementById('cat').value,
             title: document.getElementById('title').value,
@@ -312,27 +353,17 @@
                 show_phone: document.getElementById('opt_phone').checked
             },
             is_featured: document.getElementById('opt_feature').checked,
-            
-            // Native Android app will handle the actual image to base64/Cloudflare logic,
-            // but we leave a placeholder here so the JSON structure is complete.
-            images: [] 
+            images: uploadedImageUrls 
         };
 
-        // Basic validation
         if (!productData.title || !productData.price) {
             alert("Please fill in the Title and Price.");
             return;
         }
 
-        // Pass the JSON string to the Android WebView Interface
-        // 'AndroidBridge' is the object name we will register in CreateProductActivity.java
         if (window.AndroidBridge) {
-            window.AndroidBridge.processProductData(JSON.stringify(productData));
-        } else {
-            // Fallback for browser testing
-            console.log("AndroidBridge not found. Outputting JSON:");
-            console.log(JSON.stringify(productData, null, 2));
-            alert("Ready to publish! (Check console for JSON payload)");
+            logToAndroid("Data prepared for " + mode + ". Sending JSON payload to bridge.");
+            window.AndroidBridge.processProductData(JSON.stringify(productData), mode);
         }
     }
 </script>
