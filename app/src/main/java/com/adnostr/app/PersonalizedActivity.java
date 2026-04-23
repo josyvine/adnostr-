@@ -23,6 +23,7 @@ import java.util.Set;
  * FEATURE 4: Personalized Topics Selector.
  * Allows users to choose business/interest categories.
  * Broadcasts selection as Kind 30003 for directory discovery.
+ * FIXED (Glitch 8): Role bleeding resolved. db.getInterests() now utilizes the role-aware keys updated in AdNostrDatabaseHelper.
  */
 public class PersonalizedActivity extends AppCompatActivity {
 
@@ -73,7 +74,8 @@ public class PersonalizedActivity extends AppCompatActivity {
         binding.rvTopicList.setLayoutManager(new LinearLayoutManager(this));
         
         // Retrieve current saved topics (Feature 4 database enhancement)
-        Set<String> savedTopics = db.getInterests(); // Re-using interests set for topic parity
+        // This call now automatically fetches role-specific data based on the AdNostrDatabaseHelper updates.
+        Set<String> savedTopics = db.getInterests(); 
         
         adapter = new TopicAdapter(availableTopics, savedTopics);
         binding.rvTopicList.setAdapter(adapter);
