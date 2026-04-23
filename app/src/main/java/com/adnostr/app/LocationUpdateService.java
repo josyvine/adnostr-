@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Build;
@@ -27,12 +28,17 @@ import com.google.android.gms.location.Priority;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 /**
  * FEATURE 3: Live Location Beacon Service.
  * Acts as a foreground service that periodically broadcasts GPS coordinates 
  * to the Nostr network using Kind 30004.
  * 
  * Logic: Get Location -> Wrap in JSON -> Master Encrypt -> Sign Kind 30004 -> Broadcast.
+ * FORENSIC UPDATE: Implements persistent background tracing for radar diagnostics.
  */
 public class LocationUpdateService extends Service {
 
@@ -55,12 +61,14 @@ public class LocationUpdateService extends Service {
         wsManager = WebSocketClientManager.getInstance();
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
+        logBackgroundForensic("SERVICE_CREATED: Location Beacon Engine Initialized.");
         setupLocationCallback();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "Location Beacon Service Started.");
+        logBackgroundForensic("SERVICE_START: Background beaconing is now ACTIVE.");
 
         // 1. Create Notification Channel for Foreground Service
         createNotificationChannel();
@@ -87,8 +95,12 @@ public class LocationUpdateService extends Service {
         locationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult locationResult) {
-                if (locationResult == null) return;
+                if (locationResult == null) {
+                    logBackgroundForensic("GPS_POLL: Result is NULL. Check GPS signal.");
+                    return;
+                }
                 for (Location location : locationResult.getLocations()) {
+                    logBackgroundForensic("GPS_LOCK: Lat: " + location.getLatitude() + ", Lon: " + location.getLongitude() + " [Acc: " + location.getAccuracy() + "m]");
                     broadcastLocationToNostr(location);
                 }
             }
@@ -101,11 +113,13 @@ public class LocationUpdateService extends Service {
                 .build();
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            logBackgroundForensic("CRITICAL_ERROR: Fine location permission revoked. Service stopping.");
             stopSelf();
             return;
         }
 
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+        logBackgroundForensic("REQUEST_UPDATES: GPS polling configured for " + (UPDATE_INTERVAL_MS/1000) + "s interval.");
     }
 
     /**
@@ -124,8 +138,12 @@ public class LocationUpdateService extends Service {
                 locJson.put("name", db.getUsername());
             }
 
+            logBackgroundForensic("PAYLOAD_RAW: " + locJson.toString());
+
             // 2. Encrypt via Master App-Level Key
+            logBackgroundForensic("CRYPTO_START: Wrapping payload in Master AES-256...");
             String encryptedContent = EncryptionUtils.encryptPayload(locJson.toString());
+            logBackgroundForensic("CRYPTO_OK: Encrypted Hex -> " + encryptedContent.substring(0, 16) + "...");
 
             // 3. Construct Nostr Event (Kind 30004)
             JSONObject event = new JSONObject();
@@ -143,13 +161,21 @@ public class LocationUpdateService extends Service {
             event.put("tags", tags);
 
             // 4. Sign and Broadcast
+            logBackgroundForensic("SIGN_START: Executing BIP-340 Schnorr signature...");
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
+            
             if (signedEvent != null) {
+                logBackgroundForensic("SIGN_OK: Event ID -> " + signedEvent.getString("id"));
+                
                 wsManager.broadcastEvent(signedEvent.toString());
+                logBackgroundForensic("NETWORK_PUSH: Beacon passed to WebSocket Manager.");
                 Log.d(TAG, "Location Beacon Broadcasted: " + location.getLatitude() + ", " + location.getLongitude());
+            } else {
+                logBackgroundForensic("SIGN_FAIL: Signature engine returned NULL.");
             }
 
         } catch (Exception e) {
+            logBackgroundForensic("BROADCAST_EXCEPTION: " + e.getMessage());
             Log.e(TAG, "Failed to broadcast location: " + e.getMessage());
         }
     }
@@ -168,9 +194,31 @@ public class LocationUpdateService extends Service {
         }
     }
 
+    /**
+     * Internal forensic logger. Writes to SharedPreferences so NearbyFragment can 
+     * pull background logs for its diagnostic console display.
+     */
+    private void logBackgroundForensic(String msg) {
+        String time = new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
+        String entry = "[" + time + "] " + msg + "\n";
+        
+        SharedPreferences logPrefs = getSharedPreferences("adnostr_background_logs", MODE_PRIVATE);
+        String currentLogs = logPrefs.getString("trace", "");
+        
+        // Keep the last 10,000 characters of background trace
+        String updatedLogs = entry + currentLogs;
+        if (updatedLogs.length() > 10000) {
+            updatedLogs = updatedLogs.substring(0, 8000);
+        }
+        
+        logPrefs.edit().putString("trace", updatedLogs).apply();
+        Log.i(TAG, "Forensic Trace: " + msg);
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
+        logBackgroundForensic("SERVICE_DESTROYED: Beaconing terminated.");
         fusedLocationClient.removeLocationUpdates(locationCallback);
         Log.i(TAG, "Location Beacon Service Stopped.");
     }
