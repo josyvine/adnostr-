@@ -20,6 +20,7 @@ import java.util.Set;
  * RETAINED: All Nostr identity, Relay pool, History, and Hashtag logic.
  * FIXED: Changed from .apply() to .commit() to ensure JSON restoration sticks on restart.
  * FIXED: Role-based key separation for Interests and Privacy to prevent data bleeding between roles.
+ * FIXED FOR POPUP: Implemented Fallback logic in getInterests to prevent empty subscriptions.
  */
 public class AdNostrDatabaseHelper {
 
@@ -171,7 +172,9 @@ public class AdNostrDatabaseHelper {
     }
 
     public String getUserRole() {
-        return prefs.getString(KEY_USER_ROLE, "");
+        // FIXED: Return "USER" if role is not set to prevent key-bleeding
+        String role = prefs.getString(KEY_USER_ROLE, "");
+        return (role == null || role.isEmpty()) ? "USER" : role;
     }
 
     public void setSetupComplete(boolean status) {
@@ -219,11 +222,22 @@ public class AdNostrDatabaseHelper {
     }
 
     /**
-     * FIXED: Retrieves interests based on the active role.
+     * FIXED FOR POPUP: Retrieves interests based on the active role with Legacy Fallback.
      */
     public Set<String> getInterests() {
         String role = getUserRole();
-        return prefs.getStringSet(KEY_USER_INTERESTS + "_" + role, new HashSet<>());
+        Set<String> roleSpecific = prefs.getStringSet(KEY_USER_INTERESTS + "_" + role, new HashSet<>());
+        
+        // LEGACY FALLBACK: If role-specific is empty, check the first-zip base key
+        if (roleSpecific.isEmpty()) {
+            Set<String> legacy = prefs.getStringSet(KEY_USER_INTERESTS, new HashSet<>());
+            if (!legacy.isEmpty()) {
+                // Migrate to new role-specific storage instantly
+                saveInterests(legacy);
+                return legacy;
+            }
+        }
+        return roleSpecific;
     }
 
     // =========================================================================
