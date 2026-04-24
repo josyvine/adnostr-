@@ -46,6 +46,7 @@ import java.util.concurrent.TimeUnit;
  * ENHANCEMENT: Added "Nearby" tab for real-time discovery (Feature 3).
  * FIXED (Glitch 4): Forced MODE_SCROLLABLE for User role to prevent text truncation on tab labels.
  * CRITICAL FIX FOR POPUP: Switched to addStatusListener to support the Global Ad Observer pattern.
+ * ENHANCEMENT: Added "Console" tab to Bottom Navigation Bar.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -99,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
         binding.mainViewPager.setAdapter(pagerAdapter);
 
         // Fix swipe performance
-        binding.mainViewPager.setOffscreenPageLimit(7); 
+        binding.mainViewPager.setOffscreenPageLimit(8); 
 
         // ENHANCEMENT: Dynamic Tab Mode selection
         // FIXED: Replaced MODE_FIXED with MODE_SCROLLABLE for Users to stop text truncation.
@@ -109,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
         // Link TabLayout with dynamic logic to ensure icons and names render correctly
         new TabLayoutMediator(binding.tabLayout, binding.mainViewPager, (tab, position) -> {
             if (RoleSelectionActivity.ROLE_USER.equals(role)) {
-                // USER LABELS (4 ITEMS)
+                // USER LABELS (5 ITEMS)
                 switch (position) {
                     case 0:
                         tab.setText("Interests");
@@ -125,12 +126,17 @@ public class MainActivity extends AppCompatActivity {
                         tab.setIcon(R.drawable.ic_nav_nearby);
                         break;
                     case 3:
+                        // NEW: Console Tab
+                        tab.setText("Console");
+                        tab.setIcon(R.drawable.terminal_2_24px);
+                        break;
+                    case 4:
                         tab.setText("Settings");
                         tab.setIcon(R.drawable.ic_nav_settings);
                         break;
                 }
             } else {
-                // ADVERTISER LABELS (Now handles Publisher and Nearby)
+                // ADVERTISER LABELS (8 ITEMS)
                 switch (position) {
                     case 0:
                         tab.setText("Stats");
@@ -159,6 +165,11 @@ public class MainActivity extends AppCompatActivity {
                         tab.setIcon(R.drawable.ic_nav_nearby);
                         break;
                     case 6:
+                        // NEW: Console Tab
+                        tab.setText("Console");
+                        tab.setIcon(R.drawable.terminal_2_24px);
+                        break;
+                    case 7:
                         tab.setText("Settings");
                         tab.setIcon(R.drawable.ic_nav_settings);
                         break;
