@@ -29,8 +29,9 @@ import java.util.UUID;
  * Logic: Fetches Kind 30003 (Sets) from relays -> Filters by matching Topics -> Displays Directory.
  * Allows users to find businesses relevant to their "Personalized" profile.
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep search diagnostics.
+ * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size. Added floating console FAB logic.
  */
-public class BrowseAdvertisersActivity extends AppCompatActivity {
+public class BrowseAdvertisersActivity extends AppCompatActivity implements RelayReportDialog.OnConsoleMinimizeListener {
 
     private static final String TAG = "AdNostr_Browse";
     private ActivityBrowseAdvertisersBinding binding;
@@ -68,7 +69,19 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
         setupRecyclerView();
         setupSearchView();
 
-        // 3. Initiate Network Scan
+        // 3. Setup Floating Console FAB (Hidden by default)
+        binding.fabFloatingConsole.setOnClickListener(v -> {
+            binding.fabFloatingConsole.setVisibility(View.GONE);
+            RelayReportDialog report = RelayReportDialog.newInstance(
+                    "DIRECTORY CONSOLE", 
+                    "Resuming Console...", 
+                    searchLogs.toString()
+            );
+            report.setConsoleMinimizeListener(this);
+            report.showSafe(getSupportFragmentManager(), "SEARCH_LOG");
+        });
+
+        // 4. Initiate Network Scan
         startAdvertiserDiscovery();
     }
 
@@ -115,6 +128,8 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
                 "Searching for Topic Sets...", 
                 searchLogs.toString()
         );
+        // Link the listener for the minimize function
+        report.setConsoleMinimizeListener(this);
         report.showSafe(getSupportFragmentManager(), "SEARCH_LOG");
 
         binding.pbBrowseLoading.setVisibility(View.VISIBLE);
@@ -227,6 +242,12 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
 
     private void logForensic(String msg) {
         searchLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+        
+        // FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint
+        if (searchLogs.length() > 20000) {
+            searchLogs.delete(0, 5000);
+        }
+
         RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("SEARCH_LOG");
         if (report != null) {
             report.updateTechnicalLogs("Forensic Directory Scan", searchLogs.toString());
@@ -263,6 +284,14 @@ public class BrowseAdvertisersActivity extends AppCompatActivity {
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    /**
+     * Interface callback for when the user clicks the minimize icon on the Dialog.
+     */
+    @Override
+    public void onConsoleMinimized() {
+        binding.fabFloatingConsole.setVisibility(View.VISIBLE);
     }
 
     /**
