@@ -28,6 +28,7 @@ import java.util.UUID;
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep storefront diagnostics.
  * CRASH FIX: Enforced UI Thread execution for logForensic and UI updates to prevent CalledFromWrongThreadException.
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
+ * BUILD FIX: Updated ProductListing constructor to include eventId for compatibility with bulk deletion.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -162,6 +163,7 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
             if ("EVENT".equals(type)) {
                 JSONObject event = msg.getJSONObject(2);
+                String eventId = event.getString("id"); // BUILD FIX: Extract event ID
                 String content = event.getString("content");
                 JSONObject meta = new JSONObject(content);
 
@@ -179,7 +181,8 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
                     }
                 }
 
-                productList.add(new AdsPublisherFragment.ProductListing(title, price, jsonUrl));
+                // BUILD FIX: Added eventId as the 4th argument
+                productList.add(new AdsPublisherFragment.ProductListing(title, price, jsonUrl, eventId));
                 adapter.notifyItemInserted(productList.size() - 1);
 
             } else if ("EOSE".equals(type)) {
