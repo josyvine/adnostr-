@@ -27,6 +27,7 @@ import java.util.UUID;
  * the broadcast protocol from CreateProductActivity, ensuring relays return the events.
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep storefront diagnostics.
  * CRASH FIX: Enforced UI Thread execution for logForensic and UI updates to prevent CalledFromWrongThreadException.
+ * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -199,10 +200,17 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
     /**
      * FIXED: Wrapped forensic logging in runOnUiThread to prevent crash during background relay reports.
+     * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
      */
     private void logForensic(final String msg) {
         runOnUiThread(() -> {
             storefrontLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+            
+            // FIX: Prevent OutOfMemoryError by pruning old logs
+            if (storefrontLogs.length() > 20000) {
+                storefrontLogs.delete(0, 5000);
+            }
+
             RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("STORE_LOG");
             if (report != null) {
                 report.updateTechnicalLogs("Forensic Store Scan", storefrontLogs.toString());
