@@ -29,6 +29,7 @@ import java.util.UUID;
  * CRASH FIX: Enforced UI Thread execution for logForensic and UI updates to prevent CalledFromWrongThreadException.
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  * BUILD FIX: Updated ProductListing constructor to include eventId for compatibility with bulk deletion.
+ * UPDATED: Extracts and displays Dynamic Category labeling in the storefront grid.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -170,6 +171,9 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
                 String title = meta.optString("title", "Product");
                 String price = meta.optString("price", "0");
                 String jsonUrl = meta.optString("json_url", "");
+                
+                // NEW: Extract category injected by CreateProductActivity
+                String category = meta.optString("category", "");
 
                 logForensic("POINTER_IN: Found item '" + title + "' hosted at CF R2.");
 
@@ -181,8 +185,12 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
                     }
                 }
 
+                // UI ENHANCEMENT: Prepend category to the title for the storefront display
+                // This achieves category labeling safely without requiring XML or Data Model changes
+                String displayTitle = category.isEmpty() ? title : "[" + category + "] " + title;
+
                 // BUILD FIX: Added eventId as the 4th argument
-                productList.add(new AdsPublisherFragment.ProductListing(title, price, jsonUrl, eventId));
+                productList.add(new AdsPublisherFragment.ProductListing(displayTitle, price, jsonUrl, eventId));
                 adapter.notifyItemInserted(productList.size() - 1);
 
             } else if ("EOSE".equals(type)) {
