@@ -179,31 +179,9 @@
     <!-- SPECIFICATIONS -->
     <div class="section-card">
         <div class="section-title">Details & Specs</div>
-        <div class="attr-grid">
-            <div class="attr-item">
-                <span class="attr-label">Brand</span>
-                <span class="attr-value" id="brandDisplay">-</span>
-            </div>
-            <div class="attr-item">
-                <span class="attr-label">Condition</span>
-                <span class="attr-value" id="condDisplay">-</span>
-            </div>
-            <div class="attr-item">
-                <span class="attr-label">Color</span>
-                <span class="attr-value" id="colorDisplay">-</span>
-            </div>
-            <div class="attr-item">
-                <span class="attr-label">Storage / Size</span>
-                <span class="attr-value" id="sizeDisplay">-</span>
-            </div>
-            <div class="attr-item">
-                <span class="attr-label">Delivery</span>
-                <span class="attr-value" id="deliveryDisplay">-</span>
-            </div>
-            <div class="attr-item">
-                <span class="attr-label">Stock</span>
-                <span class="attr-value" id="stockDisplay">-</span>
-            </div>
+        <!-- Dynamic Grid Container -->
+        <div class="attr-grid" id="specsGrid">
+            <!-- JS will populate attributes here based on Category Schema -->
         </div>
     </div>
 
@@ -241,6 +219,46 @@
     </div>
 
     <script>
+        /**
+         * Intelligent icon mapper based on the dynamic spec key
+         */
+        function getIconForSpec(key) {
+            const k = key.toLowerCase();
+            if(k.includes('km') || k.includes('mileage')) return 'fa-solid fa-gauge';
+            if(k.includes('year') || k.includes('age')) return 'fa-solid fa-calendar-days';
+            if(k.includes('fuel')) return 'fa-solid fa-gas-pump';
+            if(k.includes('transmission') || k.includes('gear')) return 'fa-solid fa-gears';
+            if(k.includes('bed') || k.includes('bath') || k.includes('room')) return 'fa-solid fa-bed';
+            if(k.includes('area') || k.includes('dimension')) return 'fa-solid fa-maximize';
+            if(k.includes('ram') || k.includes('processor') || k.includes('gpu')) return 'fa-solid fa-microchip';
+            if(k.includes('storage') || k.includes('capacity')) return 'fa-solid fa-hard-drive';
+            if(k.includes('color')) return 'fa-solid fa-palette';
+            if(k.includes('brand') || k.includes('model') || k.includes('category')) return 'fa-solid fa-tag';
+            if(k.includes('salary') || k.includes('price') || k.includes('fee')) return 'fa-solid fa-money-bill';
+            if(k.includes('experience') || k.includes('skill')) return 'fa-solid fa-briefcase';
+            if(k.includes('warranty')) return 'fa-solid fa-shield-halved';
+            if(k.includes('condition')) return 'fa-solid fa-clipboard-check';
+            return 'fa-solid fa-circle-check'; // Default Fallback
+        }
+
+        /**
+         * Converts raw keys like 'km_driven' into 'Km Driven'
+         */
+        function formatLabel(key) {
+            return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
+
+        function createSpecHTML(key, value) {
+            if(!value || value.toString().trim() === '') return '';
+            const icon = getIconForSpec(key);
+            const label = formatLabel(key);
+            return `
+            <div class="attr-item">
+                <span class="attr-label"><i class="${icon}" style="margin-right: 4px; opacity: 0.8;"></i>${label}</span>
+                <span class="attr-value">${value}</span>
+            </div>`;
+        }
+
         /**
          * This function is called by the Android Native code.
          * @param {string} jsonString - The product data downloaded from Cloudflare.
@@ -283,13 +301,40 @@
                 // 3. Location
                 document.getElementById('locationDisplay').innerText = data.location.city + " (" + data.location.pincode + ")";
 
-                // 4. Specs
-                document.getElementById('brandDisplay').innerText = data.brand || "N/A";
-                document.getElementById('condDisplay').innerText = data.condition || "N/A";
-                document.getElementById('colorDisplay').innerText = data.variants.color || "N/A";
-                document.getElementById('sizeDisplay').innerText = data.variants.size || "N/A";
-                document.getElementById('deliveryDisplay').innerText = data.delivery.type;
-                document.getElementById('stockDisplay').innerText = data.inventory.quantity + " Units";
+                // 4. Dynamic Specs + Fixed Specs
+                const specsGrid = document.getElementById('specsGrid');
+                let specsHtml = '';
+
+                // Category Badge Spec
+                if (data.category) {
+                    specsHtml += createSpecHTML('category', data.category);
+                }
+
+                // Dynamic user-typed specs loop
+                if (data.specs) {
+                    for (const [key, value] of Object.entries(data.specs)) {
+                        specsHtml += createSpecHTML(key, value);
+                    }
+                }
+
+                // Inject Standardized Delivery and Stock (Fixed logic)
+                if (data.delivery && data.delivery.type) {
+                    specsHtml += `
+                    <div class="attr-item">
+                        <span class="attr-label"><i class="fa-solid fa-truck" style="margin-right: 4px; opacity: 0.8;"></i>Delivery</span>
+                        <span class="attr-value">${data.delivery.type}</span>
+                    </div>`;
+                }
+                if (data.inventory && data.inventory.quantity) {
+                    specsHtml += `
+                    <div class="attr-item">
+                        <span class="attr-label"><i class="fa-solid fa-box" style="margin-right: 4px; opacity: 0.8;"></i>Stock</span>
+                        <span class="attr-value">${data.inventory.quantity} Units</span>
+                    </div>`;
+                }
+
+                // Render into DOM
+                specsGrid.innerHTML = specsHtml;
 
                 // 5. Description
                 document.getElementById('descDisplay').innerText = data.description;
