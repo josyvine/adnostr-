@@ -6,6 +6,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -25,13 +26,15 @@ import java.util.UUID;
  * FEATURE 5: Advertiser Product Inventory Dashboard.
  * Logic: Fetches Kind 30005 (Marketplace Pointer) events authored by this user.
  * Displays a list of active products and provides the entry point to create new ones.
+ * ENHANCEMENT: Added bulk deletion functionality for both Nostr Events and Cloudflare R2 storage.
  */
-public class AdsPublisherFragment extends Fragment {
+public class AdsPublisherFragment extends Fragment implements PublisherAdapter.OnProductClickListener {
 
     private static final String TAG = "AdNostr_Publisher";
     private FragmentAdsPublisherBinding binding;
     private AdNostrDatabaseHelper db;
     private WebSocketClientManager wsManager;
+    private CloudflareHelper cloudHelper;
 
     private final List<ProductListing> myProducts = new ArrayList<>();
     private PublisherAdapter adapter;
@@ -49,6 +52,7 @@ public class AdsPublisherFragment extends Fragment {
 
         db = AdNostrDatabaseHelper.getInstance(requireContext());
         wsManager = WebSocketClientManager.getInstance();
+        cloudHelper = new CloudflareHelper();
 
         setupRecyclerView();
 
@@ -58,6 +62,9 @@ public class AdsPublisherFragment extends Fragment {
             startActivity(intent);
         });
 
+        // ENHANCEMENT: Delete FAB Logic
+        binding.fabDeleteSelected.setOnClickListener(v -> processBulkDeletion());
+
         binding.swipeRefreshPublisher.setOnRefreshListener(this::fetchMyProducts);
 
         // Initial fetch
@@ -66,12 +73,8 @@ public class AdsPublisherFragment extends Fragment {
 
     private void setupRecyclerView() {
         binding.rvMyProducts.setLayoutManager(new LinearLayoutManager(requireContext()));
-        adapter = new PublisherAdapter(myProducts, product -> {
-            // Logic: Tap to view details or manage
-            Intent intent = new Intent(requireContext(), ProductDetailActivity.class);
-            intent.putExtra("PRODUCT_JSON_URL", product.jsonUrl);
-            startActivity(intent);
-        });
+        // Link this fragment as the listener for clicks and selection changes
+        adapter = new PublisherAdapter(myProducts, this);
         binding.rvMyProducts.setAdapter(adapter);
     }
 
@@ -120,6 +123,7 @@ public class AdsPublisherFragment extends Fragment {
 
             if ("EVENT".equals(type)) {
                 JSONObject event = msg.getJSONObject(2);
+                String eventId = event.getString("id"); // Extract Event ID for Kind 5 deletion
                 String content = event.getString("content");
                 JSONObject meta = new JSONObject(content);
 
@@ -132,7 +136,8 @@ public class AdsPublisherFragment extends Fragment {
                     if (p.jsonUrl.equals(jsonUrl)) return;
                 }
 
-                myProducts.add(new ProductListing(title, price, jsonUrl));
+                // Updated to include eventId in the model
+                myProducts.add(new ProductListing(title, price, jsonUrl, eventId));
                 adapter.notifyItemInserted(myProducts.size() - 1);
 
             } else if ("EOSE".equals(type)) {
@@ -141,6 +146,76 @@ public class AdsPublisherFragment extends Fragment {
             }
 
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Core logic for single-click bulk deletion from Cloudflare and Nostr.
+     */
+    private void processBulkDeletion() {
+        List<ProductListing> selected = adapter.getSelectedItems();
+        if (selected.isEmpty()) return;
+
+        Toast.makeText(getContext(), "Wiping " + selected.size() + " listings...", Toast.LENGTH_SHORT).show();
+
+        try {
+            for (ProductListing product : selected) {
+                // PART 1: Physical Wipe from Cloudflare R2
+                // CloudflareHelper extracts the ID from the full URL automatically
+                cloudHelper.deleteMedia(requireContext(), product.jsonUrl, null);
+
+                // PART 2: Broadcast Nostr Kind 5 (Event Deletion)
+                JSONObject deletionEvent = new JSONObject();
+                deletionEvent.put("kind", 5);
+                deletionEvent.put("pubkey", db.getPublicKey());
+                deletionEvent.put("created_at", System.currentTimeMillis() / 1000);
+                deletionEvent.put("content", "Listing removed by seller.");
+
+                JSONArray tags = new JSONArray();
+                JSONArray eTag = new JSONArray();
+                eTag.put("e");
+                eTag.put(product.eventId);
+                tags.put(eTag);
+                deletionEvent.put("tags", tags);
+
+                JSONObject signedDeletion = NostrEventSigner.signEvent(db.getPrivateKey(), deletionEvent);
+                if (signedDeletion != null) {
+                    wsManager.broadcastEvent(signedDeletion.toString());
+                }
+
+                // Remove from local UI list
+                myProducts.remove(product);
+            }
+
+            adapter.clearSelection();
+            adapter.notifyDataSetChanged();
+            updateEmptyState();
+            Toast.makeText(getContext(), "Products deleted successfully.", Toast.LENGTH_SHORT).show();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Deletion failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Interface: Normal tap to view details.
+     */
+    @Override
+    public void onProductClicked(AdsPublisherFragment.ProductListing product) {
+        Intent intent = new Intent(requireContext(), ProductDetailActivity.class);
+        intent.putExtra("PRODUCT_JSON_URL", product.jsonUrl);
+        startActivity(intent);
+    }
+
+    /**
+     * Interface: Shows or hides the Delete FAB based on selection count.
+     */
+    @Override
+    public void onSelectionChanged(int selectedCount) {
+        if (selectedCount > 0) {
+            binding.fabDeleteSelected.show();
+        } else {
+            binding.fabDeleteSelected.hide();
+        }
     }
 
     private void updateEmptyState() {
@@ -159,11 +234,12 @@ public class AdsPublisherFragment extends Fragment {
 
     /**
      * Data model for marketplace pointers.
+     * UPDATED: Now includes eventId for Nostr Kind 5 support.
      */
     public static class ProductListing {
-        String title, price, jsonUrl;
-        ProductListing(String t, String p, String u) {
-            this.title = t; this.price = p; this.jsonUrl = u;
+        String title, price, jsonUrl, eventId;
+        ProductListing(String t, String p, String u, String id) {
+            this.title = t; this.price = p; this.jsonUrl = u; this.eventId = id;
         }
     }
 }
