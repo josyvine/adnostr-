@@ -22,6 +22,7 @@ import java.util.UUID;
  * FEATURE 5: Product Preview & Forensic Publisher.
  * Logic: Receives JSON -> Renders in Viewer -> Confirms -> Uploads JSON -> Broadcasts Kind 30005.
  * FIXED: Implements Forensic Log reporting during the network phase.
+ * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  */
 public class ProductPreviewActivity extends AppCompatActivity {
 
@@ -95,34 +96,40 @@ public class ProductPreviewActivity extends AppCompatActivity {
      */
     private void performForensicPublish() {
         forensicLogs.setLength(0);
-        forensicLogs.append("=== INITIATING FINAL BROADCAST SEQUENCE ===\n");
-        forensicLogs.append("TIMESTAMP: ").append(System.currentTimeMillis()).append("\n\n");
+        appendToForensicLogs("=== INITIATING FINAL BROADCAST SEQUENCE ===\n");
+        appendToForensicLogs("TIMESTAMP: " + System.currentTimeMillis() + "\n\n");
 
         RelayReportDialog console = RelayReportDialog.newInstance(
                 "PUBLISH CONSOLE", 
                 "Uploading JSON to Private Cloud...", 
                 forensicLogs.toString()
         );
+        
+        // Link minimize listener to allow dismissal
+        console.setConsoleMinimizeListener(() -> {
+            // Dismissal handled internally by RelayReportDialog
+        });
+        
         console.showSafe(getSupportFragmentManager(), "PUBLISH_LOG");
 
         // STEP 1: Upload heavy JSON to Cloudflare
         String fileName = "product_" + System.currentTimeMillis() + ".json";
         
-        forensicLogs.append("[STEP 1] REQUEST: POST -> Cloudflare R2\n");
-        forensicLogs.append("PAYLOAD SIZE: ").append(productJsonString.length()).append(" chars\n");
+        appendToForensicLogs("[STEP 1] REQUEST: POST -> Cloudflare R2\n");
+        appendToForensicLogs("PAYLOAD SIZE: " + productJsonString.length() + " chars\n");
         console.updateTechnicalLogs("Uploading to R2...", forensicLogs.toString());
 
         cloudHelper.uploadJsonFile(this, productJsonString, fileName, new CloudflareHelper.CloudflareCallback() {
             @Override
             public void onStatusUpdate(String log) {
-                forensicLogs.append("[R2_TRACE] ").append(log).append("\n");
+                appendToForensicLogs("[R2_TRACE] " + log + "\n");
                 runOnUiThread(() -> console.updateTechnicalLogs("Cloudflare Link Active", forensicLogs.toString()));
             }
 
             @Override
             public void onSuccess(String uploadedUrl, String fileId) {
-                forensicLogs.append("\n[SUCCESS] CLOUDFLARE LINK: ").append(uploadedUrl).append("\n");
-                forensicLogs.append("FILE_ID: ").append(fileId).append("\n\n");
+                appendToForensicLogs("\n[SUCCESS] CLOUDFLARE LINK: " + uploadedUrl + "\n");
+                appendToForensicLogs("FILE_ID: " + fileId + "\n\n");
                 
                 // STEP 2: Sign and Broadcast Kind 30005 Pointer
                 broadcastMarketplacePointer(uploadedUrl, console);
@@ -130,8 +137,8 @@ public class ProductPreviewActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(Exception e) {
-                forensicLogs.append("\n!!! CRITICAL FAILURE (CLOUDFLARE) !!!\n");
-                forensicLogs.append("ERROR_MSG: ").append(e.getMessage()).append("\n");
+                appendToForensicLogs("\n!!! CRITICAL FAILURE (CLOUDFLARE) !!!\n");
+                appendToForensicLogs("ERROR_MSG: " + e.getMessage() + "\n");
                 runOnUiThread(() -> console.updateTechnicalLogs("UPLOAD FAILED", forensicLogs.toString()));
             }
         });
@@ -165,22 +172,22 @@ public class ProductPreviewActivity extends AppCompatActivity {
             
             event.put("tags", tags);
 
-            forensicLogs.append("[STEP 2] BIP-340 CRYPTO SIGNING...\n");
+            appendToForensicLogs("[STEP 2] BIP-340 CRYPTO SIGNING...\n");
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
-                forensicLogs.append("EVENT_ID: ").append(signedEvent.getString("id")).append("\n");
-                forensicLogs.append("SIGNATURE: ").append(signedEvent.getString("sig")).append("\n\n");
+                appendToForensicLogs("EVENT_ID: " + signedEvent.getString("id") + "\n");
+                appendToForensicLogs("SIGNATURE: " + signedEvent.getString("sig") + "\n\n");
                 
-                forensicLogs.append("[STEP 3] RELAY POOL BROADCAST\n");
+                appendToForensicLogs("[STEP 3] RELAY POOL BROADCAST\n");
                 String rawProtocolFrame = "[\"EVENT\"," + signedEvent.toString() + "]";
-                forensicLogs.append("RAW_FRAME: ").append(rawProtocolFrame).append("\n");
+                appendToForensicLogs("RAW_FRAME: " + rawProtocolFrame + "\n");
                 
                 runOnUiThread(() -> console.updateTechnicalLogs("Broadcasting to Relays...", forensicLogs.toString()));
 
                 wsManager.broadcastEvent(signedEvent.toString());
                 
-                forensicLogs.append("\n[FINAL SUCCESS] Marketplace Pointer Live.");
+                appendToForensicLogs("\n[FINAL SUCCESS] Marketplace Pointer Live.");
                 runOnUiThread(() -> {
                     console.updateTechnicalLogs("PUBLISHED SUCCESSFULLY", forensicLogs.toString());
                     Toast.makeText(this, "Listing Live on Network!", Toast.LENGTH_LONG).show();
@@ -192,8 +199,21 @@ public class ProductPreviewActivity extends AppCompatActivity {
             }
 
         } catch (Exception e) {
-            forensicLogs.append("\n!!! BROADCAST FAILED !!!\n").append(e.getMessage());
+            appendToForensicLogs("\n!!! BROADCAST FAILED !!!\n" + e.getMessage());
             runOnUiThread(() -> console.updateTechnicalLogs("PROTOCOL ERROR", forensicLogs.toString()));
         }
+    }
+
+    /**
+     * Helper to append logs while managing memory.
+     * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
+     */
+    private void appendToForensicLogs(String msg) {
+        forensicLogs.append(msg);
+        // Prevent OutOfMemoryError by pruning old logs
+        if (forensicLogs.length() > 20000) {
+            forensicLogs.delete(0, 5000);
+        }
+        Log.d(TAG, msg);
     }
 }
