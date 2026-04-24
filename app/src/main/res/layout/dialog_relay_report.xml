@@ -31,18 +31,20 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tvReportHeader" />
 
-    <!-- Copy Button (Added in top right) -->
-    <com.google.android.material.button.MaterialButton
+    <!-- Copy Icon Button (Replaced Text Button) -->
+    <ImageView
         android:id="@+id/btnCopyLogs"
-        style="@style/Widget.MaterialComponents.Button.TextButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="COPY ALL"
-        android:textColor="#4CAF50"
-        android:textSize="12sp"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="4dp"
+        android:src="@drawable/copy_all_24px"
         app:layout_constraintBottom_toBottomOf="@+id/tvNetworkSummary"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="#4CAF50" />
 
     <!-- Detailed Scrollable Log Area -->
     <androidx.cardview.widget.CardView
@@ -54,7 +56,7 @@
         app:cardBackgroundColor="#1E1E1E"
         app:cardCornerRadius="12dp"
         app:cardElevation="0dp"
-        app:layout_constraintBottom_toTopOf="@+id/btnCloseReport"
+        app:layout_constraintBottom_toTopOf="@+id/llBottomControls"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tvNetworkSummary">
@@ -76,15 +78,41 @@
         </ScrollView>
     </androidx.cardview.widget.CardView>
 
-    <!-- Close Button -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnCloseReport"
-        android:layout_width="match_parent"
-        android:layout_height="55dp"
-        android:backgroundTint="#333333"
-        android:text="CLOSE CONSOLE"
-        android:textColor="#FFFFFF"
-        app:cornerRadius="8dp"
-        app:layout_constraintBottom_toBottomOf="parent" />
+    <!-- Bottom Controls (Minimize & Close Icons) -->
+    <LinearLayout
+        android:id="@+id/llBottomControls"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- Minimize Icon -->
+        <ImageView
+            android:id="@+id/btnMinimizeReport"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="8dp"
+            android:src="@drawable/minimize_24px"
+            app:tint="#FFFFFF" />
+
+        <!-- Close Icon -->
+        <ImageView
+            android:id="@+id/btnCloseReport"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="8dp"
+            android:src="@drawable/close_24px"
+            app:tint="#FF5252" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
