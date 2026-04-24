@@ -32,6 +32,7 @@ import java.util.UUID;
  * FIXED: Image pipeline now uploads to R2 and pushes URLs back to HTML.
  * FIXED: Detailed Forensic Logging integrated via logTechnicalEvent bridge.
  * FIXED: Implements Preview logic to staging viewer before broadcast.
+ * UPDATED: Extracts Category string for lightweight Marketplace Storefront rendering.
  */
 public class CreateProductActivity extends AppCompatActivity {
 
@@ -191,6 +192,8 @@ public class CreateProductActivity extends AppCompatActivity {
             JSONObject productData = new JSONObject(rawJson);
             String title = productData.getString("title");
             String price = productData.getString("price");
+            // EXTRACT CATEGORY FOR THE STOREFRONT UI
+            String category = productData.optString("category", "Uncategorized");
 
             String fileName = "product_" + System.currentTimeMillis() + ".json";
             cloudHelper.uploadJsonFile(this, rawJson, fileName, new CloudflareHelper.CloudflareCallback() {
@@ -202,7 +205,7 @@ public class CreateProductActivity extends AppCompatActivity {
 
                 @Override
                 public void onSuccess(String uploadedUrl, String fileId) {
-                    broadcastMarketplacePointer(title, price, uploadedUrl);
+                    broadcastMarketplacePointer(title, price, category, uploadedUrl);
                     runOnUiThread(() -> report.updateTechnicalLogs("Broadcasting to Nostr...", technicalConsole.toString()));
                 }
 
@@ -219,11 +222,12 @@ public class CreateProductActivity extends AppCompatActivity {
         }
     }
 
-    private void broadcastMarketplacePointer(String title, String price, String cloudflareUrl) {
+    private void broadcastMarketplacePointer(String title, String price, String category, String cloudflareUrl) {
         try {
             JSONObject pointerContent = new JSONObject();
             pointerContent.put("title", title);
             pointerContent.put("price", price);
+            pointerContent.put("category", category); // ADD CATEGORY TO POINTER
             pointerContent.put("json_url", cloudflareUrl);
 
             JSONObject event = new JSONObject();
