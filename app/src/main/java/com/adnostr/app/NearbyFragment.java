@@ -37,6 +37,7 @@ import java.util.UUID;
  * FIXED: Self-filtering to ensure your own beacon doesn't show up on your radar.
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep diagnostic logs on refresh.
  * CRASH FIX: Enforced runOnUiThread in logDiagnostic and used addStatusListener to prevent Popup interference.
+ * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  */
 public class NearbyFragment extends Fragment {
 
@@ -272,6 +273,10 @@ public class NearbyFragment extends Fragment {
                 "Scanning GPS Beacons...", 
                 diagnosticLogs.toString()
         );
+        // Link minimize listener to allow dismissal to the main navigation bar console
+        report.setConsoleMinimizeListener(() -> {
+            // Dismissal handled by RelayReportDialog internally
+        });
         report.showSafe(getChildFragmentManager(), "NEARBY_LOG");
 
         binding.swipeRefreshNearby.setRefreshing(true);
@@ -280,11 +285,18 @@ public class NearbyFragment extends Fragment {
 
     /**
      * FIXED: Wrapped UI updates in runOnUiThread to prevent crash during background relay reports.
+     * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
      */
     private void logDiagnostic(final String msg) {
         if (getActivity() == null) return;
         getActivity().runOnUiThread(() -> {
             diagnosticLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+
+            // FIX: Prevent OutOfMemoryError by pruning old logs
+            if (diagnosticLogs.length() > 20000) {
+                diagnosticLogs.delete(0, 5000);
+            }
+
             if (isAdded()) {
                 RelayReportDialog report = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("NEARBY_LOG");
                 if (report != null) {
