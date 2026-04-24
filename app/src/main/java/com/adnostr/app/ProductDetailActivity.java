@@ -3,6 +3,7 @@ package com.adnostr.app;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -13,10 +14,13 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.adnostr.app.databinding.ActivityProductDetailBinding;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * FEATURE 5: Product Detail Activity.
  * Logic: Receives a Cloudflare URL -> Downloads full Product JSON -> 
  * Loads lox_viewer.html asset -> Injects JSON via JavaScript render function.
+ * UPDATED: Uses Base64 encoding for the JS bridge to prevent crashes from dynamic text input.
  */
 public class ProductDetailActivity extends AppCompatActivity {
 
@@ -112,16 +116,24 @@ public class ProductDetailActivity extends AppCompatActivity {
     /**
      * Bridge Logic: Passes the downloaded JSON string into the HTML template's 
      * renderProduct() JavaScript function.
+     * FIXED: Uses Base64 to ensure complex dynamic specs (quotes, emojis, newlines) don't break JS.
      */
     private void injectJsonToViewer() {
         runOnUiThread(() -> {
-            // We escape backslashes and quotes to ensure the JSON string travels safely to JS
-            String escapedJson = downloadedJson.replace("\\", "\\\\").replace("'", "\\'");
-            
-            // Execute the JS function defined in lox_viewer.html
-            binding.wvProductDetail.evaluateJavascript("renderProduct('" + escapedJson + "')", null);
-            
-            Log.i(TAG, "Product JSON injected into template.");
+            try {
+                // Encode the JSON to Base64 to safely pass it through the evaluateJavascript bridge
+                String base64Encoded = Base64.encodeToString(downloadedJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+                
+                // Construct the JS execution string. 
+                // decodeURIComponent(escape(window.atob(...))) safely converts Base64 back to UTF-8 JS string
+                String jsCommand = "renderProduct(decodeURIComponent(escape(window.atob('" + base64Encoded + "'))))";
+                
+                binding.wvProductDetail.evaluateJavascript(jsCommand, null);
+                Log.i(TAG, "Product JSON safely injected into template via Base64 bridge.");
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to inject JSON via Base64: " + e.getMessage());
+            }
         });
     }
 
