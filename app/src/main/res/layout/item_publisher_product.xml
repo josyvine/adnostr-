@@ -3,6 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cvPublisherCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
@@ -31,6 +32,23 @@
             app:layout_constraintTop_toTopOf="parent"
             app:shapeAppearanceOverlay="@style/ShapeAppearance.MaterialComponents.SmallComponent"
             app:tint="#444444" />
+
+        <!-- SELECTION CHECKMARK OVERLAY (New Enhancement) -->
+        <ImageView
+            android:id="@+id/ivSelectionCheck"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:background="@drawable/bg_circle_blue"
+            android:padding="4dp"
+            android:src="@android:drawable/checkbox_on_background"
+            android:visibility="gone"
+            app:layout_constraintCircle="@+id/ivProductThumb"
+            app:layout_constraintCircleAngle="45"
+            app:layout_constraintCircleRadius="40dp"
+            app:layout_constraintEnd_toEndOf="@+id/ivProductThumb"
+            app:layout_constraintTop_toTopOf="@+id/ivProductThumb"
+            app:tint="#FFFFFF"
+            tools:visibility="visible" />
 
         <!-- PRODUCT CONTENT AREA -->
         <LinearLayout
