@@ -101,4 +101,17 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
+    <!-- FLOATING CONSOLE FAB (Hidden by default, shown when console is minimized) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabFloatingConsole"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="24dp"
+        android:visibility="gone"
+        android:contentDescription="Restore Console"
+        app:backgroundTint="#222222"
+        app:srcCompat="@drawable/terminal_2_24px"
+        app:tint="#4CAF50" />
+
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
