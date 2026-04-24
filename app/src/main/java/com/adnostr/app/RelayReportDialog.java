@@ -29,6 +29,7 @@ import com.adnostr.app.databinding.DialogRelayReportBinding;
  * for the Blossom/NIP-96 media enhancement.
  * FIXED: Added Auto-Scroll logic to ensure long forensic dumps are visible at the bottom.
  * CRASH FIX: Enforced Main Thread execution for all UI updates to prevent CalledFromWrongThreadException.
+ * ENHANCEMENT: Added Minimize functionality to allow temporary hiding of the console.
  */
 public class RelayReportDialog extends DialogFragment {
 
@@ -36,6 +37,17 @@ public class RelayReportDialog extends DialogFragment {
     private String title;
     private String summary;
     private String logs;
+
+    // Interface to notify parent when minimize is clicked
+    public interface OnConsoleMinimizeListener {
+        void onConsoleMinimized();
+    }
+
+    private OnConsoleMinimizeListener minimizeListener;
+
+    public void setConsoleMinimizeListener(OnConsoleMinimizeListener listener) {
+        this.minimizeListener = listener;
+    }
 
     /**
      * Factory method to create a new instance of the technical console.
@@ -104,6 +116,14 @@ public class RelayReportDialog extends DialogFragment {
                     Toast.makeText(getContext(), "Logs copied to clipboard", Toast.LENGTH_SHORT).show();
                 }
             }
+        });
+
+        // Setup Minimize Action
+        binding.btnMinimizeReport.setOnClickListener(v -> {
+            if (minimizeListener != null) {
+                minimizeListener.onConsoleMinimized();
+            }
+            dismiss(); // Dismiss dialog so it gets out of the user's way
         });
 
         // Setup Close Action
