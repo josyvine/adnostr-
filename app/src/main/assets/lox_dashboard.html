@@ -127,12 +127,42 @@
     <div class="section">
         <h2><i class="fa-solid fa-list"></i> Category</h2>
         <div class="form-group">
-            <select id="cat">
-                <option>Mobiles</option>
-                <option>Vehicles</option>
-                <option>Electronics</option>
-                <option>Property</option>
-                <option>Jobs</option>
+            <select id="cat" onchange="renderSpecs()">
+                <optgroup label="Cars & Vehicles">
+                    <option value="Cars">Cars</option>
+                    <option value="Bikes">Bikes</option>
+                    <option value="Heavy Vehicles">Heavy Vehicles</option>
+                    <option value="Spare Parts">Spare Parts</option>
+                </optgroup>
+                <optgroup label="Real Estate">
+                    <option value="Property Sale">Property Sale</option>
+                    <option value="Property Rent">Property Rent</option>
+                </optgroup>
+                <optgroup label="Mobiles & Tech">
+                    <option value="Mobiles">Mobiles</option>
+                    <option value="Computers">Computers & Laptops</option>
+                    <option value="Gaming">Gaming & Consoles</option>
+                </optgroup>
+                <optgroup label="Home & Lifestyle">
+                    <option value="Electronics">Electronics & Appliances</option>
+                    <option value="Furniture">Furniture</option>
+                    <option value="Fashion">Fashion & Clothing</option>
+                    <option value="Jewelry">Jewelry & Watches</option>
+                </optgroup>
+                <optgroup label="Professional & Commercial">
+                    <option value="Jobs">Jobs</option>
+                    <option value="Services">Services</option>
+                    <option value="Education">Education & Training</option>
+                    <option value="Industrial">Industrial Equipment</option>
+                </optgroup>
+                <optgroup label="Pets, Hobbies & Digital">
+                    <option value="Pets">Pets</option>
+                    <option value="Books">Books, Sports & Hobbies</option>
+                    <option value="Music">Musical Instruments</option>
+                    <option value="Art">Art & Collectibles</option>
+                    <option value="Digital">Digital Products & Software</option>
+                    <option value="Grocery">Food & Groceries</option>
+                </optgroup>
             </select>
         </div>
     </div>
@@ -147,20 +177,12 @@
             <label>Description</label>
             <textarea id="desc" placeholder="Provide detailed information about your product..."></textarea>
         </div>
-        <div class="row">
-            <div class="form-group">
-                <label>Brand</label>
-                <input type="text" id="brand" placeholder="e.g. Apple">
-            </div>
-            <div class="form-group">
-                <label>Condition</label>
-                <select id="condition">
-                    <option>New</option>
-                    <option>Used</option>
-                    <option>Refurbished</option>
-                </select>
-            </div>
-        </div>
+    </div>
+
+    <!-- DYNAMIC TECHNICAL SPECIFICATIONS -->
+    <div class="section" id="specsSection" style="display:none;">
+        <h2><i class="fa-solid fa-cogs"></i> Technical Specifications</h2>
+        <div id="specsContainer"></div>
     </div>
 
     <div class="section">
@@ -238,16 +260,6 @@
                 <input type="text" id="sku" placeholder="ABC-123">
             </div>
         </div>
-        <div class="row" style="margin-top: 15px;">
-            <div class="form-group">
-                <label>Color</label>
-                <input type="text" id="color" placeholder="e.g. Black">
-            </div>
-            <div class="form-group">
-                <label>Size / Storage</label>
-                <input type="text" id="size" placeholder="e.g. 128GB">
-            </div>
-        </div>
     </div>
 
     <div class="section">
@@ -291,6 +303,232 @@
 <script>
     let uploadedImageUrls = [];
 
+    // CATEGORY SPECIFICATIONS SCHEMA
+    const CATEGORY_SCHEMA = {
+        "Cars": [
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Hyundai"},
+            {id: "model", label: "Model", type: "text", placeholder: "e.g. i20"},
+            {id: "year", label: "Year", type: "number", placeholder: "e.g. 2020"},
+            {id: "km_driven", label: "KM Driven", type: "number", placeholder: "e.g. 45000"},
+            {id: "fuel_type", label: "Fuel Type", type: "text", placeholder: "e.g. Petrol"},
+            {id: "transmission", label: "Transmission", type: "text", placeholder: "e.g. Automatic"},
+            {id: "owner_type", label: "Owner Type", type: "text", placeholder: "e.g. 1st Owner"},
+            {id: "insurance", label: "Insurance", type: "text", placeholder: "e.g. Comprehensive"},
+            {id: "reg_year", label: "Reg. Year", type: "number", placeholder: "e.g. 2020"},
+            {id: "rto", label: "RTO", type: "text", placeholder: "e.g. MH-02"},
+            {id: "color", label: "Color", type: "text", placeholder: "e.g. Red"},
+            {id: "seats", label: "Seats", type: "number", placeholder: "e.g. 5"},
+            {id: "mileage", label: "Mileage (kmpl)", type: "text", placeholder: "e.g. 18"}
+        ],
+        "Bikes": [
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Royal Enfield"},
+            {id: "model", label: "Model", type: "text", placeholder: "e.g. Classic 350"},
+            {id: "year", label: "Year", type: "number", placeholder: "e.g. 2021"},
+            {id: "km_driven", label: "KM Driven", type: "number", placeholder: "e.g. 12000"},
+            {id: "engine_cc", label: "Engine CC", type: "number", placeholder: "e.g. 350"},
+            {id: "fuel_type", label: "Fuel Type", type: "text", placeholder: "e.g. Petrol"},
+            {id: "owner_type", label: "Owner Type", type: "text", placeholder: "e.g. 1st Owner"},
+            {id: "transmission", label: "Transmission", type: "text", placeholder: "e.g. Manual"},
+            {id: "mileage", label: "Mileage", type: "text", placeholder: "e.g. 35"},
+            {id: "color", label: "Color", type: "text", placeholder: "e.g. Black"}
+        ],
+        "Heavy Vehicles": [
+            {id: "vehicle_type", label: "Vehicle Type", type: "text", placeholder: "e.g. Truck"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Tata"},
+            {id: "model", label: "Model", type: "text", placeholder: "e.g. Signa"},
+            {id: "year", label: "Year", type: "number", placeholder: "e.g. 2018"},
+            {id: "km_driven", label: "KM Driven", type: "number", placeholder: "e.g. 150000"},
+            {id: "load_capacity", label: "Load Capacity", type: "text", placeholder: "e.g. 10 Ton"},
+            {id: "axle_config", label: "Axle Config", type: "text", placeholder: "e.g. 6x4"}
+        ],
+        "Spare Parts": [
+            {id: "vehicle_type", label: "Vehicle Type", type: "text", placeholder: "e.g. Car"},
+            {id: "part_category", label: "Category", type: "text", placeholder: "e.g. Engine"},
+            {id: "part_type", label: "Part Type", type: "text", placeholder: "e.g. Alternator"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Bosch"},
+            {id: "condition", label: "Condition", type: "text", placeholder: "e.g. New"}
+        ],
+        "Property Sale": [
+            {id: "property_type", label: "Property Type", type: "text", placeholder: "e.g. Apartment"},
+            {id: "bedrooms", label: "Bedrooms", type: "number", placeholder: "e.g. 2"},
+            {id: "bathrooms", label: "Bathrooms", type: "number", placeholder: "e.g. 2"},
+            {id: "carpet_area", label: "Carpet Area", type: "text", placeholder: "e.g. 850 sqft"},
+            {id: "furnished", label: "Furnished", type: "text", placeholder: "e.g. Semi"},
+            {id: "parking", label: "Parking", type: "text", placeholder: "e.g. 1 Covered"},
+            {id: "floor", label: "Floor", type: "text", placeholder: "e.g. 5th"},
+            {id: "facing", label: "Facing", type: "text", placeholder: "e.g. East"},
+            {id: "age", label: "Age", type: "text", placeholder: "e.g. 2 Years"},
+            {id: "possession", label: "Possession", type: "text", placeholder: "e.g. Ready"}
+        ],
+        "Property Rent": [
+            {id: "property_type", label: "Property Type", type: "text", placeholder: "e.g. Apartment"},
+            {id: "bedrooms", label: "Bedrooms", type: "number", placeholder: "e.g. 2"},
+            {id: "bathrooms", label: "Bathrooms", type: "number", placeholder: "e.g. 2"},
+            {id: "furnished", label: "Furnished", type: "text", placeholder: "e.g. Fully"},
+            {id: "lease_type", label: "Lease Type", type: "text", placeholder: "e.g. 11 Months"},
+            {id: "parking", label: "Parking", type: "text", placeholder: "e.g. 1"},
+            {id: "tenants", label: "Tenants", type: "text", placeholder: "e.g. Family"},
+            {id: "deposit", label: "Deposit (₹)", type: "number", placeholder: "e.g. 50000"}
+        ],
+        "Mobiles": [
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Apple"},
+            {id: "model", label: "Model", type: "text", placeholder: "e.g. iPhone 13"},
+            {id: "ram", label: "RAM", type: "text", placeholder: "e.g. 4GB"},
+            {id: "storage", label: "Storage", type: "text", placeholder: "e.g. 128GB"},
+            {id: "condition", label: "Condition", type: "text", placeholder: "e.g. Excellent"},
+            {id: "warranty", label: "Warranty", type: "text", placeholder: "e.g. 6 Months"},
+            {id: "accessories", label: "Bill/Box", type: "text", placeholder: "e.g. Yes"}
+        ],
+        "Computers": [
+            {id: "type", label: "Type", type: "text", placeholder: "e.g. Laptop"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Dell"},
+            {id: "processor", label: "Processor", type: "text", placeholder: "e.g. Intel i5"},
+            {id: "ram", label: "RAM", type: "text", placeholder: "e.g. 8GB"},
+            {id: "storage", label: "Storage", type: "text", placeholder: "e.g. 512GB SSD"},
+            {id: "gpu", label: "GPU", type: "text", placeholder: "e.g. RTX 3050"},
+            {id: "os", label: "OS", type: "text", placeholder: "e.g. Windows 11"}
+        ],
+        "Gaming": [
+            {id: "platform", label: "Platform", type: "text", placeholder: "e.g. Console"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Sony"},
+            {id: "model", label: "Model", type: "text", placeholder: "e.g. PS5"},
+            {id: "game_type", label: "Game Type", type: "text", placeholder: "e.g. Action"},
+            {id: "accessories", label: "Accessories", type: "text", placeholder: "e.g. 2 Controllers"}
+        ],
+        "Electronics": [
+            {id: "product_type", label: "Type", type: "text", placeholder: "e.g. AC"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. LG"},
+            {id: "energy_rating", label: "Energy Rating", type: "text", placeholder: "e.g. 5 Star"},
+            {id: "capacity", label: "Capacity", type: "text", placeholder: "e.g. 1.5 Ton"},
+            {id: "smart_features", label: "Smart Features", type: "text", placeholder: "e.g. Wi-Fi"}
+        ],
+        "Furniture": [
+            {id: "type", label: "Type", type: "text", placeholder: "e.g. Sofa"},
+            {id: "material", label: "Material", type: "text", placeholder: "e.g. Teak Wood"},
+            {id: "color", label: "Color", type: "text", placeholder: "e.g. Brown"},
+            {id: "dimensions", label: "Dimensions", type: "text", placeholder: "e.g. 6x4 ft"},
+            {id: "assembly", label: "Assembly", type: "text", placeholder: "e.g. Required"}
+        ],
+        "Fashion": [
+            {id: "gender", label: "Gender", type: "text", placeholder: "e.g. Men"},
+            {id: "category", label: "Category", type: "text", placeholder: "e.g. Clothing"},
+            {id: "type", label: "Type", type: "text", placeholder: "e.g. Jacket"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Zara"},
+            {id: "size", label: "Size", type: "text", placeholder: "e.g. L"},
+            {id: "material", label: "Material", type: "text", placeholder: "e.g. Leather"}
+        ],
+        "Jewelry": [
+            {id: "type", label: "Type", type: "text", placeholder: "e.g. Ring"},
+            {id: "material", label: "Material", type: "text", placeholder: "e.g. Gold"},
+            {id: "purity", label: "Purity", type: "text", placeholder: "e.g. 22K"},
+            {id: "weight", label: "Weight", type: "text", placeholder: "e.g. 5g"},
+            {id: "hallmarked", label: "Hallmarked", type: "text", placeholder: "e.g. Yes"}
+        ],
+        "Jobs": [
+            {id: "job_type", label: "Job Type", type: "text", placeholder: "e.g. Full Time"},
+            {id: "industry", label: "Industry", type: "text", placeholder: "e.g. IT"},
+            {id: "experience", label: "Experience", type: "text", placeholder: "e.g. 2-5 Yrs"},
+            {id: "salary_range", label: "Salary Range", type: "text", placeholder: "e.g. 5L-8L"},
+            {id: "skills", label: "Skills", type: "text", placeholder: "e.g. Java, Python"}
+        ],
+        "Services": [
+            {id: "service_type", label: "Service Type", type: "text", placeholder: "e.g. Plumbing"},
+            {id: "level", label: "Level", type: "text", placeholder: "e.g. Expert"},
+            {id: "price_mode", label: "Price Mode", type: "text", placeholder: "e.g. Hourly"},
+            {id: "availability", label: "Availability", type: "text", placeholder: "e.g. 24/7"}
+        ],
+        "Education": [
+            {id: "course_type", label: "Course Type", type: "text", placeholder: "e.g. Coding"},
+            {id: "mode", label: "Mode", type: "text", placeholder: "e.g. Online"},
+            {id: "duration", label: "Duration", type: "text", placeholder: "e.g. 3 Months"},
+            {id: "fees", label: "Fees", type: "text", placeholder: "e.g. 5000"},
+            {id: "batch_size", label: "Batch Size", type: "text", placeholder: "e.g. 10"}
+        ],
+        "Industrial": [
+            {id: "equipment_type", label: "Equipment Type", type: "text", placeholder: "e.g. Generator"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Honda"},
+            {id: "power_rating", label: "Power Rating", type: "text", placeholder: "e.g. 5kVA"},
+            {id: "year", label: "Year", type: "number", placeholder: "e.g. 2019"}
+        ],
+        "Pets": [
+            {id: "animal_type", label: "Animal Type", type: "text", placeholder: "e.g. Dog"},
+            {id: "breed", label: "Breed", type: "text", placeholder: "e.g. Pug"},
+            {id: "age", label: "Age", type: "text", placeholder: "e.g. 2 Months"},
+            {id: "gender", label: "Gender", type: "text", placeholder: "e.g. Male"},
+            {id: "vaccinated", label: "Vaccinated", type: "text", placeholder: "e.g. Yes"}
+        ],
+        "Books": [
+            {id: "type", label: "Type", type: "text", placeholder: "e.g. Novel"},
+            {id: "genre", label: "Genre", type: "text", placeholder: "e.g. Fiction"},
+            {id: "author", label: "Author", type: "text", placeholder: "e.g. J.K. Rowling"},
+            {id: "language", label: "Language", type: "text", placeholder: "e.g. English"}
+        ],
+        "Music": [
+            {id: "instrument_type", label: "Instrument", type: "text", placeholder: "e.g. Guitar"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Yamaha"},
+            {id: "type", label: "Type", type: "text", placeholder: "e.g. Acoustic"}
+        ],
+        "Art": [
+            {id: "item_type", label: "Item Type", type: "text", placeholder: "e.g. Painting"},
+            {id: "age", label: "Age", type: "text", placeholder: "e.g. 50 Years"},
+            {id: "authenticity", label: "Authenticity", type: "text", placeholder: "e.g. Certified"},
+            {id: "artist", label: "Artist", type: "text", placeholder: "e.g. Unknown"}
+        ],
+        "Digital": [
+            {id: "product_type", label: "Product Type", type: "text", placeholder: "e.g. Software"},
+            {id: "license_type", label: "License", type: "text", placeholder: "e.g. Lifetime"},
+            {id: "version", label: "Version", type: "text", placeholder: "e.g. Pro 2.0"},
+            {id: "delivery_method", label: "Delivery", type: "text", placeholder: "e.g. Email Key"}
+        ],
+        "Grocery": [
+            {id: "category", label: "Category", type: "text", placeholder: "e.g. Spices"},
+            {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Everest"},
+            {id: "weight", label: "Weight", type: "text", placeholder: "e.g. 500g"},
+            {id: "expiry", label: "Expiry", type: "text", placeholder: "e.g. Dec 2025"},
+            {id: "organic", label: "Organic", type: "text", placeholder: "e.g. Yes"}
+        ]
+    };
+
+    // Initialize dynamic DOM
+    window.onload = function() {
+        renderSpecs();
+    };
+
+    function renderSpecs() {
+        const cat = document.getElementById('cat').value;
+        const fields = CATEGORY_SCHEMA[cat] || [];
+        const container = document.getElementById('specsContainer');
+        container.innerHTML = '';
+
+        if(fields.length === 0) {
+            document.getElementById('specsSection').style.display = 'none';
+            return;
+        }
+        
+        document.getElementById('specsSection').style.display = 'block';
+
+        let html = '';
+        for(let i = 0; i < fields.length; i += 2) {
+            html += '<div class="row" style="margin-bottom: 15px;">';
+            html += createFormGroup(fields[i]);
+            if(fields[i+1]) {
+                html += createFormGroup(fields[i+1]);
+            } else {
+                html += '<div class="form-group" style="flex: 1;"></div>';
+            }
+            html += '</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    function createFormGroup(f) {
+        return `
+        <div class="form-group" style="flex: 1;">
+            <label>${f.label}</label>
+            <input type="${f.type}" id="${f.id}" placeholder="${f.placeholder || ''}">
+        </div>`;
+    }
+
     // FORENSIC LOGGING BRIDGE
     function logToAndroid(msg, isError = false) {
         if (window.AndroidBridge) {
@@ -303,13 +541,8 @@
 
     function triggerNativeUpload(input) {
         logToAndroid("File picker triggered. Handing over to Android for R2 Encryption/Upload.");
-        // The actual file handling is intercepted by WebChromeClient in CreateProductActivity
     }
 
-    /**
-     * Called by Android Native code after successful R2 upload
-     * @param {string} url - The final Cloudflare HTTPS URL
-     */
     function addUploadedImageUrl(url) {
         uploadedImageUrls.push(url);
         const grid = document.getElementById('thumbnailGrid');
@@ -321,15 +554,24 @@
     }
 
     function prepareData(mode) {
+        const cat = document.getElementById('cat').value;
+        const specs = {};
+        const fields = CATEGORY_SCHEMA[cat] || [];
+        
+        // Dynamically extract typed spec values
+        fields.forEach(f => {
+            const el = document.getElementById(f.id);
+            if(el) specs[f.id] = el.value;
+        });
+
         const productData = {
-            category: document.getElementById('cat').value,
+            category: cat,
             title: document.getElementById('title').value,
             description: document.getElementById('desc').value,
-            brand: document.getElementById('brand').value,
-            condition: document.getElementById('condition').value,
             price: document.getElementById('price').value,
             mrp: document.getElementById('mrp').value,
             is_negotiable: document.getElementById('nego').checked,
+            specs: specs,
             location: {
                 city: document.getElementById('city').value,
                 pincode: document.getElementById('pincode').value
@@ -341,10 +583,6 @@
             inventory: {
                 quantity: document.getElementById('qty').value,
                 sku: document.getElementById('sku').value
-            },
-            variants: {
-                color: document.getElementById('color').value,
-                size: document.getElementById('size').value
             },
             seller: {
                 name: document.getElementById('seller_name').value,
