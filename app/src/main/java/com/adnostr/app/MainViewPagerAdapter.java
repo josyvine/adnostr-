@@ -10,8 +10,8 @@ import androidx.viewpager2.adapter.FragmentStateAdapter;
  * FEATURE: Manages the primary screens of AdNostr dynamically based on Role.
  * FEATURE: Enables the "Swipe Left to Right / Right to Left" logic.
  * 
- * UPDATED: USER ROLE (4 TABS) -> Interests, History, Nearby, Settings.
- * UPDATED: ADVERTISER ROLE (7 TABS) -> Stats, History, Broadcast, Network, Publisher, Nearby, Settings.
+ * UPDATED: USER ROLE (5 TABS) -> Interests, History, Nearby, Console, Settings.
+ * UPDATED: ADVERTISER ROLE (8 TABS) -> Stats, History, Broadcast, Network, Publisher, Nearby, Console, Settings.
  */
 public class MainViewPagerAdapter extends FragmentStateAdapter {
 
@@ -30,7 +30,7 @@ public class MainViewPagerAdapter extends FragmentStateAdapter {
     @Override
     public Fragment createFragment(int position) {
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
-            // USER PATH (Exactly 4 Fragments)
+            // USER PATH (Exactly 5 Fragments)
             switch (position) {
                 case 0:
                     return new UserDashboardFragment(); // Interests
@@ -39,12 +39,14 @@ public class MainViewPagerAdapter extends FragmentStateAdapter {
                 case 2:
                     return new NearbyFragment();        // Nearby (Feature 3)
                 case 3:
+                    return new ConsoleFragment();       // Console (New Tab)
+                case 4:
                     return new SettingsFragment();      // Settings
                 default:
                     return new UserDashboardFragment();
             }
         } else {
-            // ADVERTISER PATH (Exactly 7 Fragments)
+            // ADVERTISER PATH (Exactly 8 Fragments)
             switch (position) {
                 case 0:
                     return new AdvDashboardFragment();  // Stats
@@ -59,6 +61,8 @@ public class MainViewPagerAdapter extends FragmentStateAdapter {
                 case 5:
                     return new NearbyFragment();        // Nearby (Feature 3)
                 case 6:
+                    return new ConsoleFragment();       // Console (New Tab)
+                case 7:
                     return new SettingsFragment();      // Settings
                 default:
                     return new AdvDashboardFragment();
@@ -68,14 +72,14 @@ public class MainViewPagerAdapter extends FragmentStateAdapter {
 
     /**
      * Returns the total count of swipeable items based on the Role.
-     * FIXED: 4 for User, 7 for Advertiser.
+     * UPDATED: 5 for User, 8 for Advertiser to include permanent Console.
      */
     @Override
     public int getItemCount() {
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
-            return 4; 
+            return 5; 
         } else {
-            return 7;
+            return 8;
         }
     }
 }
