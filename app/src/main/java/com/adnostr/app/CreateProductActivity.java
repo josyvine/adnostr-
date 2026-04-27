@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -25,6 +26,7 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 /**
@@ -33,6 +35,7 @@ import java.util.UUID;
  * FIXED: Detailed Forensic Logging integrated via logTechnicalEvent bridge.
  * FIXED: Implements Preview logic to staging viewer before broadcast.
  * UPDATED: Extracts Category string for lightweight Marketplace Storefront rendering.
+ * ENHANCEMENT: Implements Global Crowdsourced Schema Sync and Broadcasting.
  */
 public class CreateProductActivity extends AppCompatActivity {
 
@@ -47,6 +50,10 @@ public class CreateProductActivity extends AppCompatActivity {
     
     // Forensic log accumulator
     private final StringBuilder technicalConsole = new StringBuilder();
+
+    // Global Schema State
+    private String fetchedGlobalSchemaJson = "{}";
+    private boolean isWebViewReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,8 +87,34 @@ public class CreateProductActivity extends AppCompatActivity {
                 }
         );
 
+        // INITIATE GLOBAL SCHEMA FETCH (Background Thread)
+        MarketplaceSchemaManager.fetchGlobalSchema(this, schemaJson -> {
+            fetchedGlobalSchemaJson = schemaJson;
+            logTechnicalEvent("SCHEMA: Global JSON downloaded. Length: " + schemaJson.length());
+            injectSchemaIfReady();
+        });
+
         setupWebView();
         binding.btnBackCreator.setOnClickListener(v -> finish());
+    }
+
+    /**
+     * Injects the heavy schema into the HTML safely using Base64
+     * to prevent crashes from complex user-generated strings.
+     */
+    private void injectSchemaIfReady() {
+        if (isWebViewReady && !fetchedGlobalSchemaJson.equals("{}")) {
+            runOnUiThread(() -> {
+                try {
+                    String base64Encoded = Base64.encodeToString(fetchedGlobalSchemaJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+                    String jsCommand = "injectGlobalSchema(decodeURIComponent(escape(window.atob('" + base64Encoded + "'))))";
+                    binding.wvProductCreator.evaluateJavascript(jsCommand, null);
+                    logTechnicalEvent("SCHEMA: Injected into HTML engine.");
+                } catch (Exception e) {
+                    logTechnicalEvent("SCHEMA_ERROR: Failed to inject base64. " + e.getMessage());
+                }
+            });
+        }
     }
 
     /**
@@ -139,7 +172,9 @@ public class CreateProductActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                isWebViewReady = true;
                 logTechnicalEvent("WEBVIEW: Dashboard DOM Loaded.");
+                injectSchemaIfReady();
             }
         });
 
@@ -164,6 +199,17 @@ public class CreateProductActivity extends AppCompatActivity {
         public void logTechnicalEvent(String msg) {
             technicalConsole.append(msg).append("\n");
             Log.d(TAG, "Forensic: " + msg);
+        }
+
+        // CROWDSOURCED SCHEMA: Native triggers from HTML Modals
+        @JavascriptInterface
+        public void publishNewCategory(String mainCat, String subCat) {
+            MarketplaceSchemaManager.broadcastNewCategory(CreateProductActivity.this, mainCat, subCat);
+        }
+
+        @JavascriptInterface
+        public void publishNewField(String category, String fieldName) {
+            MarketplaceSchemaManager.broadcastNewField(CreateProductActivity.this, category, fieldName);
         }
 
         @JavascriptInterface
@@ -194,6 +240,13 @@ public class CreateProductActivity extends AppCompatActivity {
             String price = productData.getString("price");
             // EXTRACT CATEGORY FOR THE STOREFRONT UI
             String category = productData.optString("category", "Uncategorized");
+
+            // CROWDSOURCED SCHEMA: Push typed values to network auto-complete pool
+            JSONObject specs = productData.optJSONObject("specs");
+            if (specs != null && specs.length() > 0) {
+                MarketplaceSchemaManager.broadcastSpecValues(this, category, specs);
+                logTechnicalEvent("SCHEMA: Typed spec values pushed to global auto-complete pool.");
+            }
 
             String fileName = "product_" + System.currentTimeMillis() + ".json";
             cloudHelper.uploadJsonFile(this, rawJson, fileName, new CloudflareHelper.CloudflareCallback() {
