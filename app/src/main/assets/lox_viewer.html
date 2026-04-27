@@ -220,25 +220,45 @@
 
     <script>
         /**
-         * Intelligent icon mapper based on the dynamic spec key
+         * Intelligent icon mapper based on the dynamic spec key.
+         * ENHANCED: Expanded fuzzy matching to support crowdsourced, user-generated fields.
          */
         function getIconForSpec(key) {
             const k = key.toLowerCase();
-            if(k.includes('km') || k.includes('mileage')) return 'fa-solid fa-gauge';
-            if(k.includes('year') || k.includes('age')) return 'fa-solid fa-calendar-days';
-            if(k.includes('fuel')) return 'fa-solid fa-gas-pump';
+            
+            // Vehicles & Machinery
+            if(k.includes('km') || k.includes('mileage') || k.includes('speed')) return 'fa-solid fa-gauge';
+            if(k.includes('fuel') || k.includes('gas')) return 'fa-solid fa-gas-pump';
             if(k.includes('transmission') || k.includes('gear')) return 'fa-solid fa-gears';
+            if(k.includes('power') || k.includes('voltage') || k.includes('watt')) return 'fa-solid fa-bolt';
+            
+            // Real Estate & Home
             if(k.includes('bed') || k.includes('bath') || k.includes('room')) return 'fa-solid fa-bed';
-            if(k.includes('area') || k.includes('dimension')) return 'fa-solid fa-maximize';
-            if(k.includes('ram') || k.includes('processor') || k.includes('gpu')) return 'fa-solid fa-microchip';
-            if(k.includes('storage') || k.includes('capacity')) return 'fa-solid fa-hard-drive';
-            if(k.includes('color')) return 'fa-solid fa-palette';
+            if(k.includes('area') || k.includes('dimension') || k.includes('size')) return 'fa-solid fa-maximize';
+            
+            // Electronics & Tech
+            if(k.includes('ram') || k.includes('processor') || k.includes('gpu') || k.includes('cpu')) return 'fa-solid fa-microchip';
+            if(k.includes('storage') || k.includes('capacity') || k.includes('disk')) return 'fa-solid fa-hard-drive';
+            if(k.includes('camera') || k.includes('lens') || k.includes('pixel')) return 'fa-solid fa-camera';
+            if(k.includes('screen') || k.includes('display') || k.includes('resolution')) return 'fa-solid fa-display';
+            
+            // General Properties
+            if(k.includes('year') || k.includes('age') || k.includes('date')) return 'fa-solid fa-calendar-days';
+            if(k.includes('time') || k.includes('duration') || k.includes('hour')) return 'fa-solid fa-stopwatch';
+            if(k.includes('weight') || k.includes('mass')) return 'fa-solid fa-weight-hanging';
+            if(k.includes('color') || k.includes('paint')) return 'fa-solid fa-palette';
+            if(k.includes('material') || k.includes('fabric')) return 'fa-solid fa-layer-group';
             if(k.includes('brand') || k.includes('model') || k.includes('category')) return 'fa-solid fa-tag';
+            
+            // Commercial
             if(k.includes('salary') || k.includes('price') || k.includes('fee')) return 'fa-solid fa-money-bill';
             if(k.includes('experience') || k.includes('skill')) return 'fa-solid fa-briefcase';
-            if(k.includes('warranty')) return 'fa-solid fa-shield-halved';
-            if(k.includes('condition')) return 'fa-solid fa-clipboard-check';
-            return 'fa-solid fa-circle-check'; // Default Fallback
+            
+            // Status
+            if(k.includes('warranty') || k.includes('guarantee')) return 'fa-solid fa-shield-halved';
+            if(k.includes('condition') || k.includes('state')) return 'fa-solid fa-clipboard-check';
+            
+            return 'fa-solid fa-circle-check'; // Default Fallback for totally unknown crowdsourced fields
         }
 
         /**
