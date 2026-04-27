@@ -113,6 +113,39 @@
     }
     .btn-submit:active, .btn-preview:active { transform: scale(0.98); }
 
+    /* FULL SCREEN MODALS FOR SCHEMA ENGINE */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7); z-index: 1000;
+        display: none; align-items: center; justify-content: center;
+        backdrop-filter: blur(5px);
+    }
+    .modal-content {
+        background: var(--card-bg); width: 90%; max-width: 400px; border-radius: 16px;
+        overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .modal-header {
+        background: var(--bg); padding: 18px 20px; font-weight: 700; font-size: 16px;
+        border-bottom: 1px solid var(--border); display: flex; justify-content: space-between;
+        align-items: center;
+    }
+    .modal-body { padding: 20px; }
+    .modal-footer {
+        padding: 15px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px;
+    }
+    .btn-modal {
+        flex: 1; padding: 14px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; font-size: 14px;
+    }
+    .btn-cancel { background: #E5E7EB; color: #333; }
+    .btn-save { background: var(--primary); color: #FFF; }
+    .add-field-btn {
+        background: transparent; border: 2px dashed var(--primary); color: var(--primary);
+        padding: 14px; width: 100%; border-radius: 10px; font-weight: bold; cursor: pointer;
+        margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 8px;
+    }
+
 </style>
 </head>
 
@@ -127,35 +160,36 @@
     <div class="section">
         <h2><i class="fa-solid fa-list"></i> Category</h2>
         <div class="form-group">
-            <select id="cat" onchange="renderSpecs()">
-                <optgroup label="Cars & Vehicles">
+            <select id="cat" onchange="handleCategoryChange()">
+                <option value="ADD_NEW_CAT" style="color: var(--primary); font-weight: 700;">➕ Add Custom Category</option>
+                <optgroup label="Cars & Vehicles" id="og_cars">
                     <option value="Cars">Cars</option>
                     <option value="Bikes">Bikes</option>
                     <option value="Heavy Vehicles">Heavy Vehicles</option>
                     <option value="Spare Parts">Spare Parts</option>
                 </optgroup>
-                <optgroup label="Real Estate">
+                <optgroup label="Real Estate" id="og_realestate">
                     <option value="Property Sale">Property Sale</option>
                     <option value="Property Rent">Property Rent</option>
                 </optgroup>
-                <optgroup label="Mobiles & Tech">
+                <optgroup label="Mobiles & Tech" id="og_tech">
                     <option value="Mobiles">Mobiles</option>
                     <option value="Computers">Computers & Laptops</option>
                     <option value="Gaming">Gaming & Consoles</option>
                 </optgroup>
-                <optgroup label="Home & Lifestyle">
+                <optgroup label="Home & Lifestyle" id="og_home">
                     <option value="Electronics">Electronics & Appliances</option>
                     <option value="Furniture">Furniture</option>
                     <option value="Fashion">Fashion & Clothing</option>
                     <option value="Jewelry">Jewelry & Watches</option>
                 </optgroup>
-                <optgroup label="Professional & Commercial">
+                <optgroup label="Professional & Commercial" id="og_pro">
                     <option value="Jobs">Jobs</option>
                     <option value="Services">Services</option>
                     <option value="Education">Education & Training</option>
                     <option value="Industrial">Industrial Equipment</option>
                 </optgroup>
-                <optgroup label="Pets, Hobbies & Digital">
+                <optgroup label="Pets, Hobbies & Digital" id="og_hobbies">
                     <option value="Pets">Pets</option>
                     <option value="Books">Books, Sports & Hobbies</option>
                     <option value="Music">Musical Instruments</option>
@@ -163,6 +197,8 @@
                     <option value="Digital">Digital Products & Software</option>
                     <option value="Grocery">Food & Groceries</option>
                 </optgroup>
+                <!-- Container for dynamically added main categories -->
+                <optgroup label="Crowdsourced Categories" id="og_custom" style="display:none;"></optgroup>
             </select>
         </div>
     </div>
@@ -180,7 +216,7 @@
     </div>
 
     <!-- DYNAMIC TECHNICAL SPECIFICATIONS -->
-    <div class="section" id="specsSection" style="display:none;">
+    <div class="section" id="specsSection">
         <h2><i class="fa-solid fa-cogs"></i> Technical Specifications</h2>
         <div id="specsContainer"></div>
     </div>
@@ -300,10 +336,63 @@
     </button>
 </div>
 
+<!-- ======================================================================= -->
+<!-- CROWDSOURCED SCHEMA MODALS & DATALISTS                                  -->
+<!-- ======================================================================= -->
+
+<!-- Datalist Container for Auto-Complete History -->
+<div id="datalistContainer" style="display: none;"></div>
+
+<!-- Add Custom Category Modal -->
+<div class="modal-overlay" id="modalCategory">
+    <div class="modal-content">
+        <div class="modal-header">
+            Add Custom Category <i class="fa-solid fa-xmark" style="cursor:pointer;" onclick="closeCategoryModal()"></i>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Main Category</label>
+                <input type="text" id="newMainCat" placeholder="e.g. Construction">
+            </div>
+            <div class="form-group">
+                <label>Sub Category</label>
+                <input type="text" id="newSubCat" placeholder="e.g. Excavators">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-modal btn-cancel" onclick="closeCategoryModal()">Cancel</button>
+            <button class="btn-modal btn-save" onclick="saveNewCategory()">Save & Global Publish</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Custom Field Modal -->
+<div class="modal-overlay" id="modalField">
+    <div class="modal-content">
+        <div class="modal-header">
+            Add Technical Field <i class="fa-solid fa-xmark" style="cursor:pointer;" onclick="closeFieldModal()"></i>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Field Name</label>
+                <input type="text" id="newFieldName" placeholder="e.g. Mileage or Battery Life">
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+                This field will be permanently added to this category globally. You can continue adding multiple fields before closing.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-modal btn-cancel" onclick="closeFieldModal()">Close</button>
+            <button class="btn-modal btn-save" onclick="saveNewField()">Save & Add Another</button>
+        </div>
+    </div>
+</div>
+
 <script>
     let uploadedImageUrls = [];
+    let lastSelectedCat = "Cars"; // Default initial category
 
-    // CATEGORY SPECIFICATIONS SCHEMA
+    // BASE CATEGORY SPECIFICATIONS SCHEMA (Will be appended by Network Schema)
     const CATEGORY_SCHEMA = {
         "Cars": [
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Hyundai"},
@@ -494,17 +583,200 @@
         renderSpecs();
     };
 
+    // =======================================================================
+    // CROWDSOURCED SCHEMA LOGIC
+    // =======================================================================
+
+    function handleCategoryChange() {
+        const catSelect = document.getElementById('cat');
+        if (catSelect.value === 'ADD_NEW_CAT') {
+            // Show modal and revert select to prevent it sticking on "ADD_NEW"
+            document.getElementById('modalCategory').style.display = 'flex';
+            catSelect.value = lastSelectedCat; 
+        } else {
+            lastSelectedCat = catSelect.value;
+            renderSpecs();
+        }
+    }
+
+    function closeCategoryModal() {
+        document.getElementById('modalCategory').style.display = 'none';
+        document.getElementById('newMainCat').value = '';
+        document.getElementById('newSubCat').value = '';
+    }
+
+    function saveNewCategory() {
+        const mainCat = document.getElementById('newMainCat').value.trim();
+        const subCat = document.getElementById('newSubCat').value.trim();
+
+        if (!mainCat || !subCat) {
+            alert("Please fill in both Main and Sub Category.");
+            return;
+        }
+
+        // Add to DOM
+        const customGroup = document.getElementById('og_custom');
+        customGroup.style.display = 'block';
+        
+        const newOption = document.createElement('option');
+        newOption.value = subCat;
+        newOption.text = `${mainCat} - ${subCat}`;
+        customGroup.appendChild(newOption);
+
+        // Initialize schema array if new
+        if (!CATEGORY_SCHEMA[subCat]) {
+            CATEGORY_SCHEMA[subCat] = [];
+        }
+
+        // Set active and re-render
+        const catSelect = document.getElementById('cat');
+        catSelect.value = subCat;
+        lastSelectedCat = subCat;
+        renderSpecs();
+        closeCategoryModal();
+
+        // Broadcast to Network via Java Bridge
+        if (window.AndroidBridge && window.AndroidBridge.publishNewCategory) {
+            window.AndroidBridge.publishNewCategory(mainCat, subCat);
+            logToAndroid("Broadcasted new Category to global schema.");
+        }
+    }
+
+    function openFieldModal() {
+        document.getElementById('modalField').style.display = 'flex';
+    }
+
+    function closeFieldModal() {
+        document.getElementById('modalField').style.display = 'none';
+        document.getElementById('newFieldName').value = '';
+        renderSpecs(); // Re-render to show newly added fields
+    }
+
+    function saveNewField() {
+        const fieldName = document.getElementById('newFieldName').value.trim();
+        if (!fieldName) {
+            alert("Please enter a field name.");
+            return;
+        }
+
+        const currentCat = lastSelectedCat;
+        const fieldId = fieldName.toLowerCase().replace(/ /g, "_").replace(/[^a-z0-9_]/g, "");
+
+        // Add to schema
+        if (!CATEGORY_SCHEMA[currentCat]) CATEGORY_SCHEMA[currentCat] = [];
+        
+        // Prevent duplicates
+        const exists = CATEGORY_SCHEMA[currentCat].find(f => f.id === fieldId);
+        if (!exists) {
+            CATEGORY_SCHEMA[currentCat].push({
+                id: fieldId,
+                label: fieldName,
+                type: "text",
+                placeholder: `e.g. your data`
+            });
+
+            // Keep modal open for multiple adds, just clear input
+            document.getElementById('newFieldName').value = '';
+            
+            // Broadcast to Network via Java Bridge
+            if (window.AndroidBridge && window.AndroidBridge.publishNewField) {
+                window.AndroidBridge.publishNewField(currentCat, fieldName);
+                logToAndroid(`Broadcasted new Field '${fieldName}' to global schema.`);
+            }
+        } else {
+            alert("This field already exists.");
+        }
+    }
+
+    /**
+     * Called by Android Native Code to inject global schemas from other advertisers.
+     * jsonString format: { categories: [{main, sub}], fields: [{category, id, label, input_type}], values: [{category, specs}] }
+     */
+    function injectGlobalSchema(jsonString) {
+        try {
+            const schema = JSON.parse(jsonString);
+
+            // 1. Inject Crowdsourced Categories
+            if (schema.categories && schema.categories.length > 0) {
+                const customGroup = document.getElementById('og_custom');
+                customGroup.style.display = 'block';
+                
+                schema.categories.forEach(c => {
+                    if (!CATEGORY_SCHEMA[c.sub]) {
+                        CATEGORY_SCHEMA[c.sub] = [];
+                        const opt = document.createElement('option');
+                        opt.value = c.sub;
+                        opt.text = `${c.main} - ${c.sub}`;
+                        customGroup.appendChild(opt);
+                    }
+                });
+            }
+
+            // 2. Inject Crowdsourced Fields
+            if (schema.fields && schema.fields.length > 0) {
+                schema.fields.forEach(f => {
+                    if (!CATEGORY_SCHEMA[f.category]) CATEGORY_SCHEMA[f.category] = [];
+                    const exists = CATEGORY_SCHEMA[f.category].find(x => x.id === f.id);
+                    if (!exists) {
+                        CATEGORY_SCHEMA[f.category].push({
+                            id: f.id,
+                            label: f.label,
+                            type: f.input_type || "text",
+                            placeholder: ""
+                        });
+                    }
+                });
+            }
+
+            // 3. Build Historical Auto-Complete Datalists
+            if (schema.values && schema.values.length > 0) {
+                const dlContainer = document.getElementById('datalistContainer');
+                const uniqueValues = {}; // Track unique values per field { "mileage": new Set(["9 kmpl", "10 kmpl"]) }
+
+                schema.values.forEach(v => {
+                    if (v.specs) {
+                        for (const [key, val] of Object.entries(v.specs)) {
+                            if (!uniqueValues[key]) uniqueValues[key] = new Set();
+                            uniqueValues[key].add(val);
+                        }
+                    }
+                });
+
+                // Generate HTML datalists
+                for (const [key, valueSet] of Object.entries(uniqueValues)) {
+                    let dl = document.getElementById(`dl_${key}`);
+                    if (!dl) {
+                        dl = document.createElement('datalist');
+                        dl.id = `dl_${key}`;
+                        dlContainer.appendChild(dl);
+                    }
+                    dl.innerHTML = ''; // Clear old options
+                    valueSet.forEach(val => {
+                        const opt = document.createElement('option');
+                        opt.value = val;
+                        dl.appendChild(opt);
+                    });
+                }
+            }
+
+            // Refresh UI if necessary
+            renderSpecs();
+            logToAndroid("Global Schema Sync Complete.");
+        } catch (e) {
+            logToAndroid("Failed to inject global schema: " + e.message, true);
+        }
+    }
+
+    // =======================================================================
+    // RENDERING LOGIC
+    // =======================================================================
+
     function renderSpecs() {
-        const cat = document.getElementById('cat').value;
-        const fields = CATEGORY_SCHEMA[cat] || [];
+        const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         const container = document.getElementById('specsContainer');
         container.innerHTML = '';
 
-        if(fields.length === 0) {
-            document.getElementById('specsSection').style.display = 'none';
-            return;
-        }
-        
+        // We always show the section now, so users can add fields even if empty
         document.getElementById('specsSection').style.display = 'block';
 
         let html = '';
@@ -518,14 +790,19 @@
             }
             html += '</div>';
         }
+
+        // Always append the Add Field button at the end
+        html += `<button class="add-field-btn" onclick="openFieldModal()"><i class="fa-solid fa-plus"></i> Add Custom Field</button>`;
+
         container.innerHTML = html;
     }
 
     function createFormGroup(f) {
+        // Included the list="dl_{id}" to trigger the historical auto-complete dropdown
         return `
         <div class="form-group" style="flex: 1;">
             <label>${f.label}</label>
-            <input type="${f.type}" id="${f.id}" placeholder="${f.placeholder || ''}">
+            <input type="${f.type}" id="${f.id}" list="dl_${f.id}" placeholder="${f.placeholder || ''}">
         </div>`;
     }
 
@@ -561,7 +838,9 @@
         // Dynamically extract typed spec values
         fields.forEach(f => {
             const el = document.getElementById(f.id);
-            if(el) specs[f.id] = el.value;
+            if(el && el.value.trim() !== '') {
+                specs[f.id] = el.value.trim();
+            }
         });
 
         const productData = {
