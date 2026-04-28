@@ -196,6 +196,8 @@
                     <option value="Digital">Digital Products & Software</option>
                     <option value="Grocery">Food & Groceries</option>
                 </optgroup>
+                <!-- Container for dynamically added main categories -->
+                <optgroup label="Crowdsourced Categories" id="og_custom" style="display:none;"></optgroup>
             </select>
             
             <!-- GLITCH FIX: Dedicated Button for Category Modal -->
@@ -357,8 +359,10 @@
                 <input type="text" id="newMainCat" placeholder="e.g. Construction">
             </div>
             <div class="form-group">
-                <label>Sub Category</label>
-                <input type="text" id="newSubCat" placeholder="e.g. Excavators">
+                <label>Sub Category(s)</label>
+                <!-- ENHANCEMENT 1: Textarea for Bulk Sub-Category Input -->
+                <textarea id="newSubCat" placeholder="e.g. Excavators&#10;Tractors&#10;Cranes" style="min-height: 80px;"></textarea>
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple sub-categories (each on a new line).</p>
             </div>
         </div>
         <div class="modal-footer">
@@ -386,6 +390,32 @@
         <div class="modal-footer">
             <button class="btn-modal btn-cancel" onclick="closeFieldModal()">Close</button>
             <button class="btn-modal btn-save" onclick="saveNewField()">Save & Add Another</button>
+        </div>
+    </div>
+</div>
+
+<!-- ENHANCEMENT 2: Bulk Add Field Values Modal -->
+<div class="modal-overlay" id="modalBulkValues">
+    <div class="modal-content">
+        <div class="modal-header">
+            Bulk Seed Field Values <i class="fa-solid fa-xmark" style="cursor:pointer;" onclick="closeBulkValuesModal()"></i>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Select Field to Populate</label>
+                <select id="bulkFieldSelect"></select>
+            </div>
+            <div class="form-group" style="margin-top:15px;">
+                <label>Values (Comma Separated)</label>
+                <textarea id="bulkFieldValues" placeholder="e.g. Yamaha, Honda, Suzuki, Kawasaki" style="min-height: 80px;"></textarea>
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
+                These values will be pushed to the Nostr network to power the auto-complete dropdowns for all advertisers.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-modal btn-cancel" onclick="closeBulkValuesModal()">Cancel</button>
+            <button class="btn-modal btn-save" onclick="saveBulkValues()">Push to Network</button>
         </div>
     </div>
 </div>
@@ -633,35 +663,49 @@
         optGroup.appendChild(newOption);
     }
 
+    /**
+     * ENHANCEMENT 1: Bulk Add Sub-Categories
+     * Splits textarea by line break and iterates to instantly build multiple categories.
+     */
     function saveNewCategory() {
         const mainCat = document.getElementById('newMainCat').value.trim();
-        const subCat = document.getElementById('newSubCat').value.trim();
+        const subCatRaw = document.getElementById('newSubCat').value.trim();
 
-        if (!mainCat || !subCat) {
+        if (!mainCat || !subCatRaw) {
             alert("Please fill in both Main and Sub Category.");
             return;
         }
 
-        // Use the Smart Grouping function
-        addCategoryToDOM(mainCat, subCat);
+        // Process multiple lines
+        const subCats = subCatRaw.split('\n').map(s => s.trim()).filter(s => s !== '');
+        let lastAddedSubCat = "";
 
-        // Initialize schema array if new
-        if (!CATEGORY_SCHEMA[subCat]) {
-            CATEGORY_SCHEMA[subCat] = [];
+        subCats.forEach(subCat => {
+            // Use the Smart Grouping function for each line
+            addCategoryToDOM(mainCat, subCat);
+
+            // Initialize schema array if new
+            if (!CATEGORY_SCHEMA[subCat]) {
+                CATEGORY_SCHEMA[subCat] = [];
+            }
+
+            // Broadcast to Network via Java Bridge individually
+            if (window.AndroidBridge && window.AndroidBridge.publishNewCategory) {
+                window.AndroidBridge.publishNewCategory(mainCat, subCat);
+            }
+            lastAddedSubCat = subCat;
+        });
+
+        // Set the UI to the last added category
+        if (lastAddedSubCat !== "") {
+            const catSelect = document.getElementById('cat');
+            catSelect.value = lastAddedSubCat;
+            lastSelectedCat = lastAddedSubCat;
+            renderSpecs();
         }
-
-        // Set active and re-render
-        const catSelect = document.getElementById('cat');
-        catSelect.value = subCat;
-        lastSelectedCat = subCat;
-        renderSpecs();
+        
         closeCategoryModal();
-
-        // Broadcast to Network via Java Bridge
-        if (window.AndroidBridge && window.AndroidBridge.publishNewCategory) {
-            window.AndroidBridge.publishNewCategory(mainCat, subCat);
-            logToAndroid("Broadcasted new Category to global schema.");
-        }
+        logToAndroid(`Broadcasted ${subCats.length} new Categories to global schema.`);
     }
 
     function openFieldModal() {
@@ -711,6 +755,75 @@
     }
 
     /**
+     * ENHANCEMENT 2: Bulk Values Logic
+     */
+    function openBulkValuesModal() {
+        const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
+        if(fields.length === 0) {
+            alert("Please add a technical field first before bulk adding values.");
+            return;
+        }
+        
+        // Populate the dropdown with fields relevant to THIS category
+        const select = document.getElementById('bulkFieldSelect');
+        select.innerHTML = '';
+        fields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f.id;
+            opt.text = f.label;
+            select.appendChild(opt);
+        });
+        
+        document.getElementById('modalBulkValues').style.display = 'flex';
+    }
+
+    function closeBulkValuesModal() {
+        document.getElementById('modalBulkValues').style.display = 'none';
+        document.getElementById('bulkFieldValues').value = '';
+    }
+
+    function saveBulkValues() {
+        const fieldId = document.getElementById('bulkFieldSelect').value;
+        const valuesRaw = document.getElementById('bulkFieldValues').value.trim();
+        
+        if(!fieldId || !valuesRaw) {
+            alert("Please select a field and enter values.");
+            return;
+        }
+        
+        // 1. Add values to local datalist instantly for immediate UI use
+        const values = valuesRaw.split(',').map(v => v.trim()).filter(v => v !== '');
+        
+        // GLITCH 1 FIX: Use Namespaced Datalist ID
+        const dlId = `dl_${lastSelectedCat}_${fieldId}`;
+        let dl = document.getElementById(dlId);
+        
+        if(!dl) {
+            const dlContainer = document.getElementById('datalistContainer');
+            dl = document.createElement('datalist');
+            dl.id = dlId;
+            dlContainer.appendChild(dl);
+        }
+        
+        values.forEach(val => {
+            // Prevent duplicate options in datalist
+            if(!Array.from(dl.options).some(opt => opt.value === val)) {
+                const opt = document.createElement('option');
+                opt.value = val;
+                dl.appendChild(opt);
+            }
+        });
+
+        // 2. Broadcast to Network via Java Bridge
+        if (window.AndroidBridge && window.AndroidBridge.publishBulkSpecValues) {
+            window.AndroidBridge.publishBulkSpecValues(lastSelectedCat, fieldId, valuesRaw);
+            logToAndroid(`Broadcasted bulk values for '${fieldId}' to global schema.`);
+        }
+        
+        closeBulkValuesModal();
+    }
+
+    /**
      * Called by Android Native Code to inject global schemas from other advertisers.
      * jsonString format: { categories: [{main, sub}], fields: [{category, id, label, input_type}], values: [{category, specs}] }
      */
@@ -745,33 +858,58 @@
             }
 
             // 3. Build Historical Auto-Complete Datalists
+            // GLITCH 2 FIX: Strict Category Hierarchy for values
             if (schema.values && schema.values.length > 0) {
                 const dlContainer = document.getElementById('datalistContainer');
-                const uniqueValues = {}; // Track unique values per field { "mileage": new Set(["9 kmpl", "10 kmpl"]) }
+                
+                // Track unique values per CATEGORY and per FIELD
+                // Example: { "Cars": { "brand": new Set(["Hyundai", "Ford"]) } }
+                const uniqueValues = {}; 
 
                 schema.values.forEach(v => {
-                    if (v.specs) {
+                    if (v.category && v.specs) {
+                        if (!uniqueValues[v.category]) uniqueValues[v.category] = {};
+                        
                         for (const [key, val] of Object.entries(v.specs)) {
-                            if (!uniqueValues[key]) uniqueValues[key] = new Set();
-                            uniqueValues[key].add(val);
+                            if (!uniqueValues[v.category][key]) uniqueValues[v.category][key] = new Set();
+                            
+                            // ENHANCEMENT 2: Automatically detect and split incoming bulk comma-separated values
+                            if (typeof val === 'string' && val.includes(',')) {
+                                val.split(',').forEach(item => {
+                                    if (item.trim() !== '') uniqueValues[v.category][key].add(item.trim());
+                                });
+                            } else if (Array.isArray(val)) {
+                                val.forEach(item => {
+                                    if (item && item.toString().trim() !== '') uniqueValues[v.category][key].add(item.toString().trim());
+                                });
+                            } else {
+                                uniqueValues[v.category][key].add(val);
+                            }
                         }
                     }
                 });
 
-                // Generate HTML datalists
-                for (const [key, valueSet] of Object.entries(uniqueValues)) {
-                    let dl = document.getElementById(`dl_${key}`);
-                    if (!dl) {
-                        dl = document.createElement('datalist');
-                        dl.id = `dl_${key}`;
-                        dlContainer.appendChild(dl);
+                // Generate HTML datalists using the exact Category Namespace
+                for (const [catName, fieldObj] of Object.entries(uniqueValues)) {
+                    for (const [fieldId, valueSet] of Object.entries(fieldObj)) {
+                        
+                        // GLITCH 1 FIX: Namespaced Datalist ID
+                        const specificDlId = `dl_${catName}_${fieldId}`;
+                        
+                        let dl = document.getElementById(specificDlId);
+                        if (!dl) {
+                            dl = document.createElement('datalist');
+                            dl.id = specificDlId;
+                            dlContainer.appendChild(dl);
+                        }
+                        dl.innerHTML = ''; // Clear old options
+                        
+                        valueSet.forEach(val => {
+                            const opt = document.createElement('option');
+                            opt.value = val;
+                            dl.appendChild(opt);
+                        });
                     }
-                    dl.innerHTML = ''; // Clear old options
-                    valueSet.forEach(val => {
-                        const opt = document.createElement('option');
-                        opt.value = val;
-                        dl.appendChild(opt);
-                    });
                 }
             }
 
@@ -798,27 +936,36 @@
         let html = '';
         for(let i = 0; i < fields.length; i += 2) {
             html += '<div class="row" style="margin-bottom: 15px;">';
-            html += createFormGroup(fields[i]);
+            // GLITCH 1 FIX: Pass the current category to scope the datalist
+            html += createFormGroup(fields[i], lastSelectedCat);
             if(fields[i+1]) {
-                html += createFormGroup(fields[i+1]);
+                html += createFormGroup(fields[i+1], lastSelectedCat);
             } else {
                 html += '<div class="form-group" style="flex: 1;"></div>';
             }
             html += '</div>';
         }
 
-        // Always append the Add Field button at the end
-        html += `<button class="add-field-btn" onclick="openFieldModal()"><i class="fa-solid fa-plus"></i> Add Custom Field</button>`;
+        // ENHANCEMENT 2: Append both Add Field and Bulk Seed buttons
+        html += `
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button class="add-field-btn" onclick="openFieldModal()">
+                <i class="fa-solid fa-plus"></i> Add Custom Field
+            </button>
+            <button class="add-field-btn" onclick="openBulkValuesModal()" style="border-color: #25D366; color: #25D366;">
+                <i class="fa-solid fa-seedling"></i> Bulk Add Values
+            </button>
+        </div>`;
 
         container.innerHTML = html;
     }
 
-    function createFormGroup(f) {
-        // Included the list="dl_{id}" to trigger the historical auto-complete dropdown
+    // GLITCH 1 FIX: Datalist Namespace Scoping
+    function createFormGroup(f, currentCat) {
         return `
         <div class="form-group" style="flex: 1;">
             <label>${f.label}</label>
-            <input type="${f.type}" id="${f.id}" list="dl_${f.id}" placeholder="${f.placeholder || ''}">
+            <input type="${f.type}" id="${f.id}" list="dl_${currentCat}_${f.id}" placeholder="${f.placeholder || ''}">
         </div>`;
     }
 
@@ -903,4 +1050,3 @@
 
 </body>
 </html>
---- START OF FILE Paste April 28, 2026 - 6:38AM ---
