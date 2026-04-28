@@ -147,6 +147,11 @@ public class CreateProductActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void onDestroyView() {
+                    // Logic to clear memory if needed
+                }
+
+                @Override
                 public void onFailure(Exception e) {
                     runOnUiThread(() -> logTechnicalEvent("R2_ERROR: " + e.getMessage()));
                 }
@@ -210,6 +215,15 @@ public class CreateProductActivity extends AppCompatActivity {
         @JavascriptInterface
         public void publishNewField(String category, String fieldName) {
             MarketplaceSchemaManager.broadcastNewField(CreateProductActivity.this, category, fieldName);
+        }
+
+        /**
+         * FEATURE FIX: Deletes a technical field permanently from Nostr.
+         */
+        @JavascriptInterface
+        public void deleteField(String category, String fieldName) {
+            logTechnicalEvent("ACTION: Permanent Deletion request for field '" + fieldName + "' in " + category);
+            MarketplaceSchemaManager.broadcastFieldDeletion(CreateProductActivity.this, category, fieldName);
         }
 
         // ENHANCEMENT: Native Bridge for Bulk Field Values Seeding
