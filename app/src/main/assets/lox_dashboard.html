@@ -320,10 +320,6 @@
             <label class="switch"><input type="checkbox" id="opt_chat" checked><span class="slider"></span></label>
         </div>
         <div class="toggle-row">
-            <span class="toggle-label">Show Phone Number Publicly</span>
-            <label class="switch"><input type="checkbox" id="opt_phone" checked><span class="slider"></span></label>
-        </div>
-        <div class="toggle-row">
             <span class="toggle-label" style="color:var(--primary); font-weight:700;"><i class="fa-solid fa-star"></i> Feature this Ad</span>
             <label class="switch"><input type="checkbox" id="opt_feature"><span class="slider"></span></label>
         </div>
@@ -360,7 +356,6 @@
             </div>
             <div class="form-group">
                 <label>Sub Category(s)</label>
-                <!-- ENHANCEMENT 1: Textarea for Bulk Sub-Category Input -->
                 <textarea id="newSubCat" placeholder="e.g. Excavators&#10;Tractors&#10;Cranes" style="min-height: 80px;"></textarea>
                 <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple sub-categories (each on a new line).</p>
             </div>
@@ -376,20 +371,22 @@
 <div class="modal-overlay" id="modalField">
     <div class="modal-content">
         <div class="modal-header">
-            Add Technical Field <i class="fa-solid fa-xmark" style="cursor:pointer;" onclick="closeFieldModal()"></i>
+            Add Technical Field(s) <i class="fa-solid fa-xmark" style="cursor:pointer;" onclick="closeFieldModal()"></i>
         </div>
         <div class="modal-body">
             <div class="form-group">
-                <label>Field Name</label>
-                <input type="text" id="newFieldName" placeholder="e.g. Mileage or Battery Life">
+                <label>Field Name(s)</label>
+                <!-- FIXED: Changed input to textarea for bulk entry -->
+                <textarea id="newFieldName" placeholder="e.g. Mileage, Battery Life, Condition" style="min-height: 80px;"></textarea>
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple fields separated by commas.</p>
             </div>
             <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
-                This field will be permanently added to this category globally. You can continue adding multiple fields before closing.
+                These fields will be permanently added to this category globally.
             </p>
         </div>
         <div class="modal-footer">
             <button class="btn-modal btn-cancel" onclick="closeFieldModal()">Close</button>
-            <button class="btn-modal btn-save" onclick="saveNewField()">Save & Add Another</button>
+            <button class="btn-modal btn-save" onclick="saveNewField()">Save & Add</button>
         </div>
     </div>
 </div>
@@ -718,39 +715,53 @@
         renderSpecs(); // Re-render to show newly added fields
     }
 
+    /**
+     * FIXED: Upgraded to support Bulk Addition of Technical Fields.
+     * Splits input by commas, loops through, and triggers individual broadcasts.
+     */
     function saveNewField() {
-        const fieldName = document.getElementById('newFieldName').value.trim();
-        if (!fieldName) {
-            alert("Please enter a field name.");
+        const fieldInput = document.getElementById('newFieldName').value.trim();
+        if (!fieldInput) {
+            alert("Please enter at least one field name.");
             return;
         }
 
         const currentCat = lastSelectedCat;
-        const fieldId = fieldName.toLowerCase().replace(/ /g, "_").replace(/[^a-z0-9_]/g, "");
-
-        // Add to schema
         if (!CATEGORY_SCHEMA[currentCat]) CATEGORY_SCHEMA[currentCat] = [];
-        
-        // Prevent duplicates
-        const exists = CATEGORY_SCHEMA[currentCat].find(f => f.id === fieldId);
-        if (!exists) {
-            CATEGORY_SCHEMA[currentCat].push({
-                id: fieldId,
-                label: fieldName,
-                type: "text",
-                placeholder: `e.g. your data`
-            });
 
-            // Keep modal open for multiple adds, just clear input
-            document.getElementById('newFieldName').value = '';
+        // Split by comma for bulk addition and filter empty segments
+        const fieldNames = fieldInput.split(',').map(f => f.trim()).filter(f => f !== "");
+        let addedCount = 0;
+
+        fieldNames.forEach(fieldName => {
+            // Generate standard sanitized ID
+            const fieldId = fieldName.toLowerCase().replace(/ /g, "_").replace(/[^a-z0-9_]/g, "");
             
-            // Broadcast to Network via Java Bridge
-            if (window.AndroidBridge && window.AndroidBridge.publishNewField) {
-                window.AndroidBridge.publishNewField(currentCat, fieldName);
-                logToAndroid(`Broadcasted new Field '${fieldName}' to global schema.`);
+            // Prevent duplicates within the local session
+            const exists = CATEGORY_SCHEMA[currentCat].find(f => f.id === fieldId);
+            if (!exists) {
+                CATEGORY_SCHEMA[currentCat].push({
+                    id: fieldId,
+                    label: fieldName,
+                    type: "text",
+                    placeholder: `e.g. your data`
+                });
+
+                // Broadcast to Network via Java Bridge individually
+                if (window.AndroidBridge && window.AndroidBridge.publishNewField) {
+                    window.AndroidBridge.publishNewField(currentCat, fieldName);
+                }
+                addedCount++;
             }
+        });
+
+        if (addedCount > 0) {
+            logToAndroid(`Broadcasted ${addedCount} new Field(s) to global schema.`);
+            document.getElementById('newFieldName').value = '';
+            closeFieldModal();
+            renderSpecs(); // Re-render to show newly added fields
         } else {
-            alert("This field already exists.");
+            alert("The fields already exist.");
         }
     }
 
