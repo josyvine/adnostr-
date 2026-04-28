@@ -17,6 +17,7 @@
         --text-main: #1A1D20;
         --text-muted: #6B7280;
         --border: #E5E7EB;
+        --danger: #FF3B30;
     }
 
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
@@ -45,7 +46,7 @@
     .section h2 i { color: var(--primary); }
 
     /* Inputs */
-    .form-group { margin-bottom: 15px; }
+    .form-group { margin-bottom: 15px; position: relative; }
     .form-group:last-child { margin-bottom: 0; }
     
     label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;}
@@ -60,6 +61,12 @@
 
     .row { display: flex; gap: 15px; }
     .row .form-group { flex: 1; margin-bottom: 0; }
+
+    /* Delete Button for Custom Fields */
+    .btn-del-field {
+        position: absolute; right: 10px; top: 38px; color: #ccc; cursor: pointer; padding: 5px; font-size: 14px; z-index: 5;
+    }
+    .btn-del-field:hover { color: var(--danger); }
 
     /* Media Upload Box & Thumbnails */
     .upload-box {
@@ -320,6 +327,10 @@
             <label class="switch"><input type="checkbox" id="opt_chat" checked><span class="slider"></span></label>
         </div>
         <div class="toggle-row">
+            <span class="toggle-label">Show Phone Number Publicly</span>
+            <label class="switch"><input type="checkbox" id="opt_phone" checked><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
             <span class="toggle-label" style="color:var(--primary); font-weight:700;"><i class="fa-solid fa-star"></i> Feature this Ad</span>
             <label class="switch"><input type="checkbox" id="opt_feature"><span class="slider"></span></label>
         </div>
@@ -356,6 +367,7 @@
             </div>
             <div class="form-group">
                 <label>Sub Category(s)</label>
+                <!-- ENHANCEMENT 1: Textarea for Bulk Sub-Category Input -->
                 <textarea id="newSubCat" placeholder="e.g. Excavators&#10;Tractors&#10;Cranes" style="min-height: 80px;"></textarea>
                 <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple sub-categories (each on a new line).</p>
             </div>
@@ -376,9 +388,9 @@
         <div class="modal-body">
             <div class="form-group">
                 <label>Field Name(s)</label>
-                <!-- FIXED: Changed input to textarea for bulk entry -->
-                <textarea id="newFieldName" placeholder="e.g. Mileage, Battery Life, Condition" style="min-height: 80px;"></textarea>
-                <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple fields separated by commas.</p>
+                <!-- FIX: Accepts bulk entry with commas or new lines -->
+                <textarea id="newFieldName" placeholder="e.g. Max Power, Engine Type, Gearbox" style="min-height: 80px;"></textarea>
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple fields (each on a new line or comma separated).</p>
             </div>
             <p style="font-size: 12px; color: var(--text-muted); margin-top: 10px;">
                 These fields will be permanently added to this category globally.
@@ -716,28 +728,25 @@
     }
 
     /**
-     * FIXED: Upgraded to support Bulk Addition of Technical Fields.
-     * Splits input by commas, loops through, and triggers individual broadcasts.
+     * UPDATED: FIXED regex to support bulk addition via commas or new lines.
      */
     function saveNewField() {
         const fieldInput = document.getElementById('newFieldName').value.trim();
         if (!fieldInput) {
-            alert("Please enter at least one field name.");
+            alert("Please enter a field name.");
             return;
         }
 
         const currentCat = lastSelectedCat;
         if (!CATEGORY_SCHEMA[currentCat]) CATEGORY_SCHEMA[currentCat] = [];
+        
+        // REGEX FIX: Split by comma OR new line
+        const names = fieldInput.split(/[,\n]/).map(n => n.trim()).filter(n => n !== "");
 
-        // Split by comma for bulk addition and filter empty segments
-        const fieldNames = fieldInput.split(',').map(f => f.trim()).filter(f => f !== "");
-        let addedCount = 0;
-
-        fieldNames.forEach(fieldName => {
-            // Generate standard sanitized ID
+        names.forEach(fieldName => {
             const fieldId = fieldName.toLowerCase().replace(/ /g, "_").replace(/[^a-z0-9_]/g, "");
             
-            // Prevent duplicates within the local session
+            // Prevent duplicates
             const exists = CATEGORY_SCHEMA[currentCat].find(f => f.id === fieldId);
             if (!exists) {
                 CATEGORY_SCHEMA[currentCat].push({
@@ -747,21 +756,38 @@
                     placeholder: `e.g. your data`
                 });
 
-                // Broadcast to Network via Java Bridge individually
+                // Broadcast to Network via Java Bridge
                 if (window.AndroidBridge && window.AndroidBridge.publishNewField) {
                     window.AndroidBridge.publishNewField(currentCat, fieldName);
+                    logToAndroid(`Broadcasted new Field '${fieldName}' to global schema.`);
                 }
-                addedCount++;
             }
         });
+        
+        document.getElementById('newFieldName').value = '';
+        closeFieldModal();
+    }
 
-        if (addedCount > 0) {
-            logToAndroid(`Broadcasted ${addedCount} new Field(s) to global schema.`);
-            document.getElementById('newFieldName').value = '';
-            closeFieldModal();
-            renderSpecs(); // Re-render to show newly added fields
-        } else {
-            alert("The fields already exist.");
+    /**
+     * PERMANENT DELETION logic. 
+     * Removes field from local memory and triggers Nostr Kind 5 broadcast.
+     */
+    function removeField(fieldId, fieldLabel) {
+        const currentCat = lastSelectedCat;
+        if (confirm(`Permanently delete '${fieldLabel}' from this category on the network?`)) {
+            // 1. Remove from local memory
+            if (CATEGORY_SCHEMA[currentCat]) {
+                CATEGORY_SCHEMA[currentCat] = CATEGORY_SCHEMA[currentCat].filter(f => f.id !== fieldId);
+            }
+
+            // 2. Call Bridge to broadcast Kind 5 Deletion
+            if (window.AndroidBridge && window.AndroidBridge.deleteField) {
+                window.AndroidBridge.deleteField(currentCat, fieldLabel);
+            }
+
+            // 3. UI Refresh
+            renderSpecs();
+            logToAndroid(`Requested permanent deletion of field: ${fieldLabel}`);
         }
     }
 
@@ -971,11 +997,16 @@
         container.innerHTML = html;
     }
 
-    // GLITCH 1 FIX: Datalist Namespace Scoping
+    /**
+     * Updated to include a Trash icon for field deletion.
+     */
     function createFormGroup(f, currentCat) {
         return `
         <div class="form-group" style="flex: 1;">
             <label>${f.label}</label>
+            <div class="btn-del-field" onclick="removeField('${f.id}', '${f.label}')">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
             <input type="${f.type}" id="${f.id}" list="dl_${currentCat}_${f.id}" placeholder="${f.placeholder || ''}">
         </div>`;
     }
