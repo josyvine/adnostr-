@@ -212,6 +212,12 @@ public class CreateProductActivity extends AppCompatActivity {
             MarketplaceSchemaManager.broadcastNewField(CreateProductActivity.this, category, fieldName);
         }
 
+        // ENHANCEMENT: Native Bridge for Bulk Field Values Seeding
+        @JavascriptInterface
+        public void publishBulkSpecValues(String category, String fieldId, String commaSeparatedValues) {
+            MarketplaceSchemaManager.broadcastBulkValues(CreateProductActivity.this, category, fieldId, commaSeparatedValues);
+        }
+
         @JavascriptInterface
         public void processProductData(String jsonString, String mode) {
             runOnUiThread(() -> {
