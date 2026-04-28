@@ -147,11 +147,6 @@ public class CreateProductActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void onDestroyView() {
-                    // Logic to clear memory if needed
-                }
-
-                @Override
                 public void onFailure(Exception e) {
                     runOnUiThread(() -> logTechnicalEvent("R2_ERROR: " + e.getMessage()));
                 }
