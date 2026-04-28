@@ -221,6 +221,15 @@ public class CreateProductActivity extends AppCompatActivity {
             MarketplaceSchemaManager.broadcastFieldDeletion(CreateProductActivity.this, category, fieldName);
         }
 
+        /**
+         * FEATURE FIX: Deletes an entire sub-category permanently from Nostr.
+         */
+        @JavascriptInterface
+        public void deleteCategory(String categoryName) {
+            logTechnicalEvent("ACTION: Permanent Category Deletion request for '" + categoryName + "'");
+            MarketplaceSchemaManager.broadcastCategoryDeletion(CreateProductActivity.this, categoryName);
+        }
+
         // ENHANCEMENT: Native Bridge for Bulk Field Values Seeding
         @JavascriptInterface
         public void publishBulkSpecValues(String category, String fieldId, String commaSeparatedValues) {
