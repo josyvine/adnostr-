@@ -207,10 +207,15 @@
                 <optgroup label="Crowdsourced Categories" id="og_custom" style="display:none;"></optgroup>
             </select>
             
-            <!-- GLITCH FIX: Dedicated Button for Category Modal -->
-            <button class="add-field-btn" onclick="openCategoryModal()" style="margin-top: 10px;">
-                <i class="fa-solid fa-plus"></i> Add Custom Category
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button class="add-field-btn" onclick="openCategoryModal()" style="margin-top: 10px; flex: 1;">
+                    <i class="fa-solid fa-plus"></i> Add Custom Category
+                </button>
+                <!-- NEW: Delete Sub-Category Button -->
+                <button class="add-field-btn" onclick="removeCategory()" style="margin-top: 10px; flex: 1; border-color: var(--danger); color: var(--danger);">
+                    <i class="fa-solid fa-trash-can"></i> Delete Category
+                </button>
+            </div>
         </div>
     </div>
 
@@ -788,6 +793,46 @@
             // 3. UI Refresh
             renderSpecs();
             logToAndroid(`Requested permanent deletion of field: ${fieldLabel}`);
+        }
+    }
+
+    /**
+     * FEATURE FIX: Deletes the entire Sub-Category permanently from the UI and Network.
+     */
+    function removeCategory() {
+        const catSelect = document.getElementById('cat');
+        const catName = lastSelectedCat;
+        
+        if (!catName) return;
+
+        if (confirm(`Permanently delete the entire '${catName}' category and all its technical fields from the network?`)) {
+            
+            // 1. Tell Android to wipe all Kind 30006 associated with this category from Nostr
+            if (window.AndroidBridge && window.AndroidBridge.deleteCategory) {
+                window.AndroidBridge.deleteCategory(catName);
+            }
+
+            // 2. Remove from local memory
+            delete CATEGORY_SCHEMA[catName];
+
+            // 3. Remove from DOM dropdown
+            const option = Array.from(catSelect.options).find(opt => opt.value === catName);
+            if (option) {
+                const parentGroup = option.parentElement;
+                option.remove();
+                
+                // If the optgroup is now empty (no more sub-categories), remove the entire group
+                if (parentGroup && parentGroup.tagName === 'OPTGROUP' && parentGroup.children.length === 0) {
+                    parentGroup.remove();
+                }
+            }
+
+            // 4. Reset selection to the first valid category in the list
+            catSelect.selectedIndex = 0;
+            lastSelectedCat = catSelect.value;
+            handleCategoryChange();
+
+            logToAndroid(`Deleted full category: ${catName}`);
         }
     }
 
