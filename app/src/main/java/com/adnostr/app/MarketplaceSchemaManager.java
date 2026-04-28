@@ -163,6 +163,81 @@ public class MarketplaceSchemaManager {
     }
 
     /**
+     * FEATURE FIX: Deletes a technical field permanently from Nostr using Kind 5.
+     * Logic: Finds the original Kind 30006 event and issues a deletion request.
+     */
+    public static void broadcastFieldDeletion(Context context, String category, String fieldLabel) {
+        new Thread(() -> {
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            Set<String> relays = db.getRelayPool();
+            String myPubKey = db.getPublicKey();
+            final List<String> eventIdsToDelete = Collections.synchronizedList(new ArrayList<>());
+            final CountDownLatch latch = new CountDownLatch(relays.size());
+
+            try {
+                // Step 1: Find the original Kind 30006 event created by ME
+                JSONObject filter = new JSONObject();
+                filter.put("kinds", new JSONArray().put(30006));
+                filter.put("authors", new JSONArray().put(myPubKey));
+
+                String subId = "find-field-" + UUID.randomUUID().toString().substring(0, 4);
+                String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
+
+                for (String url : relays) {
+                    try {
+                        WebSocketClient client = new WebSocketClient(new URI(url)) {
+                            @Override public void onOpen(ServerHandshake h) { send(req); }
+                            @Override public void onMessage(String message) {
+                                try {
+                                    if (!message.startsWith("[")) return;
+                                    JSONArray msg = new JSONArray(message);
+                                    if ("EVENT".equals(msg.getString(0))) {
+                                        JSONObject event = msg.getJSONObject(2);
+                                        JSONObject content = new JSONObject(event.getString("content"));
+                                        if (category.equals(content.optString("category")) && 
+                                            fieldLabel.equals(content.optString("label"))) {
+                                            eventIdsToDelete.add(event.getString("id"));
+                                        }
+                                    } else if ("EOSE".equals(msg.getString(0))) { close(); }
+                                } catch (Exception ignored) {}
+                            }
+                            @Override public void onClose(int c, String r, boolean m) { latch.countDown(); }
+                            @Override public void onError(Exception e) { latch.countDown(); }
+                        };
+                        client.connect();
+                    } catch (Exception e) { latch.countDown(); }
+                }
+
+                latch.await(5, TimeUnit.SECONDS);
+
+                // Step 2: Issue Kind 5 Deletion for all matching IDs found
+                if (!eventIdsToDelete.isEmpty()) {
+                    JSONObject delEvent = new JSONObject();
+                    delEvent.put("kind", 5);
+                    delEvent.put("pubkey", myPubKey);
+                    delEvent.put("created_at", System.currentTimeMillis() / 1000);
+                    delEvent.put("content", "Deleting schema field: " + fieldLabel);
+
+                    JSONArray tags = new JSONArray();
+                    for (String id : eventIdsToDelete) {
+                        JSONArray tag = new JSONArray().put("e").put(id);
+                        tags.put(tag);
+                    }
+                    delEvent.put("tags", tags);
+
+                    JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), delEvent);
+                    if (signed != null) {
+                        NostrPublisher.publishToPool(relays, signed, null);
+                        Log.i(TAG, "Permanent Deletion Broadcasted for field: " + fieldLabel);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Deletion Broadcast Failed: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    /**
      * Broadcasts typed spec values so other advertisers get auto-complete suggestions.
      * This is triggered when an advertiser publishes an entire ad.
      */
