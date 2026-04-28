@@ -164,6 +164,7 @@ public class MarketplaceSchemaManager {
 
     /**
      * Broadcasts typed spec values so other advertisers get auto-complete suggestions.
+     * This is triggered when an advertiser publishes an entire ad.
      */
     public static void broadcastSpecValues(Context context, String category, JSONObject specs) {
         try {
@@ -174,6 +175,44 @@ public class MarketplaceSchemaManager {
             broadcastEvent(context, 30007, content);
         } catch (Exception e) {
             Log.e(TAG, "Broadcast Spec Values Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * ENHANCEMENT 2: Bulk Value Seeding
+     * Takes a comma-separated string from the HTML modal, splits it, and pushes it 
+     * instantly to the network to populate auto-complete dropdowns for all users.
+     */
+    public static void broadcastBulkValues(Context context, String category, String fieldId, String commaSeparatedValues) {
+        try {
+            if (commaSeparatedValues == null || commaSeparatedValues.trim().isEmpty()) return;
+
+            JSONArray valuesArray = new JSONArray();
+            String[] parts = commaSeparatedValues.split(",");
+            
+            for (String part : parts) {
+                String cleanPart = part.trim();
+                if (!cleanPart.isEmpty()) {
+                    valuesArray.put(cleanPart);
+                }
+            }
+
+            if (valuesArray.length() == 0) return;
+
+            // Package the array into the expected 'specs' format
+            JSONObject specs = new JSONObject();
+            specs.put(fieldId, valuesArray);
+
+            JSONObject content = new JSONObject();
+            content.put("category", category);
+            content.put("specs", specs);
+
+            // Broadcast as a standard Kind 30007 Value Pool event
+            broadcastEvent(context, 30007, content);
+            Log.i(TAG, "Bulk Values Broadcasted for field '" + fieldId + "' (" + valuesArray.length() + " items)");
+
+        } catch (Exception e) {
+            Log.e(TAG, "Broadcast Bulk Values Error: " + e.getMessage());
         }
     }
 
