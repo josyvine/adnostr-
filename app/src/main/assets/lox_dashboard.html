@@ -161,7 +161,6 @@
         <h2><i class="fa-solid fa-list"></i> Category</h2>
         <div class="form-group">
             <select id="cat" onchange="handleCategoryChange()">
-                <option value="ADD_NEW_CAT" style="color: var(--primary); font-weight: 700;">➕ Add Custom Category</option>
                 <optgroup label="Cars & Vehicles" id="og_cars">
                     <option value="Cars">Cars</option>
                     <option value="Bikes">Bikes</option>
@@ -197,9 +196,12 @@
                     <option value="Digital">Digital Products & Software</option>
                     <option value="Grocery">Food & Groceries</option>
                 </optgroup>
-                <!-- Container for dynamically added main categories -->
-                <optgroup label="Crowdsourced Categories" id="og_custom" style="display:none;"></optgroup>
             </select>
+            
+            <!-- GLITCH FIX: Dedicated Button for Category Modal -->
+            <button class="add-field-btn" onclick="openCategoryModal()" style="margin-top: 10px;">
+                <i class="fa-solid fa-plus"></i> Add Custom Category
+            </button>
         </div>
     </div>
 
@@ -589,20 +591,46 @@
 
     function handleCategoryChange() {
         const catSelect = document.getElementById('cat');
-        if (catSelect.value === 'ADD_NEW_CAT') {
-            // Show modal and revert select to prevent it sticking on "ADD_NEW"
-            document.getElementById('modalCategory').style.display = 'flex';
-            catSelect.value = lastSelectedCat; 
-        } else {
-            lastSelectedCat = catSelect.value;
-            renderSpecs();
-        }
+        lastSelectedCat = catSelect.value;
+        renderSpecs();
+    }
+
+    function openCategoryModal() {
+        document.getElementById('modalCategory').style.display = 'flex';
     }
 
     function closeCategoryModal() {
         document.getElementById('modalCategory').style.display = 'none';
         document.getElementById('newMainCat').value = '';
         document.getElementById('newSubCat').value = '';
+    }
+
+    /**
+     * SMART GROUPING ENGINE
+     * Scans for existing Main Categories and neatly appends the new sub-category.
+     */
+    function addCategoryToDOM(mainCat, subCat) {
+        const catSelect = document.getElementById('cat');
+        
+        // Prevent duplicate options
+        let optionExists = Array.from(catSelect.options).some(opt => opt.value === subCat);
+        if (optionExists) return;
+
+        // Smart Grouping: Check if optgroup exists (case-insensitive)
+        let optGroup = Array.from(catSelect.getElementsByTagName('optgroup')).find(og => og.label.toLowerCase() === mainCat.toLowerCase());
+        
+        // If not, create a new main category group
+        if (!optGroup) {
+            optGroup = document.createElement('optgroup');
+            optGroup.label = mainCat;
+            catSelect.appendChild(optGroup);
+        }
+
+        // Append the sub-category
+        const newOption = document.createElement('option');
+        newOption.value = subCat;
+        newOption.text = subCat; 
+        optGroup.appendChild(newOption);
     }
 
     function saveNewCategory() {
@@ -614,14 +642,8 @@
             return;
         }
 
-        // Add to DOM
-        const customGroup = document.getElementById('og_custom');
-        customGroup.style.display = 'block';
-        
-        const newOption = document.createElement('option');
-        newOption.value = subCat;
-        newOption.text = `${mainCat} - ${subCat}`;
-        customGroup.appendChild(newOption);
+        // Use the Smart Grouping function
+        addCategoryToDOM(mainCat, subCat);
 
         // Initialize schema array if new
         if (!CATEGORY_SCHEMA[subCat]) {
@@ -696,19 +718,13 @@
         try {
             const schema = JSON.parse(jsonString);
 
-            // 1. Inject Crowdsourced Categories
+            // 1. Inject Crowdsourced Categories using Smart Grouping
             if (schema.categories && schema.categories.length > 0) {
-                const customGroup = document.getElementById('og_custom');
-                customGroup.style.display = 'block';
-                
                 schema.categories.forEach(c => {
                     if (!CATEGORY_SCHEMA[c.sub]) {
                         CATEGORY_SCHEMA[c.sub] = [];
-                        const opt = document.createElement('option');
-                        opt.value = c.sub;
-                        opt.text = `${c.main} - ${c.sub}`;
-                        customGroup.appendChild(opt);
                     }
+                    addCategoryToDOM(c.main, c.sub);
                 });
             }
 
@@ -887,3 +903,4 @@
 
 </body>
 </html>
+--- START OF FILE Paste April 28, 2026 - 6:38AM ---
