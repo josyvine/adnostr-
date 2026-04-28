@@ -1,6 +1,8 @@
 package com.adnostr.app;
 
 import android.annotation.SuppressLint;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -73,6 +75,24 @@ public class ProductPreviewActivity extends AppCompatActivity {
         settings.setAllowFileAccess(true);
 
         binding.wvProductPreview.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.contains("wa.me")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        if (url.startsWith("tel:")) {
+                            intent = new Intent(Intent.ACTION_DIAL, Uri.parse(url));
+                        }
+                        startActivity(intent);
+                        return true;
+                    } catch (Exception e) {
+                        Toast.makeText(ProductPreviewActivity.this, "Application not found to handle this action.", Toast.LENGTH_SHORT).show();
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
