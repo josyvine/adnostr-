@@ -238,6 +238,83 @@ public class MarketplaceSchemaManager {
     }
 
     /**
+     * FEATURE FIX: Deletes an entire category and all its technical fields permanently.
+     * Logic: Scans relays for any schema events tagged with this category and issues bulk Kind 5 deletion.
+     */
+    public static void broadcastCategoryDeletion(Context context, String categoryName) {
+        new Thread(() -> {
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            Set<String> relays = db.getRelayPool();
+            String myPubKey = db.getPublicKey();
+            final List<String> eventIdsToDelete = Collections.synchronizedList(new ArrayList<>());
+            final CountDownLatch latch = new CountDownLatch(relays.size());
+
+            try {
+                // Search for all schema entries (Kind 30006) for this category authored by ME
+                JSONObject filter = new JSONObject();
+                filter.put("kinds", new JSONArray().put(30006));
+                filter.put("authors", new JSONArray().put(myPubKey));
+
+                String subId = "del-cat-" + UUID.randomUUID().toString().substring(0, 4);
+                String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
+
+                for (String url : relays) {
+                    try {
+                        WebSocketClient client = new WebSocketClient(new URI(url)) {
+                            @Override public void onOpen(ServerHandshake h) { send(req); }
+                            @Override public void onMessage(String message) {
+                                try {
+                                    if (!message.startsWith("[")) return;
+                                    JSONArray msg = new JSONArray(message);
+                                    if ("EVENT".equals(msg.getString(0))) {
+                                        JSONObject event = msg.getJSONObject(2);
+                                        JSONObject content = new JSONObject(event.getString("content"));
+                                        
+                                        // Match if it's the category definition itself OR a field belonging to the category
+                                        boolean isMatch = categoryName.equals(content.optString("sub")) || 
+                                                          categoryName.equals(content.optString("category"));
+                                        
+                                        if (isMatch) {
+                                            eventIdsToDelete.add(event.getString("id"));
+                                        }
+                                    } else if ("EOSE".equals(msg.getString(0))) { close(); }
+                                } catch (Exception ignored) {}
+                            }
+                            @Override public void onClose(int c, String r, boolean m) { latch.countDown(); }
+                            @Override public void onError(Exception e) { latch.countDown(); }
+                        };
+                        client.connect();
+                    } catch (Exception e) { latch.countDown(); }
+                }
+
+                latch.await(6, TimeUnit.SECONDS);
+
+                if (!eventIdsToDelete.isEmpty()) {
+                    JSONObject delEvent = new JSONObject();
+                    delEvent.put("kind", 5);
+                    delEvent.put("pubkey", myPubKey);
+                    delEvent.put("created_at", System.currentTimeMillis() / 1000);
+                    delEvent.put("content", "Wiping full category and specs: " + categoryName);
+
+                    JSONArray tags = new JSONArray();
+                    for (String id : eventIdsToDelete) {
+                        tags.put(new JSONArray().put("e").put(id));
+                    }
+                    delEvent.put("tags", tags);
+
+                    JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), delEvent);
+                    if (signed != null) {
+                        NostrPublisher.publishToPool(relays, signed, null);
+                        Log.i(TAG, "Permanent Network Wipe initiated for category: " + categoryName);
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Category wipe failure: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    /**
      * Broadcasts typed spec values so other advertisers get auto-complete suggestions.
      * This is triggered when an advertiser publishes an entire ad.
      */
