@@ -21,6 +21,7 @@ import java.util.Set;
  * FIXED: Changed from .apply() to .commit() to ensure JSON restoration sticks on restart.
  * FIXED: Role-based key separation for Interests and Privacy to prevent data bleeding between roles.
  * FIXED FOR POPUP: Implemented Fallback logic in getInterests to prevent empty subscriptions.
+ * NEW: Added KEY_WIPED_SCHEMA_IDS and KEY_HIDDEN_HARDCODED for Deletion Persistence.
  */
 public class AdNostrDatabaseHelper {
 
@@ -58,6 +59,10 @@ public class AdNostrDatabaseHelper {
 
     // PHANTOM AD PREVENTION
     private static final String KEY_WIPED_AD_IDS = "wiped_deleted_ad_ids";
+    
+    // SCHEMA PURGE PERSISTENCE (NEW)
+    private static final String KEY_WIPED_SCHEMA_IDS = "wiped_schema_event_ids";
+    private static final String KEY_HIDDEN_HARDCODED = "globally_hidden_hardcoded_names";
 
     // HASHTAG REGISTRY (NEW)
     private static final String KEY_OWNED_HASHTAGS = "my_owned_hashtags_registry";
@@ -335,6 +340,37 @@ public class AdNostrDatabaseHelper {
     public boolean isAdWiped(String eventId) {
         Set<String> wiped = prefs.getStringSet(KEY_WIPED_AD_IDS, new HashSet<>());
         return wiped.contains(eventId);
+    }
+
+    // =========================================================================
+    // SCHEMA PURGE PERSISTENCE (NEW)
+    // =========================================================================
+
+    /**
+     * Records a schema event ID (Category/Field) as permanently wiped.
+     */
+    public void addWipedSchemaId(String eventId) {
+        Set<String> wiped = new HashSet<>(prefs.getStringSet(KEY_WIPED_SCHEMA_IDS, new HashSet<>()));
+        wiped.add(eventId);
+        prefs.edit().putStringSet(KEY_WIPED_SCHEMA_IDS, wiped).apply();
+    }
+
+    public boolean isSchemaWiped(String eventId) {
+        Set<String> wiped = prefs.getStringSet(KEY_WIPED_SCHEMA_IDS, new HashSet<>());
+        return wiped.contains(eventId);
+    }
+
+    /**
+     * Globally hides a hardcoded category name (e.g. "Cars").
+     */
+    public void addHiddenHardcodedName(String name) {
+        Set<String> hidden = new HashSet<>(prefs.getStringSet(KEY_HIDDEN_HARDCODED, new HashSet<>()));
+        hidden.add(name);
+        prefs.edit().putStringSet(KEY_HIDDEN_HARDCODED, hidden).apply();
+    }
+
+    public Set<String> getHiddenHardcodedNames() {
+        return prefs.getStringSet(KEY_HIDDEN_HARDCODED, new HashSet<>());
     }
 
     // =========================================================================
