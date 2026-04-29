@@ -22,6 +22,7 @@ import com.adnostr.app.databinding.FragmentConsoleBinding;
  * Logic: Periodically polls WebSocketClientManager for live protocol logs.
  * Provides a centralized, full-screen view of network traffic and forensic events.
  * Acts as the "Home" for minimized log dialogs.
+ * ENHANCEMENT: Integrated visibility check to support the "Hide Console" setting.
  */
 public class ConsoleFragment extends Fragment {
 
@@ -88,8 +89,17 @@ public class ConsoleFragment extends Fragment {
 
     /**
      * Fetches current log history from the manager and updates the UI.
+     * UPDATED: Added logic to handle the "Console Disabled" state from settings.
      */
     private void refreshTerminalOutput() {
+        // ENHANCEMENT: Check if the user has disabled the console logs
+        if (!db.isConsoleLogEnabled()) {
+            binding.tvConsoleLogFull.setText("\n\n[CONSOLE DISABLED]\n\nGo to Settings > Console to unhide network traffic and protocol logs.");
+            binding.tvConsoleLogFull.setAlpha(0.5f);
+            return;
+        }
+
+        binding.tvConsoleLogFull.setAlpha(1.0f);
         String currentLogs = wsManager.getLiveLogs();
         if (currentLogs.isEmpty()) {
             binding.tvConsoleLogFull.setText("[SYSTEM STANDBY] No protocol frames detected.");
@@ -105,6 +115,12 @@ public class ConsoleFragment extends Fragment {
      * Standard utility to copy terminal contents to system clipboard.
      */
     private void copyLogsToClipboard() {
+        // Prevent copying if the console is disabled
+        if (!db.isConsoleLogEnabled()) {
+            Toast.makeText(getContext(), "Console is hidden.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         String textToCopy = binding.tvConsoleLogFull.getText().toString();
         if (!textToCopy.isEmpty()) {
             ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
