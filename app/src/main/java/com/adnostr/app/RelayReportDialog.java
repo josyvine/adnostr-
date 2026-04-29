@@ -30,6 +30,7 @@ import com.adnostr.app.databinding.DialogRelayReportBinding;
  * FIXED: Added Auto-Scroll logic to ensure long forensic dumps are visible at the bottom.
  * CRASH FIX: Enforced Main Thread execution for all UI updates to prevent CalledFromWrongThreadException.
  * ENHANCEMENT: Added Minimize functionality to allow temporary hiding of the console.
+ * ENHANCEMENT: Implements Global Visibility check and Professional Mode filtering.
  */
 public class RelayReportDialog extends DialogFragment {
 
@@ -94,19 +95,25 @@ public class RelayReportDialog extends DialogFragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(requireContext());
+
         // Set technical headers
         binding.tvReportHeader.setText(title != null ? title : "NETWORK CONSOLE");
         binding.tvNetworkSummary.setText(summary != null ? summary : "Initializing report...");
 
-        // Populate the log area with raw relay data, encryption steps, or HTTP responses
-        if (logs != null && !logs.isEmpty()) {
-            binding.tvConsoleLog.setText(logs);
+        // ENHANCEMENT: Check Visibility and Apply Professional Filter to initial logs
+        if (!db.isConsoleLogEnabled()) {
+            binding.tvConsoleLog.setText("[CONSOLE HIDDEN]\nLogs are disabled in settings.");
+            binding.tvConsoleLog.setAlpha(0.5f);
+        } else if (logs != null && !logs.isEmpty()) {
+            binding.tvConsoleLog.setText(applyProfessionalFilter(logs, db));
         } else {
             binding.tvConsoleLog.setText("No network or encryption events recorded yet.");
         }
 
         // Setup Copy to Clipboard Action
         binding.btnCopyLogs.setOnClickListener(v -> {
+            if (!db.isConsoleLogEnabled()) return;
             String textToCopy = binding.tvConsoleLog.getText().toString();
             if (!textToCopy.isEmpty()) {
                 ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
@@ -151,14 +158,22 @@ public class RelayReportDialog extends DialogFragment {
      * Used to push real-time Blossom upload status and AES encryption diagnostics.
      * FIXED: Now automatically scrolls to the bottom so newest forensic data is visible.
      * FIXED: Enforced UI thread safety via binding.getRoot().post() to handle background WebSocket events.
+     * ENHANCEMENT: Integrated Console Enable check and Debug Mode filtering.
      */
     public void updateTechnicalLogs(final String newSummary, final String newLogs) {
         if (binding != null) {
             // CRITICAL FIX: Ensure all UI work is offloaded to the Main Thread
             binding.getRoot().post(() -> {
                 if (binding != null) {
+                    AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(binding.getRoot().getContext());
+                    
+                    // Stop updating if logs are disabled
+                    if (!db.isConsoleLogEnabled()) return;
+
                     binding.tvNetworkSummary.setText(newSummary);
-                    binding.tvConsoleLog.setText(newLogs);
+                    
+                    // Apply Filter before rendering
+                    binding.tvConsoleLog.setText(applyProfessionalFilter(newLogs, db));
 
                     // AUTO-SCROLL FIX: Ensure we always see the latest Forensic Rejection Reason
                     if (binding.tvConsoleLog.getParent() instanceof android.view.View) {
@@ -170,6 +185,29 @@ public class RelayReportDialog extends DialogFragment {
                 }
             });
         }
+    }
+
+    /**
+     * ENHANCEMENT: Filters raw protocol noise for Professional Mode.
+     * Replaces JSON arrays, hex signatures, and protocol keys with status descriptions.
+     */
+    private String applyProfessionalFilter(String input, AdNostrDatabaseHelper db) {
+        if (db.isDebugModeActive()) return input;
+
+        // Strip raw JSON Frames
+        String filtered = input.replaceAll("(?m)^FRAME_RECV FROM.*$", "[Inbound] Protocol packet received.")
+                .replaceAll("(?m)^FRAME_SEND \\(REQ\\).*$", "[Outbound] Interest synchronization request sent.")
+                .replaceAll("(?m)^FRAME_SEND \\(EVENT\\).*$", "[Outbound] Signed broadcast sent to network.")
+                .replaceAll("(?m)^PAYLOAD SENT:.*$", "Encoded Ad Content transmitted.")
+                .replaceAll("(?m)^RELAY_ACK:.*$", "Relay verification confirmed.")
+                .replaceAll("(?m)^RAW_FRAME:.*$", "Protocol frame serialized.")
+                .replaceAll("(?m)^EVENT_ID:.*$", "Unique Broadcast Hash verified.")
+                .replaceAll("(?m)^SIGNATURE:.*$", "Cryptographic proof attached.")
+                .replaceAll("(?m)^NONCE \\(k\\):.*$", "BIP-340 nonce generated.")
+                .replaceAll("(?m)^CHALLENGE \\(e\\):.*$", "BIP-340 challenge solved.")
+                .replaceAll("(?m)^Y-PARITY:.*$", "Coordinate parity normalized.");
+
+        return filtered;
     }
 
     /**
