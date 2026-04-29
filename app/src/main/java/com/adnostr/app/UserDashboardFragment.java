@@ -40,6 +40,7 @@ import java.util.Set;
  * ENHANCEMENT: Integrated Identity Header to display restored Username and PubKey from JSON.
  * FIXED (Glitch 3): Respects Privacy Command Center "Hide Username" flag strictly.
  * CRITICAL FIX FOR POPUP: Switched to addStatusListener to prevent overwriting MainActivity logic.
+ * ENHANCEMENT: Console monitoring respects Global Visibility and Debug/Professional mode settings.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -94,8 +95,15 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     /**
      * Opens the Technical Report dialog safely.
+     * UPDATED: Checks if the console is enabled in settings before opening.
      */
     private void showNetworkConsole() {
+        // ENHANCEMENT: Master Switch check
+        if (!db.isConsoleLogEnabled()) {
+            Toast.makeText(getContext(), "Technical Console is hidden. Enable it in Settings to view logs.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         String fullLog = "USER IDENTITY (HEX):\n" + db.getPublicKey() + "\n\n" +
                          "NETWORK EVENTS:\n" + technicalLogs.toString() + "\n" +
                          "PROTOCOL TRAFFIC (LIVE):\n-------------------\n" +
@@ -118,6 +126,12 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             getActivity().runOnUiThread(() -> {
                 RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("USER_CONSOLE");
                 if (existing != null) {
+                    // ENHANCEMENT: Stop updates if console is disabled
+                    if (!db.isConsoleLogEnabled()) {
+                        existing.dismiss();
+                        return;
+                    }
+
                     String fullLog = "USER IDENTITY (HEX):\n" + db.getPublicKey() + "\n\n" +
                                      "NETWORK EVENTS:\n" + technicalLogs.toString() + "\n" +
                                      "PROTOCOL TRAFFIC (LIVE):\n-------------------\n" +
@@ -155,7 +169,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
     /**
      * Broadcasts Kind 30001 (User Interests) with BIP-340 Signature.
      * UPDATED: Clears technicalLogs and prints mathematical signing diagnostics (k, e, parity).
-     * ENHANCEMENT: Interests are now wrapped in Master App Encryption for dark pool privacy.
+     * ENHANCEMENT: Signing math is hidden in Professional Mode to maintain a clean interface.
      * GLITCH 4 FIX: Made public so it can be called from SettingsFragment.
      */
     public void broadcastUserInterests() {
@@ -215,17 +229,21 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             if (signedEvent != null) {
                 technicalLogs.append("SIGNING SUCCESS: Interest List Signed.\n");
 
-                // NEW: SIGNING DEBUG - Print raw mathematical bytes to console
-                technicalLogs.append("-----------------------------\n");
-                technicalLogs.append("SIGNING DIAGNOSTICS (BIP-340):\n");
-                technicalLogs.append("ID (Hash): ").append(signedEvent.getString("id")).append("\n");
-                technicalLogs.append("SIG (R+s): ").append(signedEvent.getString("sig")).append("\n");
+                // ENHANCEMENT: Filter detailed signing diagnostics based on Debug Mode
+                if (db.isDebugModeActive()) {
+                    technicalLogs.append("-----------------------------\n");
+                    technicalLogs.append("SIGNING DIAGNOSTICS (BIP-340):\n");
+                    technicalLogs.append("ID (Hash): ").append(signedEvent.getString("id")).append("\n");
+                    technicalLogs.append("SIG (R+s): ").append(signedEvent.getString("sig")).append("\n");
 
-                // Pulling diagnostic math from static fields in Signer
-                technicalLogs.append("Y-PARITY: ").append(NostrEventSigner.lastParity).append("\n");
-                technicalLogs.append("NONCE (k): ").append(NostrEventSigner.lastK).append("\n");
-                technicalLogs.append("CHALLENGE (e): ").append(NostrEventSigner.lastE).append("\n");
-                technicalLogs.append("-----------------------------\n\n");
+                    // Pulling diagnostic math from static fields in Signer
+                    technicalLogs.append("Y-PARITY: ").append(NostrEventSigner.lastParity).append("\n");
+                    technicalLogs.append("NONCE (k): ").append(NostrEventSigner.lastK).append("\n");
+                    technicalLogs.append("CHALLENGE (e): ").append(NostrEventSigner.lastE).append("\n");
+                    technicalLogs.append("-----------------------------\n\n");
+                } else {
+                    technicalLogs.append("BIP-340 Schnorr Proof attached.\n\n");
+                }
 
                 wsManager.broadcastEvent(signedEvent.toString());
                 technicalLogs.append("BROADCAST: Sent Encrypted Kind 30001 to relays.\n");
