@@ -25,6 +25,7 @@ import java.util.UUID;
  * Logic: Receives JSON -> Renders in Viewer -> Confirms -> Uploads JSON -> Broadcasts Kind 30005.
  * FIXED: Implements Forensic Log reporting during the network phase.
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
+ * ENHANCEMENT: Forensic logs respect Global Console Visibility and Debug/Professional modes.
  */
 public class ProductPreviewActivity extends AppCompatActivity {
 
@@ -113,37 +114,50 @@ public class ProductPreviewActivity extends AppCompatActivity {
 
     /**
      * Executes the final publish flow with deep technical logging.
+     * UPDATED: Checks Global Console Visibility before showing the dialog.
      */
     private void performForensicPublish() {
         forensicLogs.setLength(0);
         appendToForensicLogs("=== INITIATING FINAL BROADCAST SEQUENCE ===\n");
         appendToForensicLogs("TIMESTAMP: " + System.currentTimeMillis() + "\n\n");
 
-        RelayReportDialog console = RelayReportDialog.newInstance(
-                "PUBLISH CONSOLE", 
-                "Uploading JSON to Private Cloud...", 
-                forensicLogs.toString()
-        );
-        
-        // Link minimize listener to allow dismissal
-        console.setConsoleMinimizeListener(() -> {
-            // Dismissal handled internally by RelayReportDialog
-        });
-        
-        console.showSafe(getSupportFragmentManager(), "PUBLISH_LOG");
+        // ENHANCEMENT: Logic to show or skip the technical console UI
+        RelayReportDialog console = null;
+        if (db.isConsoleLogEnabled()) {
+            console = RelayReportDialog.newInstance(
+                    "PUBLISH CONSOLE", 
+                    "Uploading JSON to Private Cloud...", 
+                    forensicLogs.toString()
+            );
+            
+            // Link minimize listener to allow dismissal
+            console.setConsoleMinimizeListener(() -> {
+                // Dismissal handled internally by RelayReportDialog
+            });
+            
+            console.showSafe(getSupportFragmentManager(), "PUBLISH_LOG");
+        }
 
         // STEP 1: Upload heavy JSON to Cloudflare
         String fileName = "product_" + System.currentTimeMillis() + ".json";
         
         appendToForensicLogs("[STEP 1] REQUEST: POST -> Cloudflare R2\n");
         appendToForensicLogs("PAYLOAD SIZE: " + productJsonString.length() + " chars\n");
-        console.updateTechnicalLogs("Uploading to R2...", forensicLogs.toString());
+        
+        if (console != null) {
+            console.updateTechnicalLogs("Uploading to R2...", forensicLogs.toString());
+        }
 
+        final RelayReportDialog finalConsole = console;
         cloudHelper.uploadJsonFile(this, productJsonString, fileName, new CloudflareHelper.CloudflareCallback() {
             @Override
             public void onStatusUpdate(String log) {
                 appendToForensicLogs("[R2_TRACE] " + log + "\n");
-                runOnUiThread(() -> console.updateTechnicalLogs("Cloudflare Link Active", forensicLogs.toString()));
+                runOnUiThread(() -> {
+                    if (finalConsole != null) {
+                        finalConsole.updateTechnicalLogs("Cloudflare Link Active", forensicLogs.toString());
+                    }
+                });
             }
 
             @Override
@@ -152,14 +166,18 @@ public class ProductPreviewActivity extends AppCompatActivity {
                 appendToForensicLogs("FILE_ID: " + fileId + "\n\n");
                 
                 // STEP 2: Sign and Broadcast Kind 30005 Pointer
-                broadcastMarketplacePointer(uploadedUrl, console);
+                broadcastMarketplacePointer(uploadedUrl, finalConsole);
             }
 
             @Override
             public void onFailure(Exception e) {
                 appendToForensicLogs("\n!!! CRITICAL FAILURE (CLOUDFLARE) !!!\n");
                 appendToForensicLogs("ERROR_MSG: " + e.getMessage() + "\n");
-                runOnUiThread(() -> console.updateTechnicalLogs("UPLOAD FAILED", forensicLogs.toString()));
+                runOnUiThread(() -> {
+                    if (finalConsole != null) {
+                        finalConsole.updateTechnicalLogs("UPLOAD FAILED", forensicLogs.toString());
+                    }
+                });
             }
         });
     }
@@ -203,13 +221,19 @@ public class ProductPreviewActivity extends AppCompatActivity {
                 String rawProtocolFrame = "[\"EVENT\"," + signedEvent.toString() + "]";
                 appendToForensicLogs("RAW_FRAME: " + rawProtocolFrame + "\n");
                 
-                runOnUiThread(() -> console.updateTechnicalLogs("Broadcasting to Relays...", forensicLogs.toString()));
+                runOnUiThread(() -> {
+                    if (console != null) {
+                        console.updateTechnicalLogs("Broadcasting to Relays...", forensicLogs.toString());
+                    }
+                });
 
                 wsManager.broadcastEvent(signedEvent.toString());
                 
                 appendToForensicLogs("\n[FINAL SUCCESS] Marketplace Pointer Live.");
                 runOnUiThread(() -> {
-                    console.updateTechnicalLogs("PUBLISHED SUCCESSFULLY", forensicLogs.toString());
+                    if (console != null) {
+                        console.updateTechnicalLogs("PUBLISHED SUCCESSFULLY", forensicLogs.toString());
+                    }
                     Toast.makeText(this, "Listing Live on Network!", Toast.LENGTH_LONG).show();
                     // Close preview and return to dashboard
                     finish();
@@ -220,20 +244,39 @@ public class ProductPreviewActivity extends AppCompatActivity {
 
         } catch (Exception e) {
             appendToForensicLogs("\n!!! BROADCAST FAILED !!!\n" + e.getMessage());
-            runOnUiThread(() -> console.updateTechnicalLogs("PROTOCOL ERROR", forensicLogs.toString()));
+            runOnUiThread(() -> {
+                if (console != null) {
+                    console.updateTechnicalLogs("PROTOCOL ERROR", forensicLogs.toString());
+                }
+            });
         }
     }
 
     /**
      * Helper to append logs while managing memory.
      * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
+     * ENHANCEMENT: Respects master switch and filters for Professional mode.
      */
     private void appendToForensicLogs(String msg) {
-        forensicLogs.append(msg);
+        // ENHANCEMENT: Early exit if console is disabled
+        if (!db.isConsoleLogEnabled()) return;
+
+        String filteredMsg = msg;
+
+        // ENHANCEMENT: Filter detailed protocol noise if in Professional Mode
+        if (!db.isDebugModeActive()) {
+            if (msg.contains("REQUEST: POST")) filteredMsg = "Initiating secure cloud storage request.\n";
+            else if (msg.contains("BIP-340 CRYPTO SIGNING")) filteredMsg = "Generating cryptographic signature.\n";
+            else if (msg.contains("RELAY POOL BROADCAST")) filteredMsg = "Transmitting listing to decentralized network.\n";
+            else if (msg.contains("EVENT_ID:") || msg.contains("SIGNATURE:") || msg.contains("RAW_FRAME:")) return; // Skip protocol hex
+        }
+
+        forensicLogs.append(filteredMsg);
+        
         // Prevent OutOfMemoryError by pruning old logs
         if (forensicLogs.length() > 20000) {
             forensicLogs.delete(0, 5000);
         }
-        Log.d(TAG, msg);
+        Log.d(TAG, filteredMsg);
     }
 }
