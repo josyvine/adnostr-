@@ -37,6 +37,7 @@ import java.util.UUID;
  * UPDATED: Extracts Category string for lightweight Marketplace Storefront rendering.
  * ENHANCEMENT: Implements Global Crowdsourced Schema Sync and Broadcasting.
  * UPDATED: Integrated Deletion Persistence logic into the WebAppInterface bridge.
+ * ENHANCEMENT: Product publishing logs respect Global Console Visibility and Debug/Professional modes.
  */
 public class CreateProductActivity extends AppCompatActivity {
 
@@ -196,10 +197,27 @@ public class CreateProductActivity extends AppCompatActivity {
     }
 
     public class WebAppInterface {
+        /**
+         * UPDATED: Bridge listener for HTML logs. 
+         * Logic: Respects Console visibility and Professional mode filtering.
+         */
         @JavascriptInterface
         public void logTechnicalEvent(String msg) {
-            technicalConsole.append(msg).append("\n");
-            Log.d(TAG, "Forensic: " + msg);
+            // ENHANCEMENT: Master Switch check
+            if (!db.isConsoleLogEnabled()) return;
+
+            String filteredMsg = msg;
+            // ENHANCEMENT: Professional Summaries
+            if (!db.isDebugModeActive()) {
+                if (msg.contains("SCHEMA:")) filteredMsg = "Marketplace schema synchronized.";
+                else if (msg.contains("R2_TRACE:")) filteredMsg = "Cloud storage link active.";
+                else if (msg.contains("R2_SUCCESS:")) filteredMsg = "Asset successfully hosted in private cloud.";
+                else if (msg.contains("NOSTR:")) filteredMsg = "Cryptographic proof generated for listing.";
+                else if (msg.contains("WEBVIEW:")) filteredMsg = "Marketplace engine initialized.";
+            }
+
+            technicalConsole.append(filteredMsg).append("\n");
+            Log.d(TAG, "Forensic: " + filteredMsg);
         }
 
         // CROWDSOURCED SCHEMA: Native triggers from HTML Modals
@@ -264,51 +282,83 @@ public class CreateProductActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Logic: Starts the final broadcast phase.
+     * UPDATED: Checks Console visibility before launching the RelayReportDialog.
+     */
     private void handleIncomingProduct(String rawJson) {
         logTechnicalEvent("PUBLISH: Form data received. Size: " + rawJson.length());
         
-        RelayReportDialog report = RelayReportDialog.newInstance("MARKETPLACE PUBLISH", "Uploading metadata...", technicalConsole.toString());
-        report.showSafe(getSupportFragmentManager(), "MARKET_LOG");
+        // ENHANCEMENT: Only show the popup if console is enabled
+        if (db.isConsoleLogEnabled()) {
+            RelayReportDialog report = RelayReportDialog.newInstance("MARKETPLACE PUBLISH", "Uploading metadata...", technicalConsole.toString());
+            report.showSafe(getSupportFragmentManager(), "MARKET_LOG");
 
+            try {
+                JSONObject productData = new JSONObject(rawJson);
+                String title = productData.getString("title");
+                String price = productData.getString("price");
+                // EXTRACT CATEGORY FOR THE STOREFRONT UI
+                String category = productData.optString("category", "Uncategorized");
+
+                // CROWDSOURCED SCHEMA: Push typed values to network auto-complete pool
+                JSONObject specs = productData.optJSONObject("specs");
+                if (specs != null && specs.length() > 0) {
+                    MarketplaceSchemaManager.broadcastSpecValues(this, category, specs);
+                    logTechnicalEvent("SCHEMA: Typed spec values pushed to global auto-complete pool.");
+                }
+
+                String fileName = "product_" + System.currentTimeMillis() + ".json";
+                cloudHelper.uploadJsonFile(this, rawJson, fileName, new CloudflareHelper.CloudflareCallback() {
+                    @Override
+                    public void onStatusUpdate(String log) {
+                        logTechnicalEvent("CF_TRACE: " + log);
+                        runOnUiThread(() -> report.updateTechnicalLogs("Cloudflare Storage Link Active", technicalConsole.toString()));
+                    }
+
+                    @Override
+                    public void onSuccess(String uploadedUrl, String fileId) {
+                        broadcastMarketplacePointer(title, price, category, uploadedUrl);
+                        runOnUiThread(() -> report.updateTechnicalLogs("Broadcasting to Nostr...", technicalConsole.toString()));
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        runOnUiThread(() -> {
+                            logTechnicalEvent("CF_FAIL: " + e.getMessage());
+                            report.updateTechnicalLogs("CRITICAL ERROR", technicalConsole.toString());
+                        });
+                    }
+                });
+            } catch (Exception e) {
+                logTechnicalEvent("PARSE_ERROR: " + e.getMessage());
+            }
+        } else {
+            // Logic for Background Publish (No UI Console)
+            executeSilentPublish(rawJson);
+        }
+    }
+
+    /**
+     * ENHANCEMENT: Handles the publish sequence without a UI popup if console is disabled.
+     */
+    private void executeSilentPublish(String rawJson) {
         try {
             JSONObject productData = new JSONObject(rawJson);
             String title = productData.getString("title");
             String price = productData.getString("price");
-            // EXTRACT CATEGORY FOR THE STOREFRONT UI
             String category = productData.optString("category", "Uncategorized");
 
-            // CROWDSOURCED SCHEMA: Push typed values to network auto-complete pool
-            JSONObject specs = productData.optJSONObject("specs");
-            if (specs != null && specs.length() > 0) {
-                MarketplaceSchemaManager.broadcastSpecValues(this, category, specs);
-                logTechnicalEvent("SCHEMA: Typed spec values pushed to global auto-complete pool.");
-            }
-
-            String fileName = "product_" + System.currentTimeMillis() + ".json";
-            cloudHelper.uploadJsonFile(this, rawJson, fileName, new CloudflareHelper.CloudflareCallback() {
-                @Override
-                public void onStatusUpdate(String log) {
-                    logTechnicalEvent("CF_TRACE: " + log);
-                    runOnUiThread(() -> report.updateTechnicalLogs("Cloudflare Storage Link Active", technicalConsole.toString()));
-                }
-
-                @Override
-                public void onSuccess(String uploadedUrl, String fileId) {
+            cloudHelper.uploadJsonFile(this, rawJson, "product_silent.json", new CloudflareHelper.CloudflareCallback() {
+                @Override public void onStatusUpdate(String log) {}
+                @Override public void onSuccess(String uploadedUrl, String fileId) {
                     broadcastMarketplacePointer(title, price, category, uploadedUrl);
-                    runOnUiThread(() -> report.updateTechnicalLogs("Broadcasting to Nostr...", technicalConsole.toString()));
                 }
-
-                @Override
-                public void onFailure(Exception e) {
-                    runOnUiThread(() -> {
-                        logTechnicalEvent("CF_FAIL: " + e.getMessage());
-                        report.updateTechnicalLogs("CRITICAL ERROR", technicalConsole.toString());
-                    });
+                @Override public void onFailure(Exception e) {
+                    runOnUiThread(() -> Toast.makeText(CreateProductActivity.this, "Publish failed.", Toast.LENGTH_SHORT).show());
                 }
             });
-        } catch (Exception e) {
-            logTechnicalEvent("PARSE_ERROR: " + e.getMessage());
-        }
+        } catch (Exception ignored) {}
     }
 
     private void broadcastMarketplacePointer(String title, String price, String category, String cloudflareUrl) {
@@ -349,9 +399,25 @@ public class CreateProductActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * UPDATED: Internal log helper. 
+     * Logic: Respects Console visibility and Professional mode filtering.
+     */
     private void logTechnicalEvent(String msg) {
-        technicalConsole.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
-        Log.d(TAG, msg);
+        // ENHANCEMENT: Master Switch check
+        if (!db.isConsoleLogEnabled()) return;
+
+        String filteredMsg = msg;
+        // ENHANCEMENT: Professional Summaries
+        if (!db.isDebugModeActive()) {
+            if (msg.contains("SCHEMA:")) filteredMsg = "Metadata definition synced.";
+            else if (msg.contains("PICKER:")) filteredMsg = "Local media selected.";
+            else if (msg.contains("R2:")) filteredMsg = "Initiating direct cloud tunnel.";
+            else if (msg.contains("R2_TRACE:")) filteredMsg = "Storage link active.";
+        }
+
+        technicalConsole.append("[").append(System.currentTimeMillis()).append("] ").append(filteredMsg).append("\n");
+        Log.d(TAG, filteredMsg);
     }
 
     @Override
