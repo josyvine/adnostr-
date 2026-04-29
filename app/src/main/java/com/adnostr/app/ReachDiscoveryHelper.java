@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
  * FIXED: Support for both JSON and Plain-Text usernames to ensure discovery visibility.
  * ENHANCEMENT: Integrated Hybrid Hashtag Registry (Cases 1, 2, 3) to protect private reach data.
  * ENHANCEMENT: Master App-Level Decryption implemented to read secure User Interest lists.
+ * ENHANCEMENT: Discovery logging respects Global Console Visibility and Debug/Professional modes.
  */
 public class ReachDiscoveryHelper {
 
@@ -118,14 +119,21 @@ public class ReachDiscoveryHelper {
 
                 // Launch parallel scans across the entire database relay pool
                 for (String relayUrl : relayPool) {
-                    connectAndScanRelay(relayUrl, reqMessage, uniqueUserPubkeys, discoveredUsernames, latch);
+                    connectAndScanRelay(context, relayUrl, reqMessage, uniqueUserPubkeys, discoveredUsernames, latch);
                 }
 
                 // Wait for the network search to aggregate (12 seconds max - increased for slow relays)
                 boolean finished = latch.await(12, TimeUnit.SECONDS);
 
-                Log.i(TAG, "Discovery Aggregate finished. Success: " + finished 
-                        + ". Unique users found: " + uniqueUserPubkeys.size());
+                // ENHANCEMENT: Filter detailed internal discovery logs
+                if (db.isConsoleLogEnabled()) {
+                    if (db.isDebugModeActive()) {
+                        Log.i(TAG, "Discovery Aggregate finished. Success: " + finished 
+                                + ". Unique users found: " + uniqueUserPubkeys.size());
+                    } else {
+                        Log.i(TAG, "Network reach calculation complete. Found " + uniqueUserPubkeys.size() + " active profiles.");
+                    }
+                }
 
                 // 4. Return results (Count + List of Names) to the Advertiser UI
                 if (callback != null) {
@@ -144,13 +152,22 @@ public class ReachDiscoveryHelper {
      * UPDATED: Now parses NOTICE and CLOSED messages to identify signature rejection.
      * FIXED: Parses the content field for optional 'username' metadata.
      * ENHANCEMENT: Master App-Level Decryption to unlock usernames from interest events.
+     * ENHANCEMENT: Visibility logic applied to relay session tracking.
      */
-    private static void connectAndScanRelay(String relayUrl, String reqMessage, Set<String> results, Set<String> usernames, CountDownLatch latch) {
+    private static void connectAndScanRelay(Context context, String relayUrl, String reqMessage, Set<String> results, Set<String> usernames, CountDownLatch latch) {
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+        
         try {
             WebSocketClient client = new WebSocketClient(new URI(relayUrl)) {
                 @Override
                 public void onOpen(ServerHandshake handshakedata) {
-                    Log.d(TAG, "Relay Scan Initiated: " + relayUrl);
+                    if (db.isConsoleLogEnabled()) {
+                        if (db.isDebugModeActive()) {
+                            Log.d(TAG, "Relay Scan Initiated: " + relayUrl);
+                        } else {
+                            Log.d(TAG, "Relay Discovery: Initiating connection to " + relayUrl);
+                        }
+                    }
                     send(reqMessage);
                 }
 
@@ -210,14 +227,21 @@ public class ReachDiscoveryHelper {
                         } else if ("NOTICE".equals(type)) {
                             // Relay is sending a warning (e.g., restricted access or invalid filters)
                             String note = resp.optString(1, "");
-                            Log.w(TAG, "Relay NOTICE [" + relayUrl + "]: " + note);
+                            
+                            if (db.isConsoleLogEnabled()) {
+                                Log.w(TAG, "Relay NOTICE [" + relayUrl + "]: " + note);
+                            }
+
                             if (note.toLowerCase().contains("invalid") || note.toLowerCase().contains("signature")) {
                                 Log.e(TAG, "CRITICAL: Relay reporting signature issues during search.");
                             }
                         } else if ("CLOSED".equals(type)) {
                             // Relay forcefully closed the subscription
                             String reason = resp.optString(2, "No reason");
-                            Log.w(TAG, "Relay CLOSED sub [" + relayUrl + "]: " + reason);
+                            
+                            if (db.isConsoleLogEnabled()) {
+                                Log.w(TAG, "Relay CLOSED sub [" + relayUrl + "]: " + reason);
+                            }
                             close();
                         }
                     } catch (Exception e) {
@@ -232,7 +256,9 @@ public class ReachDiscoveryHelper {
 
                 @Override
                 public void onError(Exception ex) {
-                    Log.e(TAG, "Scan Error [" + relayUrl + "]: " + ex.getMessage());
+                    if (db.isConsoleLogEnabled()) {
+                        Log.e(TAG, "Scan Error [" + relayUrl + "]: " + ex.getMessage());
+                    }
                     latch.countDown();
                 }
             };
