@@ -9,6 +9,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -38,6 +39,7 @@ import java.util.UUID;
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep diagnostic logs on refresh.
  * CRASH FIX: Enforced runOnUiThread in logDiagnostic and used addStatusListener to prevent Popup interference.
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
+ * ENHANCEMENT: Radar forensics respect Global Console Visibility and Debug/Professional modes.
  */
 public class NearbyFragment extends Fragment {
 
@@ -101,7 +103,14 @@ public class NearbyFragment extends Fragment {
         fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
             if (location != null) {
                 myCurrentLocation = location;
-                logDiagnostic("GPS_SUCCESS: My Loc -> Lat: " + location.getLatitude() + ", Lon: " + location.getLongitude());
+                
+                // Professional summary vs Debug detail
+                if (db.isDebugModeActive()) {
+                    logDiagnostic("GPS_SUCCESS: My Loc -> Lat: " + location.getLatitude() + ", Lon: " + location.getLongitude());
+                } else {
+                    logDiagnostic("GPS_SUCCESS: Local coordinates locked.");
+                }
+                
                 startDiscoverySubscription();
             } else {
                 logDiagnostic("GPS_FAIL: LastLocation returned null. Ensure GPS is ON and App has permission.");
@@ -128,7 +137,10 @@ public class NearbyFragment extends Fragment {
             String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
             logDiagnostic("REQ_START: Initiating Kind 30004 subscription.");
-            logDiagnostic("SUB_ID: " + subId);
+            
+            if (db.isDebugModeActive()) {
+                logDiagnostic("SUB_ID: " + subId);
+            }
 
             // FIXED: Using addStatusListener with member variable tracking
             mRelayListener = new WebSocketClientManager.RelayStatusListener() {
@@ -224,7 +236,11 @@ public class NearbyFragment extends Fragment {
 
             // 2. Proximity Calculation (Haversine)
             double distance = calculateDistance(myCurrentLocation.getLatitude(), myCurrentLocation.getLongitude(), lat, lon);
-            logDiagnostic("PROXIMITY_CALC: Distance is " + String.format("%.2f", distance) + " km");
+            
+            // Professional summary vs Debug math
+            if (db.isDebugModeActive()) {
+                logDiagnostic("PROXIMITY_CALC: Distance is " + String.format("%.2f", distance) + " km");
+            }
 
             if (distance <= MAX_DISTANCE_KM) {
                 logDiagnostic("RADAR_ACCEPT: Found " + name + " within range.");
@@ -263,21 +279,30 @@ public class NearbyFragment extends Fragment {
         }
     }
 
+    /**
+     * Triggers the diagnostic radar scan.
+     * UPDATED: Checks Global Console Visibility before showing the dialog.
+     */
     private void refreshNearbyScan() {
         diagnosticLogs.setLength(0);
-        logDiagnostic("=== INITIATING DIAGNOSTIC RADAR SCAN ===");
-        logDiagnostic("ACTIVE_ROLE: " + db.getUserRole());
-        
-        RelayReportDialog report = RelayReportDialog.newInstance(
-                "NEARBY RADAR CONSOLE", 
-                "Scanning GPS Beacons...", 
-                diagnosticLogs.toString()
-        );
-        // Link minimize listener to allow dismissal to the main navigation bar console
-        report.setConsoleMinimizeListener(() -> {
-            // Dismissal handled by RelayReportDialog internally
-        });
-        report.showSafe(getChildFragmentManager(), "NEARBY_LOG");
+
+        if (db.isConsoleLogEnabled()) {
+            logDiagnostic("=== INITIATING DIAGNOSTIC RADAR SCAN ===");
+            logDiagnostic("ACTIVE_ROLE: " + db.getUserRole());
+            
+            RelayReportDialog report = RelayReportDialog.newInstance(
+                    "NEARBY RADAR CONSOLE", 
+                    "Scanning GPS Beacons...", 
+                    diagnosticLogs.toString()
+            );
+            // Link minimize listener to allow dismissal to the main navigation bar console
+            report.setConsoleMinimizeListener(() -> {
+                // Dismissal handled by RelayReportDialog internally
+            });
+            report.showSafe(getChildFragmentManager(), "NEARBY_LOG");
+        } else {
+            Toast.makeText(getContext(), "Radar forensics are hidden. Enable Console in Settings.", Toast.LENGTH_SHORT).show();
+        }
 
         binding.swipeRefreshNearby.setRefreshing(true);
         requestMySnapshotLocation();
@@ -286,8 +311,12 @@ public class NearbyFragment extends Fragment {
     /**
      * FIXED: Wrapped UI updates in runOnUiThread to prevent crash during background relay reports.
      * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
+     * ENHANCEMENT: Master Switch check added.
      */
     private void logDiagnostic(final String msg) {
+        // ENHANCEMENT: Early exit if console is disabled
+        if (!db.isConsoleLogEnabled()) return;
+
         if (getActivity() == null) return;
         getActivity().runOnUiThread(() -> {
             diagnosticLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
