@@ -230,10 +230,13 @@ public class CreateProductActivity extends AppCompatActivity {
             MarketplaceSchemaManager.broadcastCategoryDeletion(CreateProductActivity.this, categoryName);
         }
 
-        // ENHANCEMENT: Native Bridge for Bulk Field Values Seeding
+        /**
+         * UPDATED: Native Bridge for Bulk Field Values Seeding
+         * Supports context parameters for hierarchical data relationships.
+         */
         @JavascriptInterface
-        public void publishBulkSpecValues(String category, String fieldId, String commaSeparatedValues) {
-            MarketplaceSchemaManager.broadcastBulkValues(CreateProductActivity.this, category, fieldId, commaSeparatedValues);
+        public void publishBulkSpecValues(String category, String fieldId, String commaSeparatedValues, String contextField, String contextValue) {
+            MarketplaceSchemaManager.broadcastBulkValues(CreateProductActivity.this, category, fieldId, commaSeparatedValues, contextField, contextValue);
         }
 
         @JavascriptInterface
