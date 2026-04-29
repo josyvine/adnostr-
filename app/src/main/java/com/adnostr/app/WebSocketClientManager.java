@@ -31,6 +31,7 @@ import java.util.List;
  * CRITICAL FIX FOR POPUP: Converted to Multi-Listener Observer Pattern to prevent Fragments 
  * from overwriting the Global MainActivity ad listener.
  * CRASH FIX: Enforced all listener callbacks on the Main Thread to prevent CalledFromWrongThreadException.
+ * ENHANCEMENT: Implemented master console switch and Professional vs. Debug log filtering.
  */
 public class WebSocketClientManager {
 
@@ -102,11 +103,35 @@ public class WebSocketClientManager {
 
     /**
      * Records a timestamped technical event for the big detailed popup.
+     * UPDATED: Now respects the Global Console Enable switch and Debug Mode filter.
      */
     private synchronized void addToLog(String message) {
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(appContext);
+
+        // 1. MASTER KILL SWITCH: If console is disabled, discard everything and clear RAM
+        if (!db.isConsoleLogEnabled()) {
+            if (liveLogs.length() > 0) liveLogs.setLength(0);
+            return;
+        }
+
+        String logOutput = message;
+
+        // 2. PROFESSIONAL FILTER: If Debug mode is OFF, summarize protocol frames
+        if (!db.isDebugModeActive()) {
+            if (message.contains("FRAME_RECV FROM")) {
+                logOutput = "Inbound Network Packet received from Relay node.";
+            } else if (message.contains("FRAME_SEND (REQ)")) {
+                logOutput = "Subscription request: Synchronizing interests with Network.";
+            } else if (message.contains("FRAME_SEND (EVENT)")) {
+                logOutput = "Outbound Cryptographic Signature sent to Network.";
+            } else if (message.contains("FRAME_SEND (MANUAL_REQ)")) {
+                logOutput = "Manual Discovery: Scanning directory for matching profiles.";
+            }
+        }
+
         String time = timeFormat.format(new Date());
         // PREPEND to the log so the newest network events appear at the top
-        liveLogs.insert(0, "[" + time + "] " + message + "\n\n");
+        liveLogs.insert(0, "[" + time + "] " + logOutput + "\n\n");
         if (liveLogs.length() > 60000) {
             liveLogs.setLength(50000); // Prevent memory bloat while keeping 50k chars of history
         }
