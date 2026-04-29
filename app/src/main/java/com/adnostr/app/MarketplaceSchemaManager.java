@@ -13,6 +13,7 @@ import org.json.JSONObject;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -23,7 +24,8 @@ import java.util.concurrent.TimeUnit;
  * DECENTRALIZED MARKETPLACE SCHEMA ENGINE
  * Handles crowdsourced category and specification creation by Advertisers.
  * Syncs Kind 30006 (Schema Updates) and Kind 30007 (Value Pools) across the network.
- * UPDATED: Implements Contextual Value Sorting to link dependent fields (e.g., Model to Brand).
+ * UPDATED: Implements Kind 5 (Deletion) processing to ensure deleted items never return.
+ * UPDATED: Implements Hardcoded Category Overrides to allow global deletion of built-in UI items.
  */
 public class MarketplaceSchemaManager {
 
@@ -35,7 +37,7 @@ public class MarketplaceSchemaManager {
 
     /**
      * Fetches all crowdsourced categories, fields, and historical values from the network.
-     * Merges them into a single JSON block to inject into the HTML WebView.
+     * NEW: Also fetches Kind 5 events to identify and purge deleted entries.
      */
     public static void fetchGlobalSchema(Context context, SchemaFetchCallback callback) {
         new Thread(() -> {
@@ -43,17 +45,22 @@ public class MarketplaceSchemaManager {
             Set<String> relays = db.getRelayPool();
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
-            // Thread-safe lists to accumulate global crowdsourced data
-            final List<JSONObject> newCategories = Collections.synchronizedList(new ArrayList<>());
-            final List<JSONObject> newFields = Collections.synchronizedList(new ArrayList<>());
-            final List<JSONObject> valuePools = Collections.synchronizedList(new ArrayList<>());
+            // Temporary storage for events coming off the wire
+            final List<JSONObject> categoryEvents = Collections.synchronizedList(new ArrayList<>());
+            final List<JSONObject> fieldEvents = Collections.synchronizedList(new ArrayList<>());
+            final List<JSONObject> valueEvents = Collections.synchronizedList(new ArrayList<>());
+            
+            // Set to track IDs that MUST be purged (Kind 5 targets)
+            final Set<String> deletedEventIds = Collections.synchronizedSet(new HashSet<>());
+            // Set to track Hardcoded Category names that the network has "Deleted"
+            final Set<String> hiddenHardcodedNames = Collections.synchronizedSet(new HashSet<>());
 
             try {
-                // Request Kind 30006 (Schema) and 30007 (Values)
+                // Request Kind 30006 (Schema), 30007 (Values), AND Kind 5 (Deletions)
                 JSONObject filter = new JSONObject();
-                filter.put("kinds", new JSONArray().put(30006).put(30007));
+                filter.put("kinds", new JSONArray().put(30006).put(30007).put(5));
                 
-                String subId = "schema-" + UUID.randomUUID().toString().substring(0, 6);
+                String subId = "schema-sync-" + UUID.randomUUID().toString().substring(0, 6);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
                 for (String url : relays) {
@@ -72,17 +79,40 @@ public class MarketplaceSchemaManager {
                                     if ("EVENT".equals(msgArray.getString(0))) {
                                         JSONObject event = msgArray.getJSONObject(2);
                                         int kind = event.getInt("kind");
-                                        String contentStr = event.getString("content");
-                                        
-                                        if (contentStr.startsWith("{")) {
-                                            JSONObject content = new JSONObject(contentStr);
-                                            if (kind == 30006) {
-                                                String type = content.optString("type", "");
-                                                if ("category".equals(type)) newCategories.add(content);
-                                                else if ("field".equals(type)) newFields.add(content);
-                                            } else if (kind == 30007) {
-                                                // This object now potentially contains the 'context' block for sorting
-                                                valuePools.add(content);
+                                        String eventId = event.getString("id");
+
+                                        // PART 1: Process Deletions (Kind 5)
+                                        if (kind == 5) {
+                                            JSONArray tags = event.optJSONArray("tags");
+                                            if (tags != null) {
+                                                for (int i = 0; i < tags.length(); i++) {
+                                                    JSONArray tag = tags.getJSONArray(i);
+                                                    if (tag.length() >= 2) {
+                                                        if ("e".equals(tag.getString(0))) {
+                                                            // Mark this Event ID for purging
+                                                            deletedEventIds.add(tag.getString(1));
+                                                        } else if ("hardcoded_name".equals(tag.getString(0))) {
+                                                            // Mark a built-in category (like "Cars") for hiding
+                                                            hiddenHardcodedNames.add(tag.getString(1));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } 
+                                        // PART 2: Collect Schema Data
+                                        else {
+                                            String contentStr = event.getString("content");
+                                            if (contentStr.startsWith("{")) {
+                                                JSONObject content = new JSONObject(contentStr);
+                                                content.put("_event_id", eventId); // Attach ID for filtering
+                                                
+                                                if (kind == 30006) {
+                                                    String type = content.optString("type", "");
+                                                    if ("category".equals(type)) categoryEvents.add(content);
+                                                    else if ("field".equals(type)) fieldEvents.add(content);
+                                                } else if (kind == 30007) {
+                                                    valueEvents.add(content);
+                                                }
                                             }
                                         }
                                     } else if ("EOSE".equals(msgArray.getString(0))) {
@@ -91,15 +121,8 @@ public class MarketplaceSchemaManager {
                                 } catch (Exception ignored) {}
                             }
 
-                            @Override
-                            public void onClose(int code, String reason, boolean remote) {
-                                latch.countDown();
-                            }
-
-                            @Override
-                            public void onError(Exception ex) {
-                                latch.countDown();
-                            }
+                            @Override public void onClose(int c, String r, boolean m) { latch.countDown(); }
+                            @Override public void onError(Exception ex) { latch.countDown(); }
                         };
                         client.setConnectionLostTimeout(10);
                         client.connect();
@@ -108,14 +131,44 @@ public class MarketplaceSchemaManager {
                     }
                 }
 
-                // Wait up to 5 seconds for network consensus
-                latch.await(5, TimeUnit.SECONDS);
+                latch.await(6, TimeUnit.SECONDS);
 
-                // Package the gathered data into a single master JSON
+                // =========================================================================
+                // THE FILTER ENGINE: PERMANENT PURGE LOGIC
+                // =========================================================================
+                
+                // 1. Filter Categories
+                JSONArray filteredCategories = new JSONArray();
+                for (JSONObject cat : categoryEvents) {
+                    if (!deletedEventIds.contains(cat.optString("_event_id"))) {
+                        filteredCategories.put(cat);
+                    }
+                }
+
+                // 2. Filter Fields
+                JSONArray filteredFields = new JSONArray();
+                for (JSONObject field : fieldEvents) {
+                    if (!deletedEventIds.contains(field.optString("_event_id"))) {
+                        filteredFields.put(field);
+                    }
+                }
+
+                // 3. Filter Value Pools
+                JSONArray filteredValues = new JSONArray();
+                for (JSONObject val : valueEvents) {
+                    if (!deletedEventIds.contains(val.optString("_event_id"))) {
+                        filteredValues.put(val);
+                    }
+                }
+
+                // Package everything into the master JSON for HTML injection
                 JSONObject globalSchema = new JSONObject();
-                globalSchema.put("categories", new JSONArray(newCategories));
-                globalSchema.put("fields", new JSONArray(newFields));
-                globalSchema.put("values", new JSONArray(valuePools));
+                globalSchema.put("categories", filteredCategories);
+                globalSchema.put("fields", filteredFields);
+                globalSchema.put("values", filteredValues);
+                
+                // INJECT: Pass the list of hardcoded categories to hide globally
+                globalSchema.put("hidden_hardcoded", new JSONArray(hiddenHardcodedNames));
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (callback != null) callback.onSchemaFetched(globalSchema.toString());
@@ -131,7 +184,7 @@ public class MarketplaceSchemaManager {
     }
 
     /**
-     * Broadcasts a new Category added by this advertiser to the rest of the network.
+     * Broadcasts a new Category added by this advertiser.
      */
     public static void broadcastNewCategory(Context context, String mainCat, String subCat) {
         try {
@@ -139,34 +192,33 @@ public class MarketplaceSchemaManager {
             content.put("type", "category");
             content.put("main", mainCat);
             content.put("sub", subCat);
-            broadcastEvent(context, 30006, content);
+            broadcastEvent(context, 30006, content, null);
         } catch (Exception e) {
             Log.e(TAG, "Broadcast Category Error: " + e.getMessage());
         }
     }
 
     /**
-     * Broadcasts a new Technical Specification Field added by this advertiser.
+     * Broadcasts a new Technical Specification Field.
      */
     public static void broadcastNewField(Context context, String category, String fieldLabel) {
         try {
             JSONObject content = new JSONObject();
             content.put("type", "field");
             content.put("category", category);
-            // Convert label "KM Driven" to ID "km_driven"
             String fieldId = fieldLabel.trim().toLowerCase().replace(" ", "_").replaceAll("[^a-z0-9_]", "");
             content.put("id", fieldId);
             content.put("label", fieldLabel.trim());
-            content.put("input_type", "text"); // Default to text to allow flexible inputs
-            broadcastEvent(context, 30006, content);
+            content.put("input_type", "text");
+            broadcastEvent(context, 30006, content, null);
         } catch (Exception e) {
             Log.e(TAG, "Broadcast Field Error: " + e.getMessage());
         }
     }
 
     /**
-     * FEATURE FIX: Deletes a technical field permanently from Nostr using Kind 5.
-     * Logic: Finds the original Kind 30006 event and issues a deletion request.
+     * GLOBAL DELETE: Scans for the original event and issues a Kind 5 Deletion.
+     * UPDATED: Also supports tagging hardcoded names for built-in category deletion.
      */
     public static void broadcastFieldDeletion(Context context, String category, String fieldLabel) {
         new Thread(() -> {
@@ -177,7 +229,6 @@ public class MarketplaceSchemaManager {
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             try {
-                // Step 1: Find the original Kind 30006 event created by ME
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006));
                 filter.put("authors", new JSONArray().put(myPubKey));
@@ -212,26 +263,9 @@ public class MarketplaceSchemaManager {
 
                 latch.await(5, TimeUnit.SECONDS);
 
-                // Step 2: Issue Kind 5 Deletion for all matching IDs found
                 if (!eventIdsToDelete.isEmpty()) {
-                    JSONObject delEvent = new JSONObject();
-                    delEvent.put("kind", 5);
-                    delEvent.put("pubkey", myPubKey);
-                    delEvent.put("created_at", System.currentTimeMillis() / 1000);
-                    delEvent.put("content", "Deleting schema field: " + fieldLabel);
-
-                    JSONArray tags = new JSONArray();
-                    for (String id : eventIdsToDelete) {
-                        JSONArray tag = new JSONArray().put("e").put(id);
-                        tags.put(tag);
-                    }
-                    delEvent.put("tags", tags);
-
-                    JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), delEvent);
-                    if (signed != null) {
-                        NostrPublisher.publishToPool(relays, signed, null);
-                        Log.i(TAG, "Permanent Deletion Broadcasted for field: " + fieldLabel);
-                    }
+                    issueKind5(context, eventIdsToDelete, null);
+                    Log.i(TAG, "Permanent Deletion Broadcasted for field: " + fieldLabel);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Deletion Broadcast Failed: " + e.getMessage());
@@ -240,8 +274,7 @@ public class MarketplaceSchemaManager {
     }
 
     /**
-     * FEATURE FIX: Deletes an entire category and all its technical fields permanently.
-     * Logic: Scans relays for any schema events tagged with this category and issues bulk Kind 5 deletion.
+     * GLOBAL CATEGORY DELETE: Wipes crowdsourced category AND tags hardcoded category to hide.
      */
     public static void broadcastCategoryDeletion(Context context, String categoryName) {
         new Thread(() -> {
@@ -252,7 +285,6 @@ public class MarketplaceSchemaManager {
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             try {
-                // Search for all schema entries (Kind 30006) for this category authored by ME
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006));
                 filter.put("authors", new JSONArray().put(myPubKey));
@@ -271,11 +303,8 @@ public class MarketplaceSchemaManager {
                                     if ("EVENT".equals(msg.getString(0))) {
                                         JSONObject event = msg.getJSONObject(2);
                                         JSONObject content = new JSONObject(event.getString("content"));
-                                        
-                                        // Match if it's the category definition itself OR a field belonging to the category
                                         boolean isMatch = categoryName.equals(content.optString("sub")) || 
                                                           categoryName.equals(content.optString("category"));
-                                        
                                         if (isMatch) {
                                             eventIdsToDelete.add(event.getString("id"));
                                         }
@@ -291,25 +320,10 @@ public class MarketplaceSchemaManager {
 
                 latch.await(6, TimeUnit.SECONDS);
 
-                if (!eventIdsToDelete.isEmpty()) {
-                    JSONObject delEvent = new JSONObject();
-                    delEvent.put("kind", 5);
-                    delEvent.put("pubkey", myPubKey);
-                    delEvent.put("created_at", System.currentTimeMillis() / 1000);
-                    delEvent.put("content", "Wiping full category and specs: " + categoryName);
+                // Broadcast Kind 5. Include the Name tag to hide the Hardcoded version of this category.
+                issueKind5(context, eventIdsToDelete, categoryName);
+                Log.i(TAG, "Global Network Wipe initiated for category: " + categoryName);
 
-                    JSONArray tags = new JSONArray();
-                    for (String id : eventIdsToDelete) {
-                        tags.put(new JSONArray().put("e").put(id));
-                    }
-                    delEvent.put("tags", tags);
-
-                    JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), delEvent);
-                    if (signed != null) {
-                        NostrPublisher.publishToPool(relays, signed, null);
-                        Log.i(TAG, "Permanent Network Wipe initiated for category: " + categoryName);
-                    }
-                }
             } catch (Exception e) {
                 Log.e(TAG, "Category wipe failure: " + e.getMessage());
             }
@@ -317,70 +331,81 @@ public class MarketplaceSchemaManager {
     }
 
     /**
-     * Broadcasts typed spec values so other advertisers get auto-complete suggestions.
-     * This is triggered when an advertiser publishes an entire ad.
+     * Internal helper to broadcast Kind 5 Deletion events.
      */
+    private static void issueKind5(Context context, List<String> ids, String hardcodedName) {
+        try {
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            JSONObject delEvent = new JSONObject();
+            delEvent.put("kind", 5);
+            delEvent.put("pubkey", db.getPublicKey());
+            delEvent.put("created_at", System.currentTimeMillis() / 1000);
+            delEvent.put("content", "AdNostr Schema Cleanup");
+
+            JSONArray tags = new JSONArray();
+            // Tags for Event IDs
+            for (String id : ids) {
+                tags.put(new JSONArray().put("e").put(id));
+                db.addWipedAdId(id); // Save locally to db blocklist
+            }
+            // Tag for Hardcoded Override
+            if (hardcodedName != null) {
+                tags.put(new JSONArray().put("hardcoded_name").put(hardcodedName));
+            }
+            
+            delEvent.put("tags", tags);
+
+            JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), delEvent);
+            if (signed != null) {
+                NostrPublisher.publishToPool(db.getRelayPool(), signed, null);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Kind 5 issuance failed: " + e.getMessage());
+        }
+    }
+
     public static void broadcastSpecValues(Context context, String category, JSONObject specs) {
         try {
             if (specs == null || specs.length() == 0) return;
             JSONObject content = new JSONObject();
             content.put("category", category);
             content.put("specs", specs);
-            broadcastEvent(context, 30007, content);
+            broadcastEvent(context, 30007, content, null);
         } catch (Exception e) {
             Log.e(TAG, "Broadcast Spec Values Error: " + e.getMessage());
         }
     }
 
-    /**
-     * ENHANCEMENT 2: Bulk Value Seeding
-     * UPDATED: Supports hierarchical context (linking values to a parent field like Brand).
-     */
     public static void broadcastBulkValues(Context context, String category, String fieldId, String commaSeparatedValues, String contextField, String contextValue) {
         try {
             if (commaSeparatedValues == null || commaSeparatedValues.trim().isEmpty()) return;
-
             JSONArray valuesArray = new JSONArray();
             String[] parts = commaSeparatedValues.split(",");
-            
             for (String part : parts) {
                 String cleanPart = part.trim();
-                if (!cleanPart.isEmpty()) {
-                    valuesArray.put(cleanPart);
-                }
+                if (!cleanPart.isEmpty()) valuesArray.put(cleanPart);
             }
-
             if (valuesArray.length() == 0) return;
 
-            // Package the array into the expected 'specs' format
             JSONObject specs = new JSONObject();
             specs.put(fieldId, valuesArray);
-
             JSONObject content = new JSONObject();
             content.put("category", category);
             content.put("specs", specs);
 
-            // NEW: Inject Context dependency if provided
             if (contextField != null && !contextField.isEmpty() && contextValue != null && !contextValue.isEmpty()) {
                 JSONObject contextObj = new JSONObject();
                 contextObj.put("field", contextField);
                 contextObj.put("value", contextValue);
                 content.put("context", contextObj);
             }
-
-            // Broadcast as a standard Kind 30007 Value Pool event
-            broadcastEvent(context, 30007, content);
-            Log.i(TAG, "Bulk Values Broadcasted for field '" + fieldId + "' with context: " + contextValue);
-
+            broadcastEvent(context, 30007, content, null);
         } catch (Exception e) {
             Log.e(TAG, "Broadcast Bulk Values Error: " + e.getMessage());
         }
     }
 
-    /**
-     * Internal helper to sign and push the event to the relay pool.
-     */
-    private static void broadcastEvent(Context context, int kind, JSONObject contentJson) {
+    private static void broadcastEvent(Context context, int kind, JSONObject contentJson, String dTagValue) {
         try {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
             JSONObject event = new JSONObject();
@@ -392,15 +417,13 @@ public class MarketplaceSchemaManager {
             JSONArray tags = new JSONArray();
             JSONArray dTag = new JSONArray();
             dTag.put("d");
-            dTag.put("adnostr_schema_" + UUID.randomUUID().toString().substring(0, 8));
+            dTag.put(dTagValue != null ? dTagValue : "adnostr_schema_" + UUID.randomUUID().toString().substring(0, 8));
             tags.put(dTag);
             event.put("tags", tags);
 
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
             if (signedEvent != null) {
-                Set<String> relayPool = db.getRelayPool();
-                NostrPublisher.publishToPool(relayPool, signedEvent, null);
-                Log.i(TAG, "Crowdsourced Schema Event Broadcasted: Kind " + kind);
+                NostrPublisher.publishToPool(db.getRelayPool(), signedEvent, null);
             }
         } catch (Exception e) {
             Log.e(TAG, "Schema Signing Error: " + e.getMessage());
