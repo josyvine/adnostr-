@@ -36,6 +36,7 @@ import java.util.UUID;
  * FIXED: Implements Preview logic to staging viewer before broadcast.
  * UPDATED: Extracts Category string for lightweight Marketplace Storefront rendering.
  * ENHANCEMENT: Implements Global Crowdsourced Schema Sync and Broadcasting.
+ * UPDATED: Integrated Deletion Persistence logic into the WebAppInterface bridge.
  */
 public class CreateProductActivity extends AppCompatActivity {
 
@@ -213,20 +214,28 @@ public class CreateProductActivity extends AppCompatActivity {
         }
 
         /**
-         * FEATURE FIX: Deletes a technical field permanently from Nostr.
+         * UPDATED: Deletes a technical field permanently.
+         * Logic: Informs Database to block the ID and triggers global Kind 5 broadcast.
          */
         @JavascriptInterface
         public void deleteField(String category, String fieldName) {
             logTechnicalEvent("ACTION: Permanent Deletion request for field '" + fieldName + "' in " + category);
+            // Persistence: MarketplaceSchemaManager handles the local ID block and network broadcast
             MarketplaceSchemaManager.broadcastFieldDeletion(CreateProductActivity.this, category, fieldName);
         }
 
         /**
-         * FEATURE FIX: Deletes an entire sub-category permanently from Nostr.
+         * UPDATED: Deletes an entire sub-category permanently.
+         * Logic: Blocks the hardcoded name locally and triggers global Kind 5 broadcast.
          */
         @JavascriptInterface
         public void deleteCategory(String categoryName) {
             logTechnicalEvent("ACTION: Permanent Category Deletion request for '" + categoryName + "'");
+            
+            // PERMANENCE FIX: Immediately mark the name as hidden in the local database
+            db.addHiddenHardcodedName(categoryName);
+            
+            // GLOBAL FIX: Trigger the network broadcast to wipe for everyone else
             MarketplaceSchemaManager.broadcastCategoryDeletion(CreateProductActivity.this, categoryName);
         }
 
