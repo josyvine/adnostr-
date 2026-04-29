@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
  * Syncs Kind 30006 (Schema Updates) and Kind 30007 (Value Pools) across the network.
  * UPDATED: Implements Kind 5 (Deletion) processing to ensure deleted items never return.
  * UPDATED: Implements Hardcoded Category Overrides to allow global deletion of built-in UI items.
+ * UPDATED: Implements Cascading Deletion to wipe Fields and Value Pools (Brands) when a Category is deleted.
  */
 public class MarketplaceSchemaManager {
 
@@ -49,7 +50,7 @@ public class MarketplaceSchemaManager {
             final List<JSONObject> categoryEvents = Collections.synchronizedList(new ArrayList<>());
             final List<JSONObject> fieldEvents = Collections.synchronizedList(new ArrayList<>());
             final List<JSONObject> valueEvents = Collections.synchronizedList(new ArrayList<>());
-            
+
             // Set to track IDs that MUST be purged (Kind 5 targets)
             final Set<String> deletedEventIds = Collections.synchronizedSet(new HashSet<>());
             // Set to track Hardcoded Category names that the network has "Deleted"
@@ -59,7 +60,7 @@ public class MarketplaceSchemaManager {
                 // Request Kind 30006 (Schema), 30007 (Values), AND Kind 5 (Deletions)
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006).put(30007).put(5));
-                
+
                 String subId = "schema-sync-" + UUID.randomUUID().toString().substring(0, 6);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
@@ -105,7 +106,7 @@ public class MarketplaceSchemaManager {
                                             if (contentStr.startsWith("{")) {
                                                 JSONObject content = new JSONObject(contentStr);
                                                 content.put("_event_id", eventId); // Attach ID for filtering
-                                                
+
                                                 if (kind == 30006) {
                                                     String type = content.optString("type", "");
                                                     if ("category".equals(type)) categoryEvents.add(content);
@@ -131,32 +132,36 @@ public class MarketplaceSchemaManager {
                     }
                 }
 
-                latch.await(6, TimeUnit.SECONDS);
+                // Wait up to 5 seconds for network consensus
+                latch.await(5, TimeUnit.SECONDS);
 
                 // =========================================================================
                 // THE FILTER ENGINE: PERMANENT PURGE LOGIC
                 // =========================================================================
-                
-                // 1. Filter Categories
+
+                // 1. Filter Categories (Check Kind 5 set AND Local Database Blocklist)
                 JSONArray filteredCategories = new JSONArray();
                 for (JSONObject cat : categoryEvents) {
-                    if (!deletedEventIds.contains(cat.optString("_event_id"))) {
+                    String eid = cat.optString("_event_id");
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
                         filteredCategories.put(cat);
                     }
                 }
 
-                // 2. Filter Fields
+                // 2. Filter Fields (Check Kind 5 set AND Local Database Blocklist)
                 JSONArray filteredFields = new JSONArray();
                 for (JSONObject field : fieldEvents) {
-                    if (!deletedEventIds.contains(field.optString("_event_id"))) {
+                    String eid = field.optString("_event_id");
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
                         filteredFields.put(field);
                     }
                 }
 
-                // 3. Filter Value Pools
+                // 3. Filter Value Pools (Check Kind 5 set AND Local Database Blocklist)
                 JSONArray filteredValues = new JSONArray();
                 for (JSONObject val : valueEvents) {
-                    if (!deletedEventIds.contains(val.optString("_event_id"))) {
+                    String eid = val.optString("_event_id");
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
                         filteredValues.put(val);
                     }
                 }
@@ -166,9 +171,11 @@ public class MarketplaceSchemaManager {
                 globalSchema.put("categories", filteredCategories);
                 globalSchema.put("fields", filteredFields);
                 globalSchema.put("values", filteredValues);
-                
-                // INJECT: Pass the list of hardcoded categories to hide globally
-                globalSchema.put("hidden_hardcoded", new JSONArray(hiddenHardcodedNames));
+
+                // INJECT: Merge Local Hidden Names with Network Deletion tags
+                Set<String> allHidden = db.getHiddenHardcodedNames();
+                allHidden.addAll(hiddenHardcodedNames);
+                globalSchema.put("hidden_hardcoded", new JSONArray(allHidden));
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (callback != null) callback.onSchemaFetched(globalSchema.toString());
@@ -218,7 +225,6 @@ public class MarketplaceSchemaManager {
 
     /**
      * GLOBAL DELETE: Scans for the original event and issues a Kind 5 Deletion.
-     * UPDATED: Also supports tagging hardcoded names for built-in category deletion.
      */
     public static void broadcastFieldDeletion(Context context, String category, String fieldLabel) {
         new Thread(() -> {
@@ -274,7 +280,8 @@ public class MarketplaceSchemaManager {
     }
 
     /**
-     * GLOBAL CATEGORY DELETE: Wipes crowdsourced category AND tags hardcoded category to hide.
+     * CASCADING GLOBAL CATEGORY DELETE: Wipes Category, associated Fields, and associated Value Pools (Brands).
+     * UPDATED: Now searches Kind 30006 AND 30007 for any items matching the category name.
      */
     public static void broadcastCategoryDeletion(Context context, String categoryName) {
         new Thread(() -> {
@@ -285,11 +292,12 @@ public class MarketplaceSchemaManager {
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             try {
+                // DEEP SCAN: Request Kind 30006 (Schema/Fields) AND 30007 (Value Pools/Brands)
                 JSONObject filter = new JSONObject();
-                filter.put("kinds", new JSONArray().put(30006));
+                filter.put("kinds", new JSONArray().put(30006).put(30007));
                 filter.put("authors", new JSONArray().put(myPubKey));
 
-                String subId = "del-cat-" + UUID.randomUUID().toString().substring(0, 4);
+                String subId = "del-cascade-" + UUID.randomUUID().toString().substring(0, 4);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
                 for (String url : relays) {
@@ -303,8 +311,11 @@ public class MarketplaceSchemaManager {
                                     if ("EVENT".equals(msg.getString(0))) {
                                         JSONObject event = msg.getJSONObject(2);
                                         JSONObject content = new JSONObject(event.getString("content"));
+                                        
+                                        // Match if it's the Category definition, a Field in that category, or a Value Pool for that category
                                         boolean isMatch = categoryName.equals(content.optString("sub")) || 
                                                           categoryName.equals(content.optString("category"));
+                                        
                                         if (isMatch) {
                                             eventIdsToDelete.add(event.getString("id"));
                                         }
@@ -320,12 +331,12 @@ public class MarketplaceSchemaManager {
 
                 latch.await(6, TimeUnit.SECONDS);
 
-                // Broadcast Kind 5. Include the Name tag to hide the Hardcoded version of this category.
+                // Broadcast bulk Kind 5 for all found IDs and the hardcoded name override
                 issueKind5(context, eventIdsToDelete, categoryName);
-                Log.i(TAG, "Global Network Wipe initiated for category: " + categoryName);
+                Log.i(TAG, "Cascading Global Wipe initiated for category: " + categoryName);
 
             } catch (Exception e) {
-                Log.e(TAG, "Category wipe failure: " + e.getMessage());
+                Log.e(TAG, "Category cascading wipe failure: " + e.getMessage());
             }
         }).start();
     }
@@ -346,13 +357,14 @@ public class MarketplaceSchemaManager {
             // Tags for Event IDs
             for (String id : ids) {
                 tags.put(new JSONArray().put("e").put(id));
-                db.addWipedAdId(id); // Save locally to db blocklist
+                db.addWipedSchemaId(id); // Block ID permanently in local DB blocklist
             }
             // Tag for Hardcoded Override
             if (hardcodedName != null) {
                 tags.put(new JSONArray().put("hardcoded_name").put(hardcodedName));
+                db.addHiddenHardcodedName(hardcodedName); // Block hardcoded name in local DB
             }
-            
+
             delEvent.put("tags", tags);
 
             JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), delEvent);
