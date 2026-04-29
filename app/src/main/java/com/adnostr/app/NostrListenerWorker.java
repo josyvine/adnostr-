@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit;
  * ENHANCEMENT: Implements Master App-Level Decryption to verify AdNostr protocol traffic.
  * ENHANCEMENT: Implements User-Side Trust Filter to verify Ad Sender vs Hashtag Owner.
  * NEW: Saves verified Ads to local User History Database.
+ * UPDATED: Integrated Global Schema Deletion monitoring to keep categories in sync in the background.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -192,21 +193,31 @@ public class NostrListenerWorker extends Worker {
                 if (tags != null) {
                     for (int i = 0; i < tags.length(); i++) {
                         JSONArray tagPair = tags.optJSONArray(i);
-                        // Find the 'e' tag which points to the deleted Ad ID
-                        if (tagPair != null && tagPair.length() >= 2 && "e".equals(tagPair.getString(0))) {
-                            String targetDeletedId = tagPair.getString(1);
+                        if (tagPair != null && tagPair.length() >= 2) {
+                            String tagName = tagPair.getString(0);
+                            String tagValue = tagPair.getString(1);
 
-                            // PHANTOM AD PREVENTION: ADD TO BLOCKLIST
-                            db.addWipedAdId(targetDeletedId);
+                            // CASE 1: TARGETING AN EVENT ID (Ads or Crowdsourced Schema)
+                            if ("e".equals(tagName)) {
+                                // Block for Ads
+                                db.addWipedAdId(tagValue);
+                                // Block for Schema Persistence
+                                db.addWipedSchemaId(tagValue);
 
-                            // Find this Ad ID in the User's local history and wipe it
-                            Set<String> localHistory = db.getUserHistory();
-                            for (String savedItem : localHistory) {
-                                if (savedItem.contains("\"id\":\"" + targetDeletedId + "\"")) {
-                                    db.deleteFromUserHistory(savedItem);
-                                    Log.i(TAG, "Honored Advertiser Kind 5 Wipe: Removed Ad " + targetDeletedId);
-                                    break;
+                                // Wipe from local ad history if it exists there
+                                Set<String> localHistory = db.getUserHistory();
+                                for (String savedItem : localHistory) {
+                                    if (savedItem.contains("\"id\":\"" + tagValue + "\"")) {
+                                        db.deleteFromUserHistory(savedItem);
+                                        Log.i(TAG, "Wiped item ID in background: " + tagValue);
+                                        break;
+                                    }
                                 }
+                            } 
+                            // CASE 2: TARGETING A HARDCODED NAME (Global built-in category deletion)
+                            else if ("hardcoded_name".equals(tagName)) {
+                                db.addHiddenHardcodedName(tagValue);
+                                Log.i(TAG, "Hidden hardcoded category in background: " + tagValue);
                             }
                         }
                     }
