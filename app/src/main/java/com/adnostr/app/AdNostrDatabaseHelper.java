@@ -22,6 +22,7 @@ import java.util.Set;
  * FIXED: Role-based key separation for Interests and Privacy to prevent data bleeding between roles.
  * FIXED FOR POPUP: Implemented Fallback logic in getInterests to prevent empty subscriptions.
  * NEW: Added KEY_WIPED_SCHEMA_IDS and KEY_HIDDEN_HARDCODED for Deletion Persistence.
+ * ENHANCEMENT: Added KEY_CONSOLE_LOG_ENABLED and KEY_DEBUG_MODE_ACTIVE for forensic management.
  */
 public class AdNostrDatabaseHelper {
 
@@ -70,6 +71,10 @@ public class AdNostrDatabaseHelper {
     // PRIVACY COMMAND CENTER KEYS
     private static final String KEY_USERNAME_HIDDEN = "privacy_username_hidden";
     private static final String KEY_LIVE_LOCATION_ENABLED = "privacy_live_location_enabled";
+
+    // CONSOLE MANAGEMENT KEYS (NEW)
+    private static final String KEY_CONSOLE_LOG_ENABLED = "system_console_log_enabled";
+    private static final String KEY_DEBUG_MODE_ACTIVE = "system_debug_mode_active";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -443,6 +448,35 @@ public class AdNostrDatabaseHelper {
     public boolean isLiveLocationEnabled() {
         String role = getUserRole();
         return prefs.getBoolean(KEY_LIVE_LOCATION_ENABLED + "_" + role, false);
+    }
+
+    // =========================================================================
+    // CONSOLE & DEBUG MANAGEMENT METHODS (NEW)
+    // =========================================================================
+
+    /**
+     * Logic: Master switch for forensic logging.
+     * Uses commit() for synchronous consistency across threads.
+     */
+    public void setConsoleLogEnabled(boolean isEnabled) {
+        prefs.edit().putBoolean(KEY_CONSOLE_LOG_ENABLED, isEnabled).commit();
+    }
+
+    public boolean isConsoleLogEnabled() {
+        // Default to TRUE so user can see initial network status
+        return prefs.getBoolean(KEY_CONSOLE_LOG_ENABLED, true);
+    }
+
+    /**
+     * Logic: Toggle between Professional summaries and raw JSON protocol frames.
+     */
+    public void setDebugModeActive(boolean isActive) {
+        prefs.edit().putBoolean(KEY_DEBUG_MODE_ACTIVE, isActive).commit();
+    }
+
+    public boolean isDebugModeActive() {
+        // Default to FALSE for a professional experience
+        return prefs.getBoolean(KEY_DEBUG_MODE_ACTIVE, false);
     }
 
     // =========================================================================
