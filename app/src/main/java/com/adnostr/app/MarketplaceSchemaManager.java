@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
  * DECENTRALIZED MARKETPLACE SCHEMA ENGINE
  * Handles crowdsourced category and specification creation by Advertisers.
  * Syncs Kind 30006 (Schema Updates) and Kind 30007 (Value Pools) across the network.
+ * UPDATED: Implements Contextual Value Sorting to link dependent fields (e.g., Model to Brand).
  */
 public class MarketplaceSchemaManager {
 
@@ -80,6 +81,7 @@ public class MarketplaceSchemaManager {
                                                 if ("category".equals(type)) newCategories.add(content);
                                                 else if ("field".equals(type)) newFields.add(content);
                                             } else if (kind == 30007) {
+                                                // This object now potentially contains the 'context' block for sorting
                                                 valuePools.add(content);
                                             }
                                         }
@@ -332,10 +334,9 @@ public class MarketplaceSchemaManager {
 
     /**
      * ENHANCEMENT 2: Bulk Value Seeding
-     * Takes a comma-separated string from the HTML modal, splits it, and pushes it 
-     * instantly to the network to populate auto-complete dropdowns for all users.
+     * UPDATED: Supports hierarchical context (linking values to a parent field like Brand).
      */
-    public static void broadcastBulkValues(Context context, String category, String fieldId, String commaSeparatedValues) {
+    public static void broadcastBulkValues(Context context, String category, String fieldId, String commaSeparatedValues, String contextField, String contextValue) {
         try {
             if (commaSeparatedValues == null || commaSeparatedValues.trim().isEmpty()) return;
 
@@ -359,9 +360,17 @@ public class MarketplaceSchemaManager {
             content.put("category", category);
             content.put("specs", specs);
 
+            // NEW: Inject Context dependency if provided
+            if (contextField != null && !contextField.isEmpty() && contextValue != null && !contextValue.isEmpty()) {
+                JSONObject contextObj = new JSONObject();
+                contextObj.put("field", contextField);
+                contextObj.put("value", contextValue);
+                content.put("context", contextObj);
+            }
+
             // Broadcast as a standard Kind 30007 Value Pool event
             broadcastEvent(context, 30007, content);
-            Log.i(TAG, "Bulk Values Broadcasted for field '" + fieldId + "' (" + valuesArray.length() + " items)");
+            Log.i(TAG, "Bulk Values Broadcasted for field '" + fieldId + "' with context: " + contextValue);
 
         } catch (Exception e) {
             Log.e(TAG, "Broadcast Bulk Values Error: " + e.getMessage());
