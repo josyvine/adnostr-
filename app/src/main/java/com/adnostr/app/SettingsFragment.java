@@ -24,6 +24,7 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.adnostr.app.databinding.DialogCloudflareConfigBinding;
+import com.adnostr.app.databinding.DialogConsoleSettingsBinding;
 import com.adnostr.app.databinding.DialogIdentityBackupBinding;
 import com.adnostr.app.databinding.DialogModeSwitchBinding;
 import com.adnostr.app.databinding.DialogPrivacySettingsBinding;
@@ -38,6 +39,7 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * ENHANCEMENT: Added My Hashtags deed registry for advertisers.
  * ENHANCEMENT: Added JSON Identity Portability (Backup & Restore).
  * ENHANCEMENT: Added Privacy Command Center for anonymity and location controls (Feature 1).
+ * ENHANCEMENT: Added Console Management portal to control log visibility and debug verbosity.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -144,6 +146,9 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             case SettingsIconAdapter.CMD_BACKUP:
                 showIdentityBackupDialog();
                 break;
+            case SettingsIconAdapter.CMD_CONSOLE_TUNE:
+                showConsoleSettingsDialog();
+                break;
             case SettingsIconAdapter.CMD_RESET:
                 showResetConfirmation();
                 break;
@@ -156,6 +161,50 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 startActivity(new Intent(requireContext(), BrowseAdvertisersActivity.class));
                 break;
         }
+    }
+
+    /**
+     * ENHANCEMENT: Console Log & Debug Mode Management Dialog.
+     * Logic: Controls the global visibility of protocol logs and toggles Professional vs Debug output.
+     */
+    private void showConsoleSettingsDialog() {
+        DialogConsoleSettingsBinding dialogBinding = DialogConsoleSettingsBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(dialogBinding.getRoot())
+                .create();
+
+        // 1. Initialize switches from database
+        boolean consoleEnabled = db.isConsoleLogEnabled();
+        dialogBinding.switchEnableConsole.setChecked(consoleEnabled);
+        dialogBinding.switchDebugMode.setChecked(db.isDebugModeActive());
+
+        // 2. Visual logic: Debug Mode toggle depends on Console visibility
+        dialogBinding.llDebugModeContainer.setAlpha(consoleEnabled ? 1.0f : 0.4f);
+        dialogBinding.switchDebugMode.setEnabled(consoleEnabled);
+
+        // 3. Listener: Master Visibility Toggle
+        dialogBinding.switchEnableConsole.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            db.setConsoleLogEnabled(isChecked);
+            
+            // Enable/Disable the debug sub-toggle visually
+            dialogBinding.llDebugModeContainer.setAlpha(isChecked ? 1.0f : 0.4f);
+            dialogBinding.switchDebugMode.setEnabled(isChecked);
+
+            String status = isChecked ? "Console logs unhidden." : "Console logs disabled globally.";
+            Toast.makeText(getContext(), status, Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Console Visibility set to: " + isChecked);
+        });
+
+        // 4. Listener: Debug Mode Toggle
+        dialogBinding.switchDebugMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            db.setDebugModeActive(isChecked);
+            String mode = isChecked ? "Debug Mode: Raw JSON visible." : "Professional Mode: Summarized status active.";
+            Toast.makeText(getContext(), mode, Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Debug Mode set to: " + isChecked);
+        });
+
+        dialogBinding.btnDoneConsole.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
     }
 
     /**
