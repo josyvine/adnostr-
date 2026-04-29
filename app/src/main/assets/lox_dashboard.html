@@ -508,7 +508,7 @@
             {id: "furnished", label: "Furnished", type: "text", placeholder: "e.g. Fully"},
             {id: "lease_type", label: "Lease Type", type: "text", placeholder: "e.g. 11 Months"},
             {id: "parking", label: "Parking", type: "text", placeholder: "e.g. 1"},
-            {id: "tenants", label: "Tenants", type: "text", placeholder: "e.g. Family"},
+            {id: "tenants", label: "Tenants", type: "text", placeholder: "family"},
             {id: "deposit", label: "Deposit (₹)", type: "number", placeholder: "e.g. 50000"}
         ],
         "Mobiles": [
@@ -685,7 +685,6 @@
 
     /**
      * ENHANCEMENT 1: Bulk Add Sub-Categories
-     * Splits textarea by line break and iterates to instantly build multiple categories.
      */
     function saveNewCategory() {
         const mainCat = document.getElementById('newMainCat').value.trim();
@@ -696,27 +695,20 @@
             return;
         }
 
-        // Process multiple lines
         const subCats = subCatRaw.split('\n').map(s => s.trim()).filter(s => s !== '');
         let lastAddedSubCat = "";
 
         subCats.forEach(subCat => {
-            // Use the Smart Grouping function for each line
             addCategoryToDOM(mainCat, subCat);
-
-            // Initialize schema array if new
             if (!CATEGORY_SCHEMA[subCat]) {
                 CATEGORY_SCHEMA[subCat] = [];
             }
-
-            // Broadcast to Network via Java Bridge individually
             if (window.AndroidBridge && window.AndroidBridge.publishNewCategory) {
                 window.AndroidBridge.publishNewCategory(mainCat, subCat);
             }
             lastAddedSubCat = subCat;
         });
 
-        // Set the UI to the last added category
         if (lastAddedSubCat !== "") {
             const catSelect = document.getElementById('cat');
             catSelect.value = lastAddedSubCat;
@@ -735,7 +727,7 @@
     function closeFieldModal() {
         document.getElementById('modalField').style.display = 'none';
         document.getElementById('newFieldName').value = '';
-        renderSpecs(); // Re-render to show newly added fields
+        renderSpecs(); 
     }
 
     /**
@@ -751,13 +743,10 @@
         const currentCat = lastSelectedCat;
         if (!CATEGORY_SCHEMA[currentCat]) CATEGORY_SCHEMA[currentCat] = [];
         
-        // REGEX FIX: Split by comma OR new line
         const names = fieldInput.split(/[,\n]/).map(n => n.trim()).filter(n => n !== "");
 
         names.forEach(fieldName => {
             const fieldId = fieldName.toLowerCase().replace(/ /g, "_").replace(/[^a-z0-9_]/g, "");
-            
-            // Prevent duplicates
             const exists = CATEGORY_SCHEMA[currentCat].find(f => f.id === fieldId);
             if (!exists) {
                 CATEGORY_SCHEMA[currentCat].push({
@@ -767,7 +756,6 @@
                     placeholder: `e.g. your data`
                 });
 
-                // Broadcast to Network via Java Bridge
                 if (window.AndroidBridge && window.AndroidBridge.publishNewField) {
                     window.AndroidBridge.publishNewField(currentCat, fieldName);
                     logToAndroid(`Broadcasted new Field '${fieldName}' to global schema.`);
@@ -781,29 +769,25 @@
 
     /**
      * PERMANENT DELETION logic. 
-     * Removes field from local memory and triggers Nostr Kind 5 broadcast.
      */
     function removeField(fieldId, fieldLabel) {
         const currentCat = lastSelectedCat;
         if (confirm(`Permanently delete '${fieldLabel}' from this category on the network?`)) {
-            // 1. Remove from local memory
             if (CATEGORY_SCHEMA[currentCat]) {
                 CATEGORY_SCHEMA[currentCat] = CATEGORY_SCHEMA[currentCat].filter(f => f.id !== fieldId);
             }
 
-            // 2. Call Bridge to broadcast Kind 5 Deletion
             if (window.AndroidBridge && window.AndroidBridge.deleteField) {
                 window.AndroidBridge.deleteField(currentCat, fieldLabel);
             }
 
-            // 3. UI Refresh
             renderSpecs();
             logToAndroid(`Requested permanent deletion of field: ${fieldLabel}`);
         }
     }
 
     /**
-     * FEATURE FIX: Deletes the entire Sub-Category permanently from the UI and Network.
+     * FEATURE FIX: Deletes the entire Sub-Category permanently.
      */
     function removeCategory() {
         const catSelect = document.getElementById('cat');
@@ -813,27 +797,21 @@
 
         if (confirm(`Permanently delete the entire '${catName}' category and all its technical fields from the network?`)) {
             
-            // 1. Tell Android to wipe all Kind 30006 associated with this category from Nostr
             if (window.AndroidBridge && window.AndroidBridge.deleteCategory) {
                 window.AndroidBridge.deleteCategory(catName);
             }
 
-            // 2. Remove from local memory
             delete CATEGORY_SCHEMA[catName];
 
-            // 3. Remove from DOM dropdown
             const option = Array.from(catSelect.options).find(opt => opt.value === catName);
             if (option) {
                 const parentGroup = option.parentElement;
                 option.remove();
-                
-                // If the optgroup is now empty (no more sub-categories), remove the entire group
                 if (parentGroup && parentGroup.tagName === 'OPTGROUP' && parentGroup.children.length === 0) {
                     parentGroup.remove();
                 }
             }
 
-            // 4. Reset selection to the first valid category in the list
             catSelect.selectedIndex = 0;
             lastSelectedCat = catSelect.value;
             handleCategoryChange();
@@ -844,7 +822,6 @@
 
     /**
      * ENHANCEMENT 2: Bulk Values Logic
-     * CONTEXT SORTING FIX: Scans specs inputs to link values to a parent field.
      */
     function openBulkValuesModal() {
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
@@ -853,12 +830,10 @@
             return;
         }
 
-        // STEP 1: Detect Context
         activeBulkContext = { fieldId: null, value: null };
         const bulkStatus = document.getElementById('bulkContextInfo');
         bulkStatus.style.display = 'none';
 
-        // Check if any specified input (like brand) has a value
         fields.forEach(f => {
             const el = document.getElementById(f.id);
             if (el && el.value.trim() !== "") {
@@ -873,7 +848,6 @@
             bulkStatus.style.display = 'block';
         }
         
-        // Populate the dropdown with fields relevant to THIS category
         const select = document.getElementById('bulkFieldSelect');
         select.innerHTML = '';
         fields.forEach(f => {
@@ -900,10 +874,8 @@
             return;
         }
         
-        // 1. Add values to local datalist instantly for immediate UI use
         const values = valuesRaw.split(',').map(v => v.trim()).filter(v => v !== '');
         
-        // NAMESPACED DATALIST GENERATION
         let dlId = `dl_${lastSelectedCat}_${fieldId}`;
         if (activeBulkContext.value) {
             dlId = `dl_${lastSelectedCat}_${fieldId}_${activeBulkContext.fieldId}_${activeBulkContext.value}`;
@@ -925,7 +897,6 @@
             }
         });
 
-        // 2. Broadcast to Network via Java Bridge (Expanded Signature)
         if (window.AndroidBridge && window.AndroidBridge.publishBulkSpecValues) {
             window.AndroidBridge.publishBulkSpecValues(
                 lastSelectedCat, 
@@ -941,13 +912,25 @@
     }
 
     /**
-     * Called by Android Native Code to inject global schemas from other advertisers.
+     * PERMANENT DELETE FIX: Updated to clear dynamic elements before re-injecting filtered data.
      */
     function injectGlobalSchema(jsonString) {
         try {
             const schema = JSON.parse(jsonString);
 
-            // 1. Inject Crowdsourced Categories
+            // 1. CLEAR DYNAMIC DOM (Delete Persistence Fix)
+            const customGroup = document.getElementById('og_custom');
+            if (customGroup) customGroup.innerHTML = '';
+            
+            // 2. CLEAR DYNAMIC CATEGORY OBJECTS
+            const baseKeys = ["Cars", "Bikes", "Heavy Vehicles", "Spare Parts", "Property Sale", "Property Rent", "Mobiles", "Computers", "Gaming", "Electronics", "Furniture", "Fashion", "Jewelry", "Jobs", "Services", "Education", "Industrial", "Pets", "Books", "Music", "Art", "Digital", "Grocery"];
+            for (let key in CATEGORY_SCHEMA) {
+                if (!baseKeys.includes(key)) {
+                    delete CATEGORY_SCHEMA[key];
+                }
+            }
+
+            // 3. Inject Crowdsourced Categories
             if (schema.categories && schema.categories.length > 0) {
                 schema.categories.forEach(c => {
                     if (!CATEGORY_SCHEMA[c.sub]) CATEGORY_SCHEMA[c.sub] = [];
@@ -955,7 +938,7 @@
                 });
             }
 
-            // 2. Inject Crowdsourced Fields
+            // 4. Inject Crowdsourced Fields
             if (schema.fields && schema.fields.length > 0) {
                 schema.fields.forEach(f => {
                     if (!CATEGORY_SCHEMA[f.category]) CATEGORY_SCHEMA[f.category] = [];
@@ -971,18 +954,16 @@
                 });
             }
 
-            // 3. Build Historical Auto-Complete Datalists
+            // 5. Build Historical Auto-Complete Datalists
             if (schema.values && schema.values.length > 0) {
                 const dlContainer = document.getElementById('datalistContainer');
+                dlContainer.innerHTML = ''; // Reset datalists to prevent stale deleted values
                 
                 schema.values.forEach(v => {
                     if (v.category && v.specs) {
-                        const context = v.context || {}; // Detect context dependency
-                        
+                        const context = v.context || {}; 
                         for (const [fieldId, val] of Object.entries(v.specs)) {
                             let dlId = `dl_${v.category}_${fieldId}`;
-                            
-                            // HIERARCHICAL NAMESPACING
                             if (context.field && context.value) {
                                 dlId += `_${context.field}_${context.value}`;
                             }
@@ -1053,17 +1034,10 @@
         container.innerHTML = html;
     }
 
-    /**
-     * DYNAMIC POINTER SWITCHING
-     * Checks if a parent field is filled to swap the datalist instantly.
-     */
     function updateDatalistPointer(el, fieldId) {
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         const globalDl = `dl_${lastSelectedCat}_${fieldId}`;
-        
         let foundContext = false;
-        
-        // Scan other fields for a typed value
         for (const f of fields) {
             if (f.id === fieldId) continue;
             const contextInput = document.getElementById(f.id);
@@ -1076,7 +1050,6 @@
                 }
             }
         }
-        
         if (!foundContext) el.setAttribute("list", globalDl);
     }
 
@@ -1094,7 +1067,6 @@
         </div>`;
     }
 
-    // FORENSIC LOGGING BRIDGE
     function logToAndroid(msg, isError = false) {
         if (window.AndroidBridge) {
             window.AndroidBridge.logTechnicalEvent("[" + new Date().toLocaleTimeString() + "] [BROWSER] " + msg);
