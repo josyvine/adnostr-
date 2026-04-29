@@ -415,6 +415,9 @@
             Bulk Seed Field Values <i class="fa-solid fa-xmark" style="cursor:pointer;" onclick="closeBulkValuesModal()"></i>
         </div>
         <div class="modal-body">
+            <!-- NEW: Context Status Label -->
+            <p id="bulkContextInfo" style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 10px; display: none;"></p>
+            
             <div class="form-group">
                 <label>Select Field to Populate</label>
                 <select id="bulkFieldSelect"></select>
@@ -437,6 +440,9 @@
 <script>
     let uploadedImageUrls = [];
     let lastSelectedCat = "Cars"; // Default initial category
+    
+    // NEW: Context Tracking for Bulk Adding
+    let activeBulkContext = { fieldId: null, value: null };
 
     // BASE CATEGORY SPECIFICATIONS SCHEMA (Will be appended by Network Schema)
     const CATEGORY_SCHEMA = {
@@ -838,12 +844,33 @@
 
     /**
      * ENHANCEMENT 2: Bulk Values Logic
+     * CONTEXT SORTING FIX: Scans specs inputs to link values to a parent field.
      */
     function openBulkValuesModal() {
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         if(fields.length === 0) {
             alert("Please add a technical field first before bulk adding values.");
             return;
+        }
+
+        // STEP 1: Detect Context
+        activeBulkContext = { fieldId: null, value: null };
+        const bulkStatus = document.getElementById('bulkContextInfo');
+        bulkStatus.style.display = 'none';
+
+        // Check if any specified input (like brand) has a value
+        fields.forEach(f => {
+            const el = document.getElementById(f.id);
+            if (el && el.value.trim() !== "") {
+                activeBulkContext.fieldId = f.id;
+                activeBulkContext.value = el.value.trim();
+            }
+        });
+
+        if (activeBulkContext.value) {
+            const parentLabel = fields.find(f => f.id === activeBulkContext.fieldId).label;
+            bulkStatus.innerText = `Context Detected: Linking these values to ${parentLabel}: ${activeBulkContext.value}`;
+            bulkStatus.style.display = 'block';
         }
         
         // Populate the dropdown with fields relevant to THIS category
@@ -876,10 +903,13 @@
         // 1. Add values to local datalist instantly for immediate UI use
         const values = valuesRaw.split(',').map(v => v.trim()).filter(v => v !== '');
         
-        // GLITCH 1 FIX: Use Namespaced Datalist ID
-        const dlId = `dl_${lastSelectedCat}_${fieldId}`;
+        // NAMESPACED DATALIST GENERATION
+        let dlId = `dl_${lastSelectedCat}_${fieldId}`;
+        if (activeBulkContext.value) {
+            dlId = `dl_${lastSelectedCat}_${fieldId}_${activeBulkContext.fieldId}_${activeBulkContext.value}`;
+        }
+
         let dl = document.getElementById(dlId);
-        
         if(!dl) {
             const dlContainer = document.getElementById('datalistContainer');
             dl = document.createElement('datalist');
@@ -888,7 +918,6 @@
         }
         
         values.forEach(val => {
-            // Prevent duplicate options in datalist
             if(!Array.from(dl.options).some(opt => opt.value === val)) {
                 const opt = document.createElement('option');
                 opt.value = val;
@@ -896,10 +925,16 @@
             }
         });
 
-        // 2. Broadcast to Network via Java Bridge
+        // 2. Broadcast to Network via Java Bridge (Expanded Signature)
         if (window.AndroidBridge && window.AndroidBridge.publishBulkSpecValues) {
-            window.AndroidBridge.publishBulkSpecValues(lastSelectedCat, fieldId, valuesRaw);
-            logToAndroid(`Broadcasted bulk values for '${fieldId}' to global schema.`);
+            window.AndroidBridge.publishBulkSpecValues(
+                lastSelectedCat, 
+                fieldId, 
+                valuesRaw, 
+                activeBulkContext.fieldId || "", 
+                activeBulkContext.value || ""
+            );
+            logToAndroid(`Broadcasted contextual bulk values for '${fieldId}'.`);
         }
         
         closeBulkValuesModal();
@@ -907,18 +942,15 @@
 
     /**
      * Called by Android Native Code to inject global schemas from other advertisers.
-     * jsonString format: { categories: [{main, sub}], fields: [{category, id, label, input_type}], values: [{category, specs}] }
      */
     function injectGlobalSchema(jsonString) {
         try {
             const schema = JSON.parse(jsonString);
 
-            // 1. Inject Crowdsourced Categories using Smart Grouping
+            // 1. Inject Crowdsourced Categories
             if (schema.categories && schema.categories.length > 0) {
                 schema.categories.forEach(c => {
-                    if (!CATEGORY_SCHEMA[c.sub]) {
-                        CATEGORY_SCHEMA[c.sub] = [];
-                    }
+                    if (!CATEGORY_SCHEMA[c.sub]) CATEGORY_SCHEMA[c.sub] = [];
                     addCategoryToDOM(c.main, c.sub);
                 });
             }
@@ -940,62 +972,44 @@
             }
 
             // 3. Build Historical Auto-Complete Datalists
-            // GLITCH 2 FIX: Strict Category Hierarchy for values
             if (schema.values && schema.values.length > 0) {
                 const dlContainer = document.getElementById('datalistContainer');
                 
-                // Track unique values per CATEGORY and per FIELD
-                // Example: { "Cars": { "brand": new Set(["Hyundai", "Ford"]) } }
-                const uniqueValues = {}; 
-
                 schema.values.forEach(v => {
                     if (v.category && v.specs) {
-                        if (!uniqueValues[v.category]) uniqueValues[v.category] = {};
+                        const context = v.context || {}; // Detect context dependency
                         
-                        for (const [key, val] of Object.entries(v.specs)) {
-                            if (!uniqueValues[v.category][key]) uniqueValues[v.category][key] = new Set();
+                        for (const [fieldId, val] of Object.entries(v.specs)) {
+                            let dlId = `dl_${v.category}_${fieldId}`;
                             
-                            // ENHANCEMENT 2: Automatically detect and split incoming bulk comma-separated values
-                            if (typeof val === 'string' && val.includes(',')) {
-                                val.split(',').forEach(item => {
-                                    if (item.trim() !== '') uniqueValues[v.category][key].add(item.trim());
-                                });
-                            } else if (Array.isArray(val)) {
-                                val.forEach(item => {
-                                    if (item && item.toString().trim() !== '') uniqueValues[v.category][key].add(item.toString().trim());
-                                });
-                            } else {
-                                uniqueValues[v.category][key].add(val);
+                            // HIERARCHICAL NAMESPACING
+                            if (context.field && context.value) {
+                                dlId += `_${context.field}_${context.value}`;
                             }
+
+                            let dl = document.getElementById(dlId);
+                            if (!dl) {
+                                dl = document.createElement('datalist');
+                                dl.id = dlId;
+                                dlContainer.appendChild(dl);
+                            }
+
+                            const valItems = (typeof val === 'string' && val.includes(',')) 
+                                ? val.split(',').map(i => i.trim()).filter(i => i !== '') 
+                                : (Array.isArray(val) ? val : [val]);
+
+                            valItems.forEach(item => {
+                                if (item && !Array.from(dl.options).some(o => o.value === item.toString())) {
+                                    const opt = document.createElement('option');
+                                    opt.value = item;
+                                    dl.appendChild(opt);
+                                }
+                            });
                         }
                     }
                 });
-
-                // Generate HTML datalists using the exact Category Namespace
-                for (const [catName, fieldObj] of Object.entries(uniqueValues)) {
-                    for (const [fieldId, valueSet] of Object.entries(fieldObj)) {
-                        
-                        // GLITCH 1 FIX: Namespaced Datalist ID
-                        const specificDlId = `dl_${catName}_${fieldId}`;
-                        
-                        let dl = document.getElementById(specificDlId);
-                        if (!dl) {
-                            dl = document.createElement('datalist');
-                            dl.id = specificDlId;
-                            dlContainer.appendChild(dl);
-                        }
-                        dl.innerHTML = ''; // Clear old options
-                        
-                        valueSet.forEach(val => {
-                            const opt = document.createElement('option');
-                            opt.value = val;
-                            dl.appendChild(opt);
-                        });
-                    }
-                }
             }
 
-            // Refresh UI if necessary
             renderSpecs();
             logToAndroid("Global Schema Sync Complete.");
         } catch (e) {
@@ -1012,13 +1026,11 @@
         const container = document.getElementById('specsContainer');
         container.innerHTML = '';
 
-        // We always show the section now, so users can add fields even if empty
         document.getElementById('specsSection').style.display = 'block';
 
         let html = '';
         for(let i = 0; i < fields.length; i += 2) {
             html += '<div class="row" style="margin-bottom: 15px;">';
-            // GLITCH 1 FIX: Pass the current category to scope the datalist
             html += createFormGroup(fields[i], lastSelectedCat);
             if(fields[i+1]) {
                 html += createFormGroup(fields[i+1], lastSelectedCat);
@@ -1028,7 +1040,6 @@
             html += '</div>';
         }
 
-        // ENHANCEMENT 2: Append both Add Field and Bulk Seed buttons
         html += `
         <div style="display: flex; gap: 10px; margin-top: 10px;">
             <button class="add-field-btn" onclick="openFieldModal()">
@@ -1043,8 +1054,32 @@
     }
 
     /**
-     * Updated to include a Trash icon for field deletion.
+     * DYNAMIC POINTER SWITCHING
+     * Checks if a parent field is filled to swap the datalist instantly.
      */
+    function updateDatalistPointer(el, fieldId) {
+        const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
+        const globalDl = `dl_${lastSelectedCat}_${fieldId}`;
+        
+        let foundContext = false;
+        
+        // Scan other fields for a typed value
+        for (const f of fields) {
+            if (f.id === fieldId) continue;
+            const contextInput = document.getElementById(f.id);
+            if (contextInput && contextInput.value.trim() !== "") {
+                const contextualDlId = `${globalDl}_${f.id}_${contextInput.value.trim()}`;
+                if (document.getElementById(contextualDlId)) {
+                    el.setAttribute("list", contextualDlId);
+                    foundContext = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!foundContext) el.setAttribute("list", globalDl);
+    }
+
     function createFormGroup(f, currentCat) {
         return `
         <div class="form-group" style="flex: 1;">
@@ -1052,7 +1087,10 @@
             <div class="btn-del-field" onclick="removeField('${f.id}', '${f.label}')">
                 <i class="fa-solid fa-trash-can"></i>
             </div>
-            <input type="${f.type}" id="${f.id}" list="dl_${currentCat}_${f.id}" placeholder="${f.placeholder || ''}">
+            <input type="${f.type}" id="${f.id}" 
+                   list="dl_${currentCat}_${f.id}" 
+                   onfocus="updateDatalistPointer(this, '${f.id}')"
+                   placeholder="${f.placeholder || ''}">
         </div>`;
     }
 
@@ -1063,7 +1101,6 @@
         }
     }
 
-    // Capture browser errors
     window.onerror = function(m, u, l) { logToAndroid("JS Error: " + m + " at " + l, true); };
 
     function triggerNativeUpload(input) {
@@ -1085,7 +1122,6 @@
         const specs = {};
         const fields = CATEGORY_SCHEMA[cat] || [];
         
-        // Dynamically extract typed spec values
         fields.forEach(f => {
             const el = document.getElementById(f.id);
             if(el && el.value.trim() !== '') {
