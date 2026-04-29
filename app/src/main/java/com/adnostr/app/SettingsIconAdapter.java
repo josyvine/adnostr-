@@ -21,6 +21,7 @@ import java.util.List;
  * ENHANCEMENT: Added Privacy Command Center icon for all roles (Feature 1).
  * 
  * UPGRADE: Integrated Professional Material Icons for all Command functions.
+ * ENHANCEMENT: Added CMD_CONSOLE_TUNE to manage Technical Console visibility and verbosity.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -43,6 +44,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     // GLITCH 1 & 2 FIX: New Command Identifiers
     public static final int CMD_PERSONALIZED = 9;
     public static final int CMD_BROWSE = 10;
+
+    // CONSOLE MANAGEMENT (NEW)
+    public static final int CMD_CONSOLE_TUNE = 11;
 
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
@@ -96,7 +100,11 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         // Uses the professional cloud-save icon
         items.add(new SettingItem(CMD_BACKUP, "Backup", R.drawable.ic_cmd_backup));
 
-        // 8. System Reset (Everyone)
+        // 8. CONSOLE MANAGEMENT (Available to Everyone)
+        // Allows tuning visibility and debug verbosity
+        items.add(new SettingItem(CMD_CONSOLE_TUNE, "Console", R.drawable.tune_24px));
+
+        // 9. System Reset (Everyone)
         items.add(new SettingItem(CMD_RESET, "Reset App", R.drawable.ic_cmd_reset));
     }
 
