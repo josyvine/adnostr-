@@ -25,6 +25,7 @@ import androidx.work.WorkManager;
 import com.adnostr.app.databinding.ActivityMainBinding;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
+import com.google.android.material.badge.BadgeDrawable;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -47,6 +48,10 @@ import java.util.concurrent.TimeUnit;
  * FIXED (Glitch 4): Forced MODE_SCROLLABLE for User role to prevent text truncation on tab labels.
  * CRITICAL FIX FOR POPUP: Switched to addStatusListener to support the Global Ad Observer pattern.
  * ENHANCEMENT: Added "Console" tab to Bottom Navigation Bar.
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Forensic Authority: Unlocks the "Report" tab for verified Admin identity.
+ * - Live Alert Engine: Real-time Red Badge counter for unseen crowdsourced metadata.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -57,6 +62,9 @@ public class MainActivity extends AppCompatActivity {
     private AdNostrDatabaseHelper db;
     private WebSocketClientManager wsManager;
     private MainViewPagerAdapter pagerAdapter;
+
+    // ADMIN SUPREMACY: Index of the Report tab for badge targeting
+    private int reportTabIndex = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,14 +101,17 @@ public class MainActivity extends AppCompatActivity {
      * UPDATED: Implements dynamic MODE_SCROLLABLE for Advertisers to prevent text truncation.
      * FEATURE 3: Added Nearby Tab logic.
      * FIXED: Enabled Scrollable mode for both roles to prevent truncated text in User mode.
+     * ADMIN: Appends the Forensic Report tab if isAdmin() is verified.
      */
     private void setupNavigationSystem() {
         String role = db.getUserRole();
+        boolean isAdmin = db.isAdmin();
+        
         pagerAdapter = new MainViewPagerAdapter(this, role);
         binding.mainViewPager.setAdapter(pagerAdapter);
 
         // Fix swipe performance
-        binding.mainViewPager.setOffscreenPageLimit(8); 
+        binding.mainViewPager.setOffscreenPageLimit(10); 
 
         // ENHANCEMENT: Dynamic Tab Mode selection
         // FIXED: Replaced MODE_FIXED with MODE_SCROLLABLE for Users to stop text truncation.
@@ -110,7 +121,7 @@ public class MainActivity extends AppCompatActivity {
         // Link TabLayout with dynamic logic to ensure icons and names render correctly
         new TabLayoutMediator(binding.tabLayout, binding.mainViewPager, (tab, position) -> {
             if (RoleSelectionActivity.ROLE_USER.equals(role)) {
-                // USER LABELS (5 ITEMS)
+                // USER LABELS
                 switch (position) {
                     case 0:
                         tab.setText("Interests");
@@ -121,12 +132,10 @@ public class MainActivity extends AppCompatActivity {
                         tab.setIcon(R.drawable.ic_nav_history);
                         break;
                     case 2:
-                        // FEATURE 3
                         tab.setText("Nearby");
                         tab.setIcon(R.drawable.ic_nav_nearby);
                         break;
                     case 3:
-                        // NEW: Console Tab
                         tab.setText("Console");
                         tab.setIcon(R.drawable.terminal_2_24px);
                         break;
@@ -134,9 +143,17 @@ public class MainActivity extends AppCompatActivity {
                         tab.setText("Settings");
                         tab.setIcon(R.drawable.ic_nav_settings);
                         break;
+                    case 5:
+                        // ADMIN SUPREMACY: Report Tab for Users
+                        if (isAdmin) {
+                            tab.setText("Report");
+                            tab.setIcon(R.drawable.ic_nav_report);
+                            reportTabIndex = 5;
+                        }
+                        break;
                 }
             } else {
-                // ADVERTISER LABELS (8 ITEMS)
+                // ADVERTISER LABELS
                 switch (position) {
                     case 0:
                         tab.setText("Stats");
@@ -155,23 +172,28 @@ public class MainActivity extends AppCompatActivity {
                         tab.setIcon(R.drawable.ic_nav_network);
                         break;
                     case 4:
-                        // FEATURE 5 (Placeholder for now, handles indexing logic)
                         tab.setText("Publisher");
                         tab.setIcon(R.drawable.ic_nav_publisher);
                         break;
                     case 5:
-                        // FEATURE 3
                         tab.setText("Nearby");
                         tab.setIcon(R.drawable.ic_nav_nearby);
                         break;
                     case 6:
-                        // NEW: Console Tab
                         tab.setText("Console");
                         tab.setIcon(R.drawable.terminal_2_24px);
                         break;
                     case 7:
                         tab.setText("Settings");
                         tab.setIcon(R.drawable.ic_nav_settings);
+                        break;
+                    case 8:
+                        // ADMIN SUPREMACY: Report Tab for Advertisers
+                        if (isAdmin) {
+                            tab.setText("Report");
+                            tab.setIcon(R.drawable.ic_nav_report);
+                            reportTabIndex = 8;
+                        }
                         break;
                 }
             }
@@ -224,16 +246,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Monitors Relays for Kind 30001 Ads.
+     * Monitors Relays for Kind 30001 Ads and Admin Schema Events.
      * Validates 'd' tag to filter out User Interest broadcasts.
      * FIXED FOR POPUP: Uses addStatusListener to ensure MainActivity always stays attached 
      * and triggers the AdPopupActivity regardless of fragment state.
+     * ADMIN SUPREMACY: Sniffs for 30006/30007 to update the real-time Report badge.
      */
     private void setupGlobalAdListener() {
         wsManager.addStatusListener(new WebSocketClientManager.RelayStatusListener() {
             @Override
             public void onRelayConnected(String url) {
                 Log.d(TAG, "Connected to " + url);
+                
+                // ADMIN SUPREMACY: If Admin is connected, subscribe to schema updates globally
+                if (db.isAdmin()) {
+                    try {
+                        JSONObject filter = new JSONObject();
+                        filter.put("kinds", new JSONArray().put(30006).put(30007));
+                        String subId = "admin-sniff-" + url.hashCode();
+                        String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
+                        wsManager.subscribe(url, req);
+                    } catch (Exception ignored) {}
+                }
             }
 
             @Override
@@ -250,6 +284,7 @@ public class MainActivity extends AppCompatActivity {
                             JSONObject event = msgArray.getJSONObject(2);
                             int kind = event.optInt("kind", -1);
 
+                            // --- PART 1: AD BROADCAST LOGIC (EXISTING) ---
                             if (kind == 30001) {
                                 String contentStr = event.optString("content", "");
                                 if (contentStr.isEmpty() || !contentStr.contains("\"title\"")) {
@@ -280,10 +315,26 @@ public class MainActivity extends AppCompatActivity {
                                     });
                                 }
                             }
+                            
+                            // --- PART 2: ADMIN SUPREMACY ALERT LOGIC (NEW) ---
+                            else if (db.isAdmin() && (kind == 30006 || kind == 30007)) {
+                                long eventTime = event.optLong("created_at", 0);
+                                if (eventTime > db.getReportLastSeen() && reportTabIndex != -1) {
+                                    runOnUiThread(() -> {
+                                        TabLayout.Tab reportTab = binding.tabLayout.getTabAt(reportTabIndex);
+                                        if (reportTab != null) {
+                                            BadgeDrawable badge = reportTab.getOrCreateBadge();
+                                            badge.setNumber(badge.getNumber() + 1);
+                                            badge.setVisible(true);
+                                            badge.setBackgroundColor(ContextCompat.getColor(MainActivity.this, android.R.color.holo_red_dark));
+                                        }
+                                    });
+                                }
+                            }
                         }
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Ad processing failed: " + e.getMessage());
+                    Log.e(TAG, "Message processing failed: " + e.getMessage());
                 }
             }
 
