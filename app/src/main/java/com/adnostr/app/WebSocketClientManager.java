@@ -32,6 +32,10 @@ import java.util.List;
  * from overwriting the Global MainActivity ad listener.
  * CRASH FIX: Enforced all listener callbacks on the Main Thread to prevent CalledFromWrongThreadException.
  * ENHANCEMENT: Implemented master console switch and Professional vs. Debug log filtering.
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Schema Observer: Added a high-level hook to notify the system when new crowdsourced metadata arrives.
+ * - Forensic Sniffing: Automatic identification and dispatch of Kind 30006/30007 events.
  */
 public class WebSocketClientManager {
 
@@ -49,6 +53,9 @@ public class WebSocketClientManager {
 
     // FIXED: Support for multiple listeners so Activity and Fragments don't collide
     private final List<RelayStatusListener> listeners = new CopyOnWriteArrayList<>();
+
+    // ADMIN SUPREMACY: Dedicated listeners for crowdsourced schema events
+    private final List<SchemaEventListener> schemaListeners = new CopyOnWriteArrayList<>();
     
     // CRASH FIX: Handler to dispatch events to the Main UI Thread
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -58,6 +65,13 @@ public class WebSocketClientManager {
         void onRelayDisconnected(String url, String reason);
         void onMessageReceived(String url, String message);
         void onError(String url, Exception ex);
+    }
+
+    /**
+     * ADMIN SUPREMACY: Interface to handle pre-parsed crowdsourced data.
+     */
+    public interface SchemaEventListener {
+        void onSchemaEventReceived(String url, JSONObject event);
     }
 
     private WebSocketClientManager() {
@@ -92,6 +106,19 @@ public class WebSocketClientManager {
      */
     public void removeStatusListener(RelayStatusListener listener) {
         listeners.remove(listener);
+    }
+
+    /**
+     * ADMIN SUPREMACY: Register a component to monitor global metadata changes.
+     */
+    public void addSchemaListener(SchemaEventListener listener) {
+        if (listener != null && !schemaListeners.contains(listener)) {
+            schemaListeners.add(listener);
+        }
+    }
+
+    public void removeSchemaListener(SchemaEventListener listener) {
+        schemaListeners.remove(listener);
     }
 
     /**
@@ -207,6 +234,24 @@ public class WebSocketClientManager {
                 public void onMessage(String message) {
                     // FORENSIC: Capture raw incoming JSON frame
                     addToLog("FRAME_RECV FROM [" + relayUrl + "]:\n" + message);
+
+                    // ADMIN SUPREMACY: Pre-parse schema events to notify observers efficiently
+                    try {
+                        if (message.startsWith("[")) {
+                            JSONArray msgArray = new JSONArray(message);
+                            if ("EVENT".equals(msgArray.getString(0))) {
+                                JSONObject event = msgArray.getJSONObject(2);
+                                int kind = event.optInt("kind", -1);
+                                if (kind == 30006 || kind == 30007) {
+                                    mHandler.post(() -> {
+                                        for (SchemaEventListener schemaListener : schemaListeners) {
+                                            schemaListener.onSchemaEventReceived(relayUrl, event);
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
 
                     // CRASH FIX: Dispatch to listeners on Main Thread
                     mHandler.post(() -> {
