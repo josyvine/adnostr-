@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cvReportContainer"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="6dp"
+    app:cardBackgroundColor="#1A1A1A"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="2dp"
+    app:strokeColor="#333333"
+    app:strokeWidth="2dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp">
+
+        <!-- TYPE ICON (FOLDER / GEAR / TAG) -->
+        <ImageView
+            android:id="@+id/ivForensicIcon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_directions"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="#4CAF50" />
+
+        <!-- NEW ALERT BADGE -->
+        <TextView
+            android:id="@+id/tvNewBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@android:color/holo_orange_dark"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:text="NEW"
+            android:textColor="@android:color/white"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="@id/ivForensicIcon"
+            app:layout_constraintTop_toBottomOf="@id/ivForensicIcon"
+            tools:visibility="visible" />
+
+        <!-- MAIN TITLE (NAME OF CATEGORY/FIELD/BRAND) -->
+        <TextView
+            android:id="@+id/tvReportTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Excavators"
+            android:textColor="@android:color/white"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@+id/btnPurgeItem"
+            app:layout_constraintStart_toEndOf="@id/ivForensicIcon"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- SUBTITLE (MAIN CAT / TARGET FIELD) -->
+        <TextView
+            android:id="@+id/tvReportSubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Main: Construction"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toEndOf="@id/tvReportTitle"
+            app:layout_constraintStart_toStartOf="@id/tvReportTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvReportTitle" />
+
+        <!-- THE EXECUTIONER: ADMIN PURGE BUTTON -->
+        <ImageButton
+            android:id="@+id/btnPurgeItem"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_delete"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="@android:color/holo_red_dark"
+            tools:visibility="visible" />
+
+        <!-- METADATA TRACE FOOTER (NPUB + TIMESTAMP) -->
+        <LinearLayout
+            android:id="@+id/llTraceFooter"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="@id/tvReportTitle"
+            app:layout_constraintStart_toStartOf="@id/tvReportTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvReportSubtitle">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:alpha="0.5"
+                android:src="@android:drawable/ic_menu_info_details"
+                app:tint="@android:color/white" />
+
+            <TextView
+                android:id="@+id/tvAuthorTrace"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="npub1...8x3q"
+                android:textColor="#555555"
+                android:textSize="11sp" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="10dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="#333333" />
+
+            <TextView
+                android:id="@+id/tvTimestampTrace"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2 hours ago"
+                android:textColor="#555555"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>
