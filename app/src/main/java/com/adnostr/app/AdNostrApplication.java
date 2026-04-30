@@ -15,10 +15,16 @@ import java.io.StringWriter;
  * Handles notification channel initialization and the Global Uncaught Exception Handler.
  * UPDATED: Removed IPFS P2P Node Service startup as part of the transition 
  * to Encrypted Media Relays (NIP-96/Blossom).
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Admin Alert Channel: High-priority registration for real-time forensic monitoring alerts.
  */
 public class AdNostrApplication extends Application {
 
     public static final String AD_NOTIFICATION_CHANNEL_ID = "adnostr_deals_channel";
+    // ADMIN SUPREMACY: Dedicated channel for schema contribution alerts
+    public static final String ADMIN_ALERT_CHANNEL_ID = "adnostr_admin_alerts";
+    
     private static final String TAG = "AdNostrApp";
 
     @Override
@@ -76,9 +82,15 @@ public class AdNostrApplication extends Application {
     /**
      * Creates the Android Notification Channel for ad broadcasts.
      * Required for Android 8.0 (API 26) and above.
+     * 
+     * ADMIN SUPREMACY: Now registers the forensic alert channel for crowdsourced data.
      */
     private void createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager == null) return;
+
+            // --- CHANNEL 1: STANDARD AD NOTIFICATIONS ---
             CharSequence name = "Local Ad Notifications";
             String description = "Alerts you when a decentralized ad matching your interests is found.";
             int importance = NotificationManager.IMPORTANCE_HIGH;
@@ -87,11 +99,23 @@ public class AdNostrApplication extends Application {
             channel.setDescription(description);
             channel.enableVibration(true);
             channel.setShowBadge(true);
+            notificationManager.createNotificationChannel(channel);
 
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            if (notificationManager != null) {
-                notificationManager.createNotificationChannel(channel);
-            }
+            // --- CHANNEL 2: ADMIN FORENSIC ALERTS (NEW) ---
+            // High importance ensures sound and vibration for real-time moderation
+            CharSequence adminName = "Admin Forensic Alerts";
+            String adminDesc = "High-priority alerts for new crowdsourced categories, fields, and brands.";
+            
+            NotificationChannel adminChannel = new NotificationChannel(
+                    ADMIN_ALERT_CHANNEL_ID, 
+                    adminName, 
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+            adminChannel.setDescription(adminDesc);
+            adminChannel.enableLights(true);
+            adminChannel.enableVibration(true);
+            adminChannel.setShowBadge(true);
+            notificationManager.createNotificationChannel(adminChannel);
         }
     }
 }
