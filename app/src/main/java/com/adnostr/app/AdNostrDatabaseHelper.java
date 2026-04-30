@@ -23,10 +23,20 @@ import java.util.Set;
  * FIXED FOR POPUP: Implemented Fallback logic in getInterests to prevent empty subscriptions.
  * NEW: Added KEY_WIPED_SCHEMA_IDS and KEY_HIDDEN_HARDCODED for Deletion Persistence.
  * ENHANCEMENT: Added KEY_CONSOLE_LOG_ENABLED and KEY_DEBUG_MODE_ACTIVE for forensic management.
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Hardcoded master ADMIN_PUBKEY from verified identity passport.
+ * - Integrated KEY_REPORT_LAST_SEEN for Forensic Badge counter synchronization.
  */
 public class AdNostrDatabaseHelper {
 
     private static final String PREF_NAME = "adnostr_secure_prefs";
+
+    // =========================================================================
+    // ADMIN SUPREMACY CONFIGURATION
+    // =========================================================================
+    // MASTER IDENTITY: The cryptographic root of trust for AdNostr governance.
+    public static final String ADMIN_PUBKEY = "ab9e5584a7c2732d7265ed4bf1c101939b1d408891478fc0715b29e961760662";
 
     // Identity Keys
     private static final String KEY_PRIVATE_KEY = "nostr_private_key_hex";
@@ -64,6 +74,9 @@ public class AdNostrDatabaseHelper {
     // SCHEMA PURGE PERSISTENCE (NEW)
     private static final String KEY_WIPED_SCHEMA_IDS = "wiped_schema_event_ids";
     private static final String KEY_HIDDEN_HARDCODED = "globally_hidden_hardcoded_names";
+
+    // ADMIN FORENSIC LOGS
+    private static final String KEY_REPORT_LAST_SEEN = "admin_report_last_seen_timestamp";
 
     // HASHTAG REGISTRY (NEW)
     private static final String KEY_OWNED_HASHTAGS = "my_owned_hashtags_registry";
@@ -123,6 +136,31 @@ public class AdNostrDatabaseHelper {
             instance = new AdNostrDatabaseHelper(context.getApplicationContext());
         }
         return instance;
+    }
+
+    // =========================================================================
+    // ADMIN SUPREMACY HELPERS
+    // =========================================================================
+
+    /**
+     * Supreme Authority Check: Compares active user's pubkey against hardcoded master ID.
+     */
+    public boolean isAdmin() {
+        String currentPub = getPublicKey();
+        if (currentPub == null) return false;
+        return currentPub.equalsIgnoreCase(ADMIN_PUBKEY);
+    }
+
+    /**
+     * Records current timestamp when the admin exits the ReportActivity.
+     */
+    public void saveReportLastSeen() {
+        long now = System.currentTimeMillis() / 1000;
+        prefs.edit().putLong(KEY_REPORT_LAST_SEEN, now).apply();
+    }
+
+    public long getReportLastSeen() {
+        return prefs.getLong(KEY_REPORT_LAST_SEEN, 0);
     }
 
     // =========================================================================
@@ -434,9 +472,6 @@ public class AdNostrDatabaseHelper {
         return prefs.getBoolean(KEY_USERNAME_HIDDEN + "_" + role, false);
     }
 
-    /**
-     * FIXED: Appends current role to the live location key.
-     */
     public void setLiveLocationEnabled(boolean isEnabled) {
         String role = getUserRole();
         prefs.edit().putBoolean(KEY_LIVE_LOCATION_ENABLED + "_" + role, isEnabled).apply();
