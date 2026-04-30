@@ -27,6 +27,10 @@ import java.util.concurrent.TimeUnit;
  * UPDATED: Implements Kind 5 (Deletion) processing to ensure deleted items never return.
  * UPDATED: Implements Hardcoded Category Overrides to allow global deletion of built-in UI items.
  * UPDATED: Implements Cascading Deletion to wipe Fields and Value Pools (Brands) when a Category is deleted.
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Executioner Authority: Admin can target and delete events authored by ANY user.
+ * - Persistence Gate: fetchGlobalSchema strictly cross-references the local WIPED_SCHEMA_IDS blocklist.
  */
 public class MarketplaceSchemaManager {
 
@@ -225,6 +229,7 @@ public class MarketplaceSchemaManager {
 
     /**
      * GLOBAL DELETE: Scans for the original event and issues a Kind 5 Deletion.
+     * ADMIN SUPREMACY: If isAdmin is true, search across ALL authors.
      */
     public static void broadcastFieldDeletion(Context context, String category, String fieldLabel) {
         new Thread(() -> {
@@ -237,7 +242,11 @@ public class MarketplaceSchemaManager {
             try {
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006));
-                filter.put("authors", new JSONArray().put(myPubKey));
+                
+                // ADMIN SUPREMACY: Strip author filter to allow Admin to delete others' events
+                if (!db.isAdmin()) {
+                    filter.put("authors", new JSONArray().put(myPubKey));
+                }
 
                 String subId = "find-field-" + UUID.randomUUID().toString().substring(0, 4);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
@@ -282,6 +291,7 @@ public class MarketplaceSchemaManager {
     /**
      * CASCADING GLOBAL CATEGORY DELETE: Wipes Category, associated Fields, and associated Value Pools (Brands).
      * UPDATED: Now searches Kind 30006 AND 30007 for any items matching the category name.
+     * ADMIN SUPREMACY: Admin can target cascading wipes against ANY contributor.
      */
     public static void broadcastCategoryDeletion(Context context, String categoryName) {
         new Thread(() -> {
@@ -295,7 +305,11 @@ public class MarketplaceSchemaManager {
                 // DEEP SCAN: Request Kind 30006 (Schema/Fields) AND 30007 (Value Pools/Brands)
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006).put(30007));
-                filter.put("authors", new JSONArray().put(myPubKey));
+                
+                // ADMIN SUPREMACY: If not admin, restrict search to only own events
+                if (!db.isAdmin()) {
+                    filter.put("authors", new JSONArray().put(myPubKey));
+                }
 
                 String subId = "del-cascade-" + UUID.randomUUID().toString().substring(0, 4);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
