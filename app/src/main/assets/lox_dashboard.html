@@ -153,6 +153,10 @@
         margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 8px;
     }
 
+    /* ADMIN SUPREMACY: Hides moderation tools from regular users */
+    .admin-only { display: none !important; }
+    body.is-admin .admin-only { display: flex !important; }
+
 </style>
 </head>
 
@@ -211,8 +215,8 @@
                 <button class="add-field-btn" onclick="openCategoryModal()" style="margin-top: 10px; flex: 1;">
                     <i class="fa-solid fa-plus"></i> Add Custom Category
                 </button>
-                <!-- NEW: Delete Sub-Category Button -->
-                <button class="add-field-btn" onclick="removeCategory()" style="margin-top: 10px; flex: 1; border-color: var(--danger); color: var(--danger);">
+                <!-- ADMIN SUPREMACY: Unlocked via injectAdminStatus -->
+                <button class="add-field-btn admin-only" onclick="removeCategory()" style="margin-top: 10px; flex: 1; border-color: var(--danger); color: var(--danger);">
                     <i class="fa-solid fa-trash-can"></i> Delete Category
                 </button>
             </div>
@@ -443,6 +447,14 @@
     
     // NEW: Context Tracking for Bulk Adding
     let activeBulkContext = { fieldId: null, value: null };
+
+    // ADMIN SUPREMACY: Toggle Admin View via Java Bridge
+    function injectAdminStatus(isAdmin) {
+        if (isAdmin) {
+            document.body.classList.add('is-admin');
+            logToAndroid("ADMIN: Supremacy UI features enabled in Dashboard.");
+        }
+    }
 
     // BASE CATEGORY SPECIFICATIONS SCHEMA (Will be appended by Network Schema)
     const CATEGORY_SCHEMA = {
@@ -769,6 +781,7 @@
 
     /**
      * PERMANENT DELETION logic. 
+     * ADMIN SUPREMACY: Trash icon visibility handled via CSS .admin-only
      */
     function removeField(fieldId, fieldLabel) {
         const currentCat = lastSelectedCat;
@@ -788,6 +801,7 @@
 
     /**
      * FEATURE FIX: Deletes the entire Sub-Category permanently.
+     * ADMIN SUPREMACY: Unlocked via injectAdminStatus logic.
      */
     function removeCategory() {
         const catSelect = document.getElementById('cat');
@@ -1057,7 +1071,7 @@
         return `
         <div class="form-group" style="flex: 1;">
             <label>${f.label}</label>
-            <div class="btn-del-field" onclick="removeField('${f.id}', '${f.label}')">
+            <div class="btn-del-field admin-only" onclick="removeField('${f.id}', '${f.label}')">
                 <i class="fa-solid fa-trash-can"></i>
             </div>
             <input type="${f.type}" id="${f.id}" 
