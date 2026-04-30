@@ -13,7 +13,7 @@
     <!-- MANDATORY FOR ANDROID 14 (API 34): Allows the P2P node to share data in the background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    
+
     <!-- FEATURE 3: Mandatory for Live Location Beacon on Android 14+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
@@ -149,6 +149,13 @@
         <!-- FIXED: FEATURE 5: Product Preview Activity (WebView Staging) -->
         <activity
             android:name=".ProductPreviewActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- ADMIN SUPREMACY: Forensic Console Activity (The Command Center) -->
+        <activity
+            android:name=".ReportActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
