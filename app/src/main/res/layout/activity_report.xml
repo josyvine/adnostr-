@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    tools:context=".ReportActivity">
+
+    <!-- TOP TOOLBAR -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarReport"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#121212"
+        app:titleTextColor="@android:color/white"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:navigationIconTint="@android:color/white"
+        app:layout_constraintTop_toTopOf="parent"
+        app:title="Forensic Console" />
+
+    <!-- LIVE SCAN PROGRESS BAR -->
+    <ProgressBar
+        android:id="@+id/pbForensicLoading"
+        style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        android:progressTint="#FF6A00"
+        app:layout_constraintTop_toBottomOf="@id/toolbarReport" />
+
+    <!-- FILTER RIBBON (HORIZONTAL SCROLL) -->
+    <HorizontalScrollView
+        android:id="@+id/svFilterRibbon"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:scrollbars="none"
+        android:background="#121212"
+        app:layout_constraintTop_toBottomOf="@id/pbForensicLoading">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupFilters"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:singleSelection="true"
+            app:selectionRequired="true"
+            app:checkedChip="@id/chipAll">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipAll"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="[ ALL ]"
+                app:chipBackgroundColor="@color/hfs_border_grey"
+                android:textColor="@android:color/white" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipCategories"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="[ CATEGORIES ]"
+                app:chipBackgroundColor="@color/hfs_border_grey"
+                android:textColor="@android:color/white" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipSpecs"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="[ TECH SPECS ]"
+                app:chipBackgroundColor="@color/hfs_border_grey"
+                android:textColor="@android:color/white" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipBrands"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="[ BRANDS/VALUES ]"
+                app:chipBackgroundColor="@color/hfs_border_grey"
+                android:textColor="@android:color/white" />
+
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+
+    <!-- FORENSIC FEED -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvForensicFeed"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:padding="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/svFilterRibbon" />
+
+    <!-- EMPTY STATE VIEW -->
+    <LinearLayout
+        android:id="@+id/llEmptyForensic"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/svFilterRibbon">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:alpha="0.3"
+            android:src="@drawable/ic_nav_report"
+            app:tint="@android:color/white" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="No crowdsourced metadata detected."
+            android:textColor="#666666"
+            android:textSize="14sp" />
+        
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="The network registry is clean."
+            android:textColor="#444444"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
