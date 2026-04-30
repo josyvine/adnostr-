@@ -22,6 +22,10 @@ import java.util.List;
  * 
  * UPGRADE: Integrated Professional Material Icons for all Command functions.
  * ENHANCEMENT: Added CMD_CONSOLE_TUNE to manage Technical Console visibility and verbosity.
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Forensic Access: Unlocks the "Report" icon in the Command Center for Admin identity.
+ * - Command Type: Added CMD_REPORT (12) to the grid hierarchy.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -45,8 +49,11 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     public static final int CMD_PERSONALIZED = 9;
     public static final int CMD_BROWSE = 10;
 
-    // CONSOLE MANAGEMENT (NEW)
+    // CONSOLE MANAGEMENT
     public static final int CMD_CONSOLE_TUNE = 11;
+
+    // ADMIN SUPREMACY: Report Identifier
+    public static final int CMD_REPORT = 12;
 
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
@@ -59,10 +66,10 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     }
 
     /**
-     * Constructor filters the icon list based on the User's Role.
+     * Constructor filters the icon list based on the User's Role and Admin Status.
      * UPDATED: Points to new professional R.drawable assets instead of system drawables.
      */
-    public SettingsIconAdapter(String userRole, OnSettingClickListener listener) {
+    public SettingsIconAdapter(String userRole, boolean isAdmin, OnSettingClickListener listener) {
         this.listener = listener;
 
         // 1. Profile / Username Icon (Available for Users only)
@@ -104,7 +111,12 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         // Allows tuning visibility and debug verbosity
         items.add(new SettingItem(CMD_CONSOLE_TUNE, "Console", R.drawable.tune_24px));
 
-        // 9. System Reset (Everyone)
+        // 9. ADMIN SUPREMACY: Report Icon (Strict: Admin Only)
+        if (isAdmin) {
+            items.add(new SettingItem(CMD_REPORT, "Report", R.drawable.ic_nav_report));
+        }
+
+        // 10. System Reset (Everyone)
         items.add(new SettingItem(CMD_RESET, "Reset App", R.drawable.ic_cmd_reset));
     }
 
