@@ -40,6 +40,10 @@ import java.util.concurrent.TimeUnit;
  * ENHANCEMENT: Implements User-Side Trust Filter to verify Ad Sender vs Hashtag Owner.
  * NEW: Saves verified Ads to local User History Database.
  * UPDATED: Integrated Global Schema Deletion monitoring to keep categories in sync in the background.
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Background Guard: Sniffs for Kind 30006 and 30007 while the app is closed.
+ * - Alert System: Triggers High-Priority System Notifications for new crowdsourced metadata.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -88,7 +92,9 @@ public class NostrListenerWorker extends Worker {
 
         // 2. Fetch User Interests (Hashtags)
         Set<String> interests = db.getInterests();
-        if (interests.isEmpty()) {
+        
+        // ADMIN SUPREMACY: Admin must sync schema even if interest list is empty
+        if (interests.isEmpty() && !db.isAdmin()) {
             Log.d(TAG, "No interests selected. Skipping sync.");
             return Result.success();
         }
@@ -97,19 +103,34 @@ public class NostrListenerWorker extends Worker {
         final CountDownLatch latch = new CountDownLatch(1);
 
         try {
-            // FIXED: Request both Kind 30001 (Ads) AND Kind 5 (Deletions) to honor Advertiser wipes
-            JSONObject filter = new JSONObject();
-            filter.put("kinds", new JSONArray().put(30001).put(5));
-
-            JSONArray tags = new JSONArray();
-            for (String tag : interests) {
-                // FIXED: Changed .add() to .put() and added .replace("#", "") for protocol matching
-                tags.put(tag.toLowerCase().replace("#", ""));
-            }
-            filter.put("#t", tags);
-
+            // REQ Message construction
             String subId = UUID.randomUUID().toString().substring(0, 8);
-            String reqMessage = new JSONArray().put("REQ").put(subId).put(filter).toString();
+            JSONArray reqArray = new JSONArray().put("REQ").put(subId);
+
+            // --- FILTER 1: STANDARD AD & DELETION SNIFFER ---
+            JSONObject adFilter = new JSONObject();
+            adFilter.put("kinds", new JSONArray().put(30001).put(5));
+            
+            if (!interests.isEmpty()) {
+                JSONArray tags = new JSONArray();
+                for (String tag : interests) {
+                    tags.put(tag.toLowerCase().replace("#", ""));
+                }
+                adFilter.put("#t", tags);
+            }
+            reqArray.put(adFilter);
+
+            // --- FILTER 2: ADMIN SCHEMA GUARD (ADMIN ONLY) ---
+            if (db.isAdmin()) {
+                JSONObject adminFilter = new JSONObject();
+                adminFilter.put("kinds", new JSONArray().put(30006).put(30007));
+                // Only pull global events since the last time the report was opened
+                adminFilter.put("since", db.getReportLastSeen());
+                reqArray.put(adminFilter);
+                Log.d(TAG, "Admin Supremacy: Background Schema Sniffer Active.");
+            }
+
+            String reqMessage = reqArray.toString();
 
             // Connect to bootstrap relay
             connectAndListen(BOOTSTRAP_RELAYS[0], reqMessage, latch);
@@ -164,6 +185,7 @@ public class NostrListenerWorker extends Worker {
     /**
      * Parses the relay packet and triggers a notification if it's a valid ad,
      * or processes deletions if it's a Kind 5 wipe.
+     * ADMIN SUPREMACY: Processes 30006/30007 for forensic alerts.
      */
     private void processRelayEvent(String rawMessage) {
         try {
@@ -223,6 +245,18 @@ public class NostrListenerWorker extends Worker {
                     }
                 }
                 return; // Finished processing Kind 5, exit method
+            }
+
+            // =================================================================
+            // HANDLE KIND 30006 & 30007: ADMIN FORENSIC ALERTS
+            // =================================================================
+            if (db.isAdmin() && (kind == 30006 || kind == 30007)) {
+                long createdAt = event.optLong("created_at", 0);
+                if (createdAt > db.getReportLastSeen()) {
+                    String type = (kind == 30006) ? "New Schema Contribution" : "New Value Pool Seeding";
+                    showAdminSchemaNotification(type, "Click to review crowdsourced data forensic trace.");
+                }
+                return;
             }
 
             // =================================================================
@@ -430,6 +464,36 @@ public class NostrListenerWorker extends Worker {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
             nm.notify((int) System.currentTimeMillis(), builder.build());
+        }
+    }
+
+    /**
+     * ADMIN SUPREMACY: Triggers a high-priority alert for schema events.
+     */
+    private void showAdminSchemaNotification(String title, String message) {
+        // Tapping this notification launches the Forensic Report Activity
+        Intent intent = new Intent(context, ReportActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+
+        PendingIntent pi = PendingIntent.getActivity(context, 0, intent, flags);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, AdNostrApplication.AD_NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_nav_report)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_SYSTEM)
+                .setContentIntent(pi)
+                .setAutoCancel(true);
+
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) {
+            nm.notify(30006, builder.build());
         }
     }
 }
