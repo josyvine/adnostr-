@@ -40,6 +40,9 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * ENHANCEMENT: Added JSON Identity Portability (Backup & Restore).
  * ENHANCEMENT: Added Privacy Command Center for anonymity and location controls (Feature 1).
  * ENHANCEMENT: Added Console Management portal to control log visibility and debug verbosity.
+ * 
+ * ADMIN SUPREMACY FIX:
+ * - Constructor Update: Passes isAdmin status to the icon adapter to unlock the Forensic Report icon.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -107,20 +110,24 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
     /**
      * Initializes the RecyclerView with square Instagram-style icons.
      * Icons are filtered automatically based on the user's role.
+     * FIX: Passes the isAdmin boolean to resolve the constructor mismatch error.
      */
     private void setupIconGrid() {
         String role = db.getUserRole();
         binding.tvCurrentModeLabel.setText("Active Mode: " + role);
-        
+
         // 3-Column professionally spaced grid
         binding.rvSettingsIcons.setLayoutManager(new GridLayoutManager(requireContext(), 3));
-        adapter = new SettingsIconAdapter(role, this);
+        
+        // ADMIN SUPREMACY FIX: Added db.isAdmin() as the 2nd parameter
+        adapter = new SettingsIconAdapter(role, db.isAdmin(), this);
         binding.rvSettingsIcons.setAdapter(adapter);
     }
 
     /**
      * INTERFACE: Handles clicks on the square grid icons.
      * Routes each command to its respective original logic portal.
+     * ADMIN SUPREMACY: Added CMD_REPORT case to launch the forensic feed.
      */
     @Override
     public void onSettingClicked(int commandType) {
@@ -160,6 +167,10 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             case SettingsIconAdapter.CMD_BROWSE:
                 startActivity(new Intent(requireContext(), BrowseAdvertisersActivity.class));
                 break;
+            // ADMIN SUPREMACY: Launch Report Activity
+            case SettingsIconAdapter.CMD_REPORT:
+                startActivity(new Intent(requireContext(), ReportActivity.class));
+                break;
         }
     }
 
@@ -185,7 +196,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
         // 3. Listener: Master Visibility Toggle
         dialogBinding.switchEnableConsole.setOnCheckedChangeListener((buttonView, isChecked) -> {
             db.setConsoleLogEnabled(isChecked);
-            
+
             // Enable/Disable the debug sub-toggle visually
             dialogBinding.llDebugModeContainer.setAlpha(isChecked ? 1.0f : 0.4f);
             dialogBinding.switchDebugMode.setEnabled(isChecked);
@@ -224,7 +235,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
         // 2. GLITCH 4 FIX: Handle Username Visibility Toggle with UI Sync and Rebroadcast
         dialogBinding.switchUsernameDiscovery.setOnCheckedChangeListener((buttonView, isChecked) -> {
             db.setUsernameHidden(isChecked);
-            
+
             // Sync logic: Find the User Dashboard Fragment to update header and rebroadcast to Nostr
             if (getActivity() != null) {
                 ViewPager2 viewPager = getActivity().findViewById(R.id.mainViewPager);
@@ -248,7 +259,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
         // 3. GLITCH 3 FIX: Handle Live Location Toggle (Beacon Mode Service)
         dialogBinding.switchLiveLocation.setOnCheckedChangeListener((buttonView, isChecked) -> {
             db.setLiveLocationEnabled(isChecked);
-            
+
             if (isChecked) {
                 // Check permissions before starting the service
                 if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -363,7 +374,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             dialogBinding.btnUsernameActionPopup.setOnClickListener(v -> {
                 dialogBinding.btnUsernameActionPopup.setEnabled(false);
                 dialogBinding.btnUsernameActionPopup.setText("RELEASING...");
-                
+
                 UsernameManager.releaseUsername(requireContext(), db.getPrivateKey(), db.getPublicKey(), (success, releaseMsg) -> {
                     if (success) {
                         db.saveUsername("");
@@ -433,10 +444,10 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
         dialogBinding.btnSwitchActionPopup.setOnClickListener(v -> {
             String newRole = isUser ? RoleSelectionActivity.ROLE_ADVERTISER : RoleSelectionActivity.ROLE_USER;
             db.saveUserRole(newRole);
-            
+
             Toast.makeText(getContext(), "Role switched to " + newRole, Toast.LENGTH_SHORT).show();
             dialog.dismiss();
-            
+
             // Trigger global UI refresh to update the Command Center icons
             if (getActivity() instanceof MainActivity) {
                 ((MainActivity) getActivity()).refreshRoleAndUI();
