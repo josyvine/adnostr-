@@ -38,6 +38,10 @@ import java.util.UUID;
  * ENHANCEMENT: Implements Global Crowdsourced Schema Sync and Broadcasting.
  * UPDATED: Integrated Deletion Persistence logic into the WebAppInterface bridge.
  * ENHANCEMENT: Product publishing logs respect Global Console Visibility and Debug/Professional modes.
+ * 
+ * ADMIN SUPREMACY UPDATE:
+ * - Status Injection: Automatically informs the HTML engine if the user has Admin privileges.
+ * - Deletion Unlocking: Enables the management of hardcoded and crowdsourced categories via the JS bridge.
  */
 public class CreateProductActivity extends AppCompatActivity {
 
@@ -176,6 +180,12 @@ public class CreateProductActivity extends AppCompatActivity {
                 super.onPageFinished(view, url);
                 isWebViewReady = true;
                 logTechnicalEvent("WEBVIEW: Dashboard DOM Loaded.");
+                
+                // ADMIN SUPREMACY: Inject status to toggle UI management tools
+                boolean isAdmin = db.isAdmin();
+                binding.wvProductCreator.evaluateJavascript("if(window.injectAdminStatus) injectAdminStatus(" + isAdmin + ");", null);
+                if(isAdmin) logTechnicalEvent("ADMIN: Supremacy authenticated in WebView.");
+
                 injectSchemaIfReady();
             }
         });
