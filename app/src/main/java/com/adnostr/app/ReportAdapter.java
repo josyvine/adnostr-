@@ -29,6 +29,7 @@ import java.util.List;
  * CROWDSOURCED DATA FIX:
  * - Kind 30007 Parser: Now identifies context (e.g. Bajaj) to prevent "Unknown Field" errors.
  * - Detail Hook: Implemented onClickListener to launch the professional vertical detail viewer.
+ * - BUILD FIX: Added onLocalDismiss to the OnPurgeListener interface to resolve compilation error.
  */
 public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicViewHolder> {
 
@@ -36,9 +37,14 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
     private final long lastSeenTimestamp;
     private final OnPurgeListener listener;
 
+    /**
+     * Interface for Admin Governance.
+     * FIXED: Added onLocalDismiss signature to match ReportActivity implementation.
+     */
     public interface OnPurgeListener {
         void onSurgicalWipe(JSONObject event);
         void onCascadingNuke(String categoryName);
+        void onLocalDismiss(JSONObject event); // RESOLVES BUILD ERROR
     }
 
     public ReportAdapter(List<JSONObject> eventList, long lastSeen, OnPurgeListener listener) {
@@ -185,6 +191,17 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                     Intent intent = new Intent(context, ForensicDetailActivity.class);
                     intent.putExtra("EVENT_JSON", event.toString());
                     context.startActivity(intent);
+                });
+
+                // =========================================================================
+                // LOCAL DISMISS HOOK (NEW)
+                // Hold down on a card to hide it locally without deleting it globally.
+                // =========================================================================
+                binding.cvReportContainer.setOnLongClickListener(v -> {
+                    if (listener != null) {
+                        listener.onLocalDismiss(event);
+                    }
+                    return true;
                 });
 
             } catch (Exception e) {
