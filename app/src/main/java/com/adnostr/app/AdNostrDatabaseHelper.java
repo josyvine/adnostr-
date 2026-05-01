@@ -24,6 +24,10 @@ import java.util.Set;
  * NEW: Added KEY_WIPED_SCHEMA_IDS and KEY_HIDDEN_HARDCODED for Deletion Persistence.
  * ENHANCEMENT: Added KEY_CONSOLE_LOG_ENABLED and KEY_DEBUG_MODE_ACTIVE for forensic management.
  * 
+ * CROWDSOURCED DATA FIX:
+ * - KEY_SCHEMA_CACHE_JSON: Permanent local memory to prevent crowdsourced data from vanishing after 12 hours.
+ * - KEY_DISMISSED_REPORT_IDS: Local storage to hide Admin report cards without network-wide deletion.
+ * 
  * ADMIN SUPREMACY UPDATE:
  * - Hardcoded master ADMIN_PUBKEY from verified identity passport.
  * - Integrated KEY_REPORT_LAST_SEEN for Forensic Badge counter synchronization.
@@ -71,9 +75,13 @@ public class AdNostrDatabaseHelper {
     // PHANTOM AD PREVENTION
     private static final String KEY_WIPED_AD_IDS = "wiped_deleted_ad_ids";
     
-    // SCHEMA PURGE PERSISTENCE (NEW)
+    // SCHEMA PURGE PERSISTENCE
     private static final String KEY_WIPED_SCHEMA_IDS = "wiped_schema_event_ids";
     private static final String KEY_HIDDEN_HARDCODED = "globally_hidden_hardcoded_names";
+
+    // CROWDSOURCED MEMORY ENGINE (NEW)
+    private static final String KEY_SCHEMA_CACHE_JSON = "marketplace_schema_cache_v2";
+    private static final String KEY_DISMISSED_REPORT_IDS = "admin_dismissed_report_events";
 
     // ADMIN FORENSIC LOGS
     private static final String KEY_REPORT_LAST_SEEN = "admin_report_last_seen_timestamp";
@@ -192,7 +200,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // BRANDING STORAGE (NEW)
+    // BRANDING STORAGE
     // =========================================================================
 
     public void saveAdvertiserLogoUrl(String url) {
@@ -386,7 +394,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // SCHEMA PURGE PERSISTENCE (NEW)
+    // SCHEMA PURGE PERSISTENCE
     // =========================================================================
 
     /**
@@ -417,7 +425,41 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // OWNED HASHTAG REGISTRY (NEW)
+    // CROWDSOURCED MEMORY METHODS (NEW FIX)
+    // =========================================================================
+
+    /**
+     * Permanent Memory: Saves the entire synchronized Marketplace Schema locally.
+     * This prevents Bajaj models and years from vanishing after 12 hours.
+     */
+    public void saveSchemaCache(String json) {
+        prefs.edit().putString(KEY_SCHEMA_CACHE_JSON, json).commit();
+    }
+
+    /**
+     * Permanent Memory: Loads the last known successful network consensus instantly.
+     */
+    public String getSchemaCache() {
+        return prefs.getString(KEY_SCHEMA_CACHE_JSON, "{}");
+    }
+
+    /**
+     * Admin Control: Records a report card ID as dismissed so it doesn't show in 
+     * the forensic console locally, without deleting it for everyone else.
+     */
+    public void addDismissedReportId(String eventId) {
+        Set<String> dismissed = new HashSet<>(prefs.getStringSet(KEY_DISMISSED_REPORT_IDS, new HashSet<>()));
+        dismissed.add(eventId);
+        prefs.edit().putStringSet(KEY_DISMISSED_REPORT_IDS, dismissed).apply();
+    }
+
+    public boolean isReportDismissed(String eventId) {
+        Set<String> dismissed = prefs.getStringSet(KEY_DISMISSED_REPORT_IDS, new HashSet<>());
+        return dismissed.contains(eventId);
+    }
+
+    // =========================================================================
+    // OWNED HASHTAG REGISTRY
     // =========================================================================
 
     /**
@@ -453,7 +495,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // PRIVACY COMMAND CENTER METHODS (FIXED FOR ROLE COLLISION)
+    // PRIVACY COMMAND CENTER METHODS
     // =========================================================================
 
     /**
@@ -486,7 +528,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // CONSOLE & DEBUG MANAGEMENT METHODS (NEW)
+    // CONSOLE & DEBUG MANAGEMENT METHODS
     // =========================================================================
 
     /**
