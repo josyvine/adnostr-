@@ -26,6 +26,10 @@ import java.util.UUID;
  * - Logic: Monitors Kind 30006 and 30007 globally.
  * - Feed: Strictly chronological (Newest first).
  * - Governance: Triggers cascading wipes and surgical Kind 5 deletions.
+ * 
+ * CROWDSOURCED DATA FIX:
+ * - Local Hide: Integrated Dismissal logic to clear cards locally without network wipes.
+ * - Persistence: Blocks dismissed IDs from re-entering the feed during active sessions.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -78,6 +82,9 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         binding.toolbarReport.setNavigationOnClickListener(v -> finish());
     }
 
+    /**
+     * UPDATED: Added listener for local dismissal (Mark as Read).
+     */
     private void setupRecyclerView() {
         binding.rvForensicFeed.setLayoutManager(new LinearLayoutManager(this));
         
@@ -91,6 +98,12 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             @Override
             public void onCascadingNuke(String categoryName) {
                 executeCascadingNuke(categoryName);
+            }
+
+            @Override
+            public void onLocalDismiss(JSONObject event) {
+                // NEW: Logic to hide the card locally without global deletion
+                executeLocalDismiss(event);
             }
         });
         
@@ -140,6 +153,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * Interface: Called by WebSocketClientManager when Kind 30006/30007 arrives.
+     * FIXED: Now checks for local dismissal to prevent Bajaj cards from returning.
      */
     @Override
     public void onSchemaEventReceived(String url, JSONObject event) {
@@ -154,6 +168,14 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
                 // Check blocklist before adding
                 if (db.isSchemaWiped(eventId)) return;
+
+                // =========================================================================
+                // LOCAL PERSISTENCE CHECK (NEW)
+                // If the Admin has marked this card as read, do not display it.
+                // =========================================================================
+                if (db.isReportDismissed(eventId)) {
+                    return;
+                }
 
                 fullMasterList.add(event);
                 
@@ -241,6 +263,23 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             fullMasterList.removeAll(itemsToRemove);
             applyFilter();
             Toast.makeText(this, "Category Tree Wiped Successfully.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * NEW: Executes the local "Mark as Read" logic.
+     * Removes card from UI and saves the ID so it doesn't return, 
+     * but does NOT send a global delete command.
+     */
+    private void executeLocalDismiss(JSONObject event) {
+        try {
+            String id = event.getString("id");
+            db.addDismissedReportId(id);
+            fullMasterList.remove(event);
+            applyFilter();
+            Toast.makeText(this, "Card Dismissed (Local Only).", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Log.e(TAG, "Dismiss failed: " + e.getMessage());
         }
     }
 
