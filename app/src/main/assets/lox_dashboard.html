@@ -628,7 +628,7 @@
             {id: "artist", label: "Artist", type: "text", placeholder: "e.g. Unknown"}
         ],
         "Digital": [
-            {id: "product_type", label: "Product Type", type: "text", placeholder: "e.g. Software"},
+            {id: "product_type", label: "Type", type: "text", placeholder: "e.g. Software"},
             {id: "license_type", label: "License", type: "text", placeholder: "e.g. Lifetime"},
             {id: "version", label: "Version", type: "text", placeholder: "e.g. Pro 2.0"},
             {id: "delivery_method", label: "Delivery", type: "text", placeholder: "e.g. Email Key"}
@@ -835,7 +835,7 @@
     }
 
     /**
-     * ENHANCEMENT 2: Bulk Values Logic
+     * ENHANCEMENT 2: Bulk Add Field Values Logic
      */
     function openBulkValuesModal() {
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
@@ -926,33 +926,49 @@
     }
 
     /**
-     * PERMANENT DELETE FIX: Updated to clear dynamic elements before re-injecting filtered data.
+     * CROWDSOURCED DATA FIX (PERSISTENT MEMORY):
+     * Logic: Merges local cache with network data.
+     * Prevents Bajaj models and years from vanishing after 12 hours.
      */
     function injectGlobalSchema(jsonString) {
         try {
             const schema = JSON.parse(jsonString);
 
-            // 1. CLEAR DYNAMIC DOM (Delete Persistence Fix)
+            // 1. SMART DOM REFRESH
+            // Only clear custom categories that have been explicitly deleted by the network
             const customGroup = document.getElementById('og_custom');
-            if (customGroup) customGroup.innerHTML = '';
+            const hiddenItems = schema.hidden_hardcoded || [];
             
-            // 2. CLEAR DYNAMIC CATEGORY OBJECTS
-            const baseKeys = ["Cars", "Bikes", "Heavy Vehicles", "Spare Parts", "Property Sale", "Property Rent", "Mobiles", "Computers", "Gaming", "Electronics", "Furniture", "Fashion", "Jewelry", "Jobs", "Services", "Education", "Industrial", "Pets", "Books", "Music", "Art", "Digital", "Grocery"];
-            for (let key in CATEGORY_SCHEMA) {
-                if (!baseKeys.includes(key)) {
-                    delete CATEGORY_SCHEMA[key];
-                }
-            }
-
-            // 3. Inject Crowdsourced Categories
-            if (schema.categories && schema.categories.length > 0) {
-                schema.categories.forEach(c => {
-                    if (!CATEGORY_SCHEMA[c.sub]) CATEGORY_SCHEMA[c.sub] = [];
-                    addCategoryToDOM(c.main, c.sub);
+            // 2. PERSISTENCE OVERRIDE (FIX)
+            // We no longer wipe all dynamic categories. 
+            // We only remove categories that are explicitly blocked.
+            if (hiddenItems.length > 0) {
+                const catSelect = document.getElementById('cat');
+                hiddenItems.forEach(name => {
+                    const option = Array.from(catSelect.options).find(opt => opt.value === name);
+                    if (option) {
+                        const parentGroup = option.parentElement;
+                        option.remove();
+                        if (parentGroup && parentGroup.tagName === 'OPTGROUP' && parentGroup.children.length === 0) {
+                            parentGroup.remove();
+                        }
+                    }
+                    delete CATEGORY_SCHEMA[name];
                 });
             }
 
-            // 4. Inject Crowdsourced Fields
+            // 3. MERGE Crowdsourced Categories
+            if (schema.categories && schema.categories.length > 0) {
+                schema.categories.forEach(c => {
+                    // Do not add if it was just deleted
+                    if (!hiddenItems.includes(c.sub)) {
+                        if (!CATEGORY_SCHEMA[c.sub]) CATEGORY_SCHEMA[c.sub] = [];
+                        addCategoryToDOM(c.main, c.sub);
+                    }
+                });
+            }
+
+            // 4. MERGE Crowdsourced Fields
             if (schema.fields && schema.fields.length > 0) {
                 schema.fields.forEach(f => {
                     if (!CATEGORY_SCHEMA[f.category]) CATEGORY_SCHEMA[f.category] = [];
@@ -968,10 +984,10 @@
                 });
             }
 
-            // 5. Build Historical Auto-Complete Datalists
+            // 5. STABILIZE Historical Auto-Complete Datalists
+            // Logic: Appends new Bajaj models/years to existing lists to prevent vanishing.
             if (schema.values && schema.values.length > 0) {
                 const dlContainer = document.getElementById('datalistContainer');
-                dlContainer.innerHTML = ''; // Reset datalists to prevent stale deleted values
                 
                 schema.values.forEach(v => {
                     if (v.category && v.specs) {
@@ -1006,9 +1022,9 @@
             }
 
             renderSpecs();
-            logToAndroid("Global Schema Sync Complete.");
+            logToAndroid("Collective Schema Memory Synchronized.");
         } catch (e) {
-            logToAndroid("Failed to inject global schema: " + e.message, true);
+            logToAndroid("Memory Sync Failed: " + e.message, true);
         }
     }
 
