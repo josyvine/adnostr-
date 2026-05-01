@@ -160,6 +160,16 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
+        <!-- ========================================================================= -->
+        <!-- NEW: CROWDSOURCED DEEP-DIVE (FORENSIC DETAIL)                            -->
+        <!-- FIXED: Added declaration to prevent ActivityNotFoundException crash.      -->
+        <!-- ========================================================================= -->
+        <activity
+            android:name=".ForensicDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
         <!-- ================================================================= -->
         <!-- SERVICES -->
         <!-- ================================================================= -->
