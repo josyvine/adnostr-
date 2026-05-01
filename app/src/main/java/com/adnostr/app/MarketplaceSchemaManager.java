@@ -28,6 +28,10 @@ import java.util.concurrent.TimeUnit;
  * UPDATED: Implements Hardcoded Category Overrides to allow global deletion of built-in UI items.
  * UPDATED: Implements Cascading Deletion to wipe Fields and Value Pools (Brands) when a Category is deleted.
  * 
+ * CROWDSOURCED DATA FIX:
+ * - Increased CountDownLatch to 15 seconds to prevent data "vanishing" on slow relays.
+ * - Implemented Schema Caching: Loads data from local memory first, then updates from network.
+ * 
  * ADMIN SUPREMACY UPDATE:
  * - Executioner Authority: Admin can target and delete events authored by ANY user.
  * - Persistence Gate: fetchGlobalSchema strictly cross-references the local WIPED_SCHEMA_IDS blocklist.
@@ -43,11 +47,26 @@ public class MarketplaceSchemaManager {
     /**
      * Fetches all crowdsourced categories, fields, and historical values from the network.
      * NEW: Also fetches Kind 5 events to identify and purge deleted entries.
+     * FIXED: Now utilizes Local Cache first and has an extended 15-second network window.
      */
     public static void fetchGlobalSchema(Context context, SchemaFetchCallback callback) {
         new Thread(() -> {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+
+            // =========================================================================
+            // STEP 1: PERSISTENCE FIRST (LOCAL MEMORY LOAD)
+            // Immediately return cached Bajaj data so the UI is never empty.
+            // =========================================================================
+            String cachedSchema = db.getSchemaCache();
+            if (cachedSchema != null && !cachedSchema.equals("{}")) {
+                Log.i(TAG, "MEMORY_ENGINE: Loading schema from local anchor.");
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (callback != null) callback.onSchemaFetched(cachedSchema);
+                });
+            }
+
             Set<String> relays = db.getRelayPool();
+            // INCREASED TIMEOUT: From 5 to 15 seconds to ensure deep relay search success
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             // Temporary storage for events coming off the wire
@@ -129,15 +148,15 @@ public class MarketplaceSchemaManager {
                             @Override public void onClose(int c, String r, boolean m) { latch.countDown(); }
                             @Override public void onError(Exception ex) { latch.countDown(); }
                         };
-                        client.setConnectionLostTimeout(10);
+                        client.setConnectionLostTimeout(15); // Extended timeout for slow relays
                         client.connect();
                     } catch (Exception e) {
                         latch.countDown();
                     }
                 }
 
-                // Wait up to 5 seconds for network consensus
-                latch.await(5, TimeUnit.SECONDS);
+                // Wait up to 15 seconds for network consensus
+                latch.await(15, TimeUnit.SECONDS);
 
                 // =========================================================================
                 // THE FILTER ENGINE: PERMANENT PURGE LOGIC
@@ -180,6 +199,12 @@ public class MarketplaceSchemaManager {
                 Set<String> allHidden = db.getHiddenHardcodedNames();
                 allHidden.addAll(hiddenHardcodedNames);
                 globalSchema.put("hidden_hardcoded", new JSONArray(allHidden));
+
+                // =========================================================================
+                // STEP 2: RE-CACHE (UPDATE MEMORY)
+                // Save the new successful consensus to the phone disk.
+                // =========================================================================
+                db.saveSchemaCache(globalSchema.toString());
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (callback != null) callback.onSchemaFetched(globalSchema.toString());
