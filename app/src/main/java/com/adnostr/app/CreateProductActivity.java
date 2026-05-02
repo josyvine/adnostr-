@@ -2,6 +2,7 @@ package com.adnostr.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -38,6 +39,9 @@ import java.util.UUID;
  * ENHANCEMENT: Implements Global Crowdsourced Schema Sync and Broadcasting.
  * UPDATED: Integrated Deletion Persistence logic into the WebAppInterface bridge.
  * ENHANCEMENT: Product publishing logs respect Global Console Visibility and Debug/Professional modes.
+ * 
+ * COLLECTIVE MEMORY UPDATE:
+ * - triggerAutomaticHealing: Background bridge that re-signs and re-broadcasts local schema to heal amnesic relays.
  * 
  * ADMIN SUPREMACY UPDATE:
  * - Status Injection: Automatically informs the HTML engine if the user has Admin privileges.
@@ -407,6 +411,85 @@ public class CreateProductActivity extends AppCompatActivity {
         } catch (Exception e) {
             logTechnicalEvent("SIGN_FAIL: " + e.getMessage());
         }
+    }
+
+    /**
+     * COLLECTIVE MEMORY BRIDGE: Automatic Healing Logic
+     * Triggered by MarketplaceSchemaManager when network amnesia is detected.
+     * Re-signs and re-broadcasts the entire local schema anchor to refresh relay indexes.
+     */
+    public static void triggerAutomaticHealing(Context context) {
+        new Thread(() -> {
+            Log.w(TAG, "HEALER: Commencing background network restoration...");
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            WebSocketClientManager wsManager = WebSocketClientManager.getInstance();
+            String anchorJson = db.getSchemaCache();
+
+            if (anchorJson == null || anchorJson.equals("{}") || anchorJson.length() < 50) return;
+
+            try {
+                JSONObject schema = new JSONObject(anchorJson);
+
+                // 1. Heal Categories (Kind 30006)
+                JSONArray categories = schema.optJSONArray("categories");
+                if (categories != null) {
+                    for (int i = 0; i < categories.length(); i++) {
+                        JSONObject cat = categories.getJSONObject(i);
+                        cat.remove("_event_id"); // Strip internal database tag
+                        executeSilentHealBroadcast(context, wsManager, 30006, cat);
+                    }
+                }
+
+                // 2. Heal Fields (Kind 30006)
+                JSONArray fields = schema.optJSONArray("fields");
+                if (fields != null) {
+                    for (int i = 0; i < fields.length(); i++) {
+                        JSONObject field = fields.getJSONObject(i);
+                        field.remove("_event_id");
+                        executeSilentHealBroadcast(context, wsManager, 30006, field);
+                    }
+                }
+
+                // 3. Heal Value Pools / Brands (Kind 30007)
+                JSONArray values = schema.optJSONArray("values");
+                if (values != null) {
+                    for (int i = 0; i < values.length(); i++) {
+                        JSONObject val = values.getJSONObject(i);
+                        val.remove("_event_id");
+                        executeSilentHealBroadcast(context, wsManager, 30007, val);
+                    }
+                }
+
+                Log.i(TAG, "HEALER: Collective memory successfully pushed to relays.");
+
+            } catch (Exception e) {
+                Log.e(TAG, "HEALER_CRASH: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    /**
+     * Internal logic for re-signing and bumping events for the auto-heal loop.
+     */
+    private static void executeSilentHealBroadcast(Context context, WebSocketClientManager ws, int kind, JSONObject content) {
+        try {
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            JSONObject event = new JSONObject();
+            event.put("kind", kind);
+            event.put("pubkey", db.getPublicKey());
+            // BUMP: Reset relay pruning clock with fresh timestamp
+            event.put("created_at", System.currentTimeMillis() / 1000);
+            event.put("content", content.toString());
+
+            JSONArray tags = new JSONArray();
+            tags.put(new JSONArray().put("d").put("adnostr_schema_" + UUID.randomUUID().toString().substring(0, 8)));
+            event.put("tags", tags);
+
+            JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), event);
+            if (signed != null) {
+                ws.broadcastEvent(signed.toString());
+            }
+        } catch (Exception ignored) {}
     }
 
     /**
