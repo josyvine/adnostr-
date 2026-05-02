@@ -28,6 +28,9 @@ import java.util.Set;
  * - KEY_SCHEMA_CACHE_JSON: Permanent local memory to prevent crowdsourced data from vanishing after 12 hours.
  * - KEY_DISMISSED_REPORT_IDS: Local storage to hide Admin report cards without network-wide deletion.
  * 
+ * COLLECTIVE MEMORY UPDATE:
+ * - saveSchemaCache: Implements an Integrity Gate to prevent empty network responses from wiping local data.
+ * 
  * ADMIN SUPREMACY UPDATE:
  * - Hardcoded master ADMIN_PUBKEY from verified identity passport.
  * - Integrated KEY_REPORT_LAST_SEEN for Forensic Badge counter synchronization.
@@ -425,14 +428,35 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // CROWDSOURCED MEMORY METHODS (NEW FIX)
+    // CROWDSOURCED MEMORY METHODS (COLLECTIVE MEMORY UPDATE)
     // =========================================================================
 
     /**
      * Permanent Memory: Saves the entire synchronized Marketplace Schema locally.
-     * This prevents Bajaj models and years from vanishing after 12 hours.
+     * COLLECTIVE MEMORY FIX: Implements an Integrity Gate. 
+     * If the incoming JSON is empty/small but local memory is full, the save is rejected.
+     * This prevents slow relays or network amnesia from wiping your Bajaj data.
      */
     public void saveSchemaCache(String json) {
+        // 1. Density Check: Is the incoming data empty?
+        if (json == null || json.equals("{}") || json.isEmpty() || json.length() < 10) {
+            String existing = getSchemaCache();
+            // If we already have real data, don't allow an empty overwrite
+            if (existing != null && existing.length() > 50) {
+                return; 
+            }
+        }
+
+        // 2. Data Loss Threshold: Is the new JSON suspiciously smaller than the old?
+        String existing = getSchemaCache();
+        if (existing != null && existing.length() > 200 && json != null) {
+            // If we lose more than 70% of data in one sync, something is wrong with the relays.
+            if (json.length() < (existing.length() * 0.3)) {
+                return;
+            }
+        }
+
+        // Use commit() for synchronous hard-locking to the disk
         prefs.edit().putString(KEY_SCHEMA_CACHE_JSON, json).commit();
     }
 
