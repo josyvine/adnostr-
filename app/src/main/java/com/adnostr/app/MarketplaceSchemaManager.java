@@ -32,6 +32,9 @@ import java.util.concurrent.TimeUnit;
  * - Increased CountDownLatch to 15 seconds to prevent data "vanishing" on slow relays.
  * - Implemented Schema Caching: Loads data from local memory first, then updates from network.
  * 
+ * COLLECTIVE MEMORY UPDATE:
+ * - fetchGlobalSchema: Now detects Network Amnesia and triggers Auto-Healing to restore pruned relay data.
+ * 
  * ADMIN SUPREMACY UPDATE:
  * - Executioner Authority: Admin can target and delete events authored by ANY user.
  * - Persistence Gate: fetchGlobalSchema strictly cross-references the local WIPED_SCHEMA_IDS blocklist.
@@ -201,10 +204,21 @@ public class MarketplaceSchemaManager {
                 globalSchema.put("hidden_hardcoded", new JSONArray(allHidden));
 
                 // =========================================================================
-                // STEP 2: RE-CACHE (UPDATE MEMORY)
-                // Save the new successful consensus to the phone disk.
+                // STEP 2: RE-CACHE & AUTO-HEAL (COLLECTIVE MEMORY UPDATE)
                 // =========================================================================
-                db.saveSchemaCache(globalSchema.toString());
+                
+                // Detection: Did the network return nothing but we have something saved?
+                boolean networkEmpty = (filteredCategories.length() == 0 && filteredFields.length() == 0 && filteredValues.length() == 0);
+                boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
+
+                if (networkEmpty && anchorValid) {
+                    Log.w(TAG, "COLLECTIVE MEMORY: Network amnesia detected. Triggering Healing Sequence...");
+                    // Initiate background re-broadcast of the missing data
+                    CreateProductActivity.triggerAutomaticHealing(context);
+                } else {
+                    // Normal state: Update memory with the latest consensus
+                    db.saveSchemaCache(globalSchema.toString());
+                }
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (callback != null) callback.onSchemaFetched(globalSchema.toString());
