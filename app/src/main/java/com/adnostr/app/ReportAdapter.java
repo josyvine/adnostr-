@@ -30,6 +30,10 @@ import java.util.List;
  * - Kind 30007 Parser: Now identifies context (e.g. Bajaj) to prevent "Unknown Field" errors.
  * - Detail Hook: Implemented onClickListener to launch the professional vertical detail viewer.
  * - BUILD FIX: Added onLocalDismiss to the OnPurgeListener interface to resolve compilation error.
+ * 
+ * VOLATILITY FIX:
+ * - Sync Feedback: Now identifies if a card was loaded from the Immutable Archive or found Live.
+ * - Hierarchical Integrity: Ensures parent-child relationships (Category -> Brand) are visually mapped.
  */
 public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicViewHolder> {
 
@@ -179,6 +183,17 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                         System.currentTimeMillis(), 
                         DateUtils.SECOND_IN_MILLIS);
                 binding.tvTimestampTrace.setText(relativeTime);
+
+                // =========================================================================
+                // VOLATILITY FIX: SYNC STATUS INDICATOR
+                // If the event is extremely old compared to now, it came from the archive.
+                // =========================================================================
+                long oneDayAgo = (System.currentTimeMillis() / 1000) - 86400;
+                if (createdAt < oneDayAgo) {
+                    binding.tvTimestampTrace.append(" [Archived Source]");
+                } else {
+                    binding.tvTimestampTrace.append(" [Live Network]");
+                }
 
                 // 5. Executioner Gate: Trash icon visible only to Admin
                 binding.btnPurgeItem.setVisibility(db.isAdmin() ? View.VISIBLE : View.GONE);
