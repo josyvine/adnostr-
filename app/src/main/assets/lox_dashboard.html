@@ -926,15 +926,16 @@
     }
 
     /**
-     * CROWDSOURCED DATA FIX (PERSISTENT MEMORY):
+     * CROWDSOURCED DATA FIX (PERSISTENT MEMORY / REPAIR UPDATE):
      * Logic: Merges local cache with network data.
      * Prevents Bajaj models and years from vanishing after 12 hours.
-     * UPDATED: Strict Category Mapping. Trimmed and case-insensitive check ensures 
-     * re-signed archived brands (Cars/Bikes) map to the correct dropdown list.
+     * UPDATED: Strict Normalization. Trimmmed and case-insensitive check ensures 
+     * archived brands map to the correct dropdown list regardless of source casing.
      */
     function injectGlobalSchema(jsonString) {
         try {
             const schema = JSON.parse(jsonString);
+            const catSelect = document.getElementById('cat');
 
             // 1. SMART DOM REFRESH
             const customGroup = document.getElementById('og_custom');
@@ -942,37 +943,44 @@
             
             // 2. PERSISTENCE OVERRIDE
             if (hiddenItems.length > 0) {
-                const catSelect = document.getElementById('cat');
                 hiddenItems.forEach(name => {
-                    const option = Array.from(catSelect.options).find(opt => opt.value === name);
+                    const option = Array.from(catSelect.options).find(opt => opt.value.trim().toLowerCase() === name.trim().toLowerCase());
                     if (option) {
                         const parentGroup = option.parentElement;
+                        const realValue = option.value;
                         option.remove();
                         if (parentGroup && parentGroup.tagName === 'OPTGROUP' && parentGroup.children.length === 0) {
                             parentGroup.remove();
                         }
+                        delete CATEGORY_SCHEMA[realValue];
                     }
-                    delete CATEGORY_SCHEMA[name];
                 });
             }
 
-            // 3. MERGE Crowdsourced Categories
+            // 3. MERGE Crowdsourced Categories (Normalized)
             if (schema.categories && schema.categories.length > 0) {
                 schema.categories.forEach(c => {
-                    if (!hiddenItems.includes(c.sub)) {
-                        if (!CATEGORY_SCHEMA[c.sub]) CATEGORY_SCHEMA[c.sub] = [];
-                        addCategoryToDOM(c.main, c.sub);
+                    const normalizedSub = c.sub.trim();
+                    if (!hiddenItems.some(h => h.toLowerCase() === normalizedSub.toLowerCase())) {
+                        if (!CATEGORY_SCHEMA[normalizedSub]) CATEGORY_SCHEMA[normalizedSub] = [];
+                        addCategoryToDOM(c.main.trim(), normalizedSub);
                     }
                 });
             }
 
-            // 4. MERGE Crowdsourced Fields
+            // 4. MERGE Crowdsourced Fields (Normalized)
             if (schema.fields && schema.fields.length > 0) {
                 schema.fields.forEach(f => {
-                    if (!CATEGORY_SCHEMA[f.category]) CATEGORY_SCHEMA[f.category] = [];
-                    const exists = CATEGORY_SCHEMA[f.category].find(x => x.id === f.id);
+                    // Find actual DOM value to handle casing inconsistencies between archive and hardcode
+                    const normalizedCat = f.category.trim().toLowerCase();
+                    let targetKey = f.category.trim();
+                    const existingOpt = Array.from(catSelect.options).find(o => o.value.toLowerCase() === normalizedCat);
+                    if(existingOpt) targetKey = existingOpt.value;
+
+                    if (!CATEGORY_SCHEMA[targetKey]) CATEGORY_SCHEMA[targetKey] = [];
+                    const exists = CATEGORY_SCHEMA[targetKey].find(x => x.id === f.id);
                     if (!exists) {
-                        CATEGORY_SCHEMA[f.category].push({
+                        CATEGORY_SCHEMA[targetKey].push({
                             id: f.id,
                             label: f.label,
                             type: f.input_type || "text",
@@ -982,19 +990,24 @@
                 });
             }
 
-            // 5. STABILIZE Historical Auto-Complete Datalists
-            // FIX: Aggressive key matching for re-signed archived brands.
+            // 5. STABILIZE Historical Auto-Complete Datalists (Normalized Mapping)
+            // REPAIR: Aggressive case-insensitive matching for datalist ID generation.
             if (schema.values && schema.values.length > 0) {
                 const dlContainer = document.getElementById('datalistContainer');
                 
                 schema.values.forEach(v => {
                     if (v.category && v.specs) {
                         // NORMALIZATION: Handle inconsistent category strings from re-signing
+                        const normalizedV = v.category.trim().toLowerCase();
                         let targetCategory = v.category.trim();
+                        
+                        const existingOption = Array.from(catSelect.options).find(opt => opt.value.toLowerCase() === normalizedV);
+                        if (existingOption) targetCategory = existingOption.value;
+
                         const context = v.context || {}; 
 
                         for (const [fieldId, val] of Object.entries(v.specs)) {
-                            // Map "Cars" or "Bikes" to the correct HTML datalist ID
+                            // Map "Cars" or "Bikes" to the correct HTML datalist ID (Normalized)
                             let dlId = `dl_${targetCategory}_${fieldId}`;
                             
                             if (context.field && context.value) {
