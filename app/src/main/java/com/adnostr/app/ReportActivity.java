@@ -36,6 +36,7 @@ import java.util.UUID;
  * VOLATILITY FIX:
  * - Immutable Aggregation: Now loads data from the Hard-Locked Forensic Archive on startup.
  * - Network Healing: Integrated Refresh icon to trigger the Hourly Sequential Re-Publisher manually.
+ * - REPAIR UPDATE: Replaced Toast with Full-Screen Forensic Console (RelayReportDialog).
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -354,7 +355,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     }
 
     // =========================================================================
-    // VOLATILITY FIX: RE-PUBLISH MENU LOGIC
+    // VOLATILITY FIX: RE-PUBLISH MENU LOGIC (REPAIR UPDATE)
     // =========================================================================
 
     @Override
@@ -369,9 +370,29 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == 1001) {
-            Toast.makeText(this, "Initiating Sequential Network Healing...", Toast.LENGTH_SHORT).show();
-            // Manually trigger the tiered re-broadcast
-            MarketplaceSchemaManager.executeSequentialHealing(this);
+            // ACTION: Full-Screen Forensic Console for Healing
+            final StringBuilder healerLogs = new StringBuilder();
+            healerLogs.append("=== INITIATING MANUAL NETWORK RESTORATION ===\n\n");
+            healerLogs.append("Pulling data from Immutable Forensic Archive...\n");
+            
+            final RelayReportDialog report = RelayReportDialog.newInstance(
+                    "HEALING CONSOLE", 
+                    "Restoring Collective Memory...", 
+                    healerLogs.toString()
+            );
+            report.showSafe(getSupportFragmentManager(), "HEAL_LOG");
+
+            // Bridge logic to capture strings from the Queue re-signing engine
+            SequentialBroadcastQueue.TechnicalLogListener healerListener = msg -> {
+                runOnUiThread(() -> {
+                    healerLogs.append(msg).append("\n");
+                    // Keep the console updated as every tiered item is processed
+                    report.updateTechnicalLogs("Healing in Progress...", healerLogs.toString());
+                });
+            };
+
+            // Trigger the sequential engine with the bridge listener
+            MarketplaceSchemaManager.executeSequentialHealing(this, healerListener);
             return true;
         }
         return super.onOptionsItemSelected(item);
