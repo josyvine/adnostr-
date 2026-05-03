@@ -29,7 +29,7 @@ import java.util.List;
 public class SequentialBroadcastQueue {
 
     private static final String TAG = "AdNostr_Queue";
-    
+
     // TIER DEFINITIONS
     private static final int TIER_CATEGORY = 1;
     private static final int TIER_FIELD = 2;
@@ -76,8 +76,15 @@ public class SequentialBroadcastQueue {
 
     /**
      * Logic: Accepts the full forensic archive and sorts it into dependency tiers.
+     * REPAIR UPDATE: Returns boolean to skip broadcast if parsing fails or input is empty.
      */
-    public void prepareArchive(String archiveJson) {
+    public boolean prepareArchive(String archiveJson) {
+        // CRITICAL FIX: Check for empty strings to prevent "End of input at character 0"
+        if (archiveJson == null || archiveJson.trim().isEmpty()) {
+            sendForensicLog("SYSTEM: Archive input is empty. Skipping preparation.");
+            return false;
+        }
+
         try {
             JSONArray archive = new JSONArray(archiveJson);
             catTier.clear();
@@ -100,13 +107,15 @@ public class SequentialBroadcastQueue {
                     valueTier.add(event);
                 }
             }
-            
+
             Log.d(TAG, "Queue Prepared: Tier1=" + catTier.size() + ", Tier2=" + fieldTier.size() + ", Tier3=" + valueTier.size());
             sendForensicLog("SUCCESS: Archive sorted into " + (catTier.size() + fieldTier.size() + valueTier.size()) + " restoration frames.");
+            return true;
 
         } catch (Exception e) {
             Log.e(TAG, "Queue preparation failed: " + e.getMessage());
             sendForensicLog("ERROR: Archive sorting failed - " + e.getMessage());
+            return false;
         }
     }
 
@@ -156,7 +165,7 @@ public class SequentialBroadcastQueue {
             // Delay each item by 500ms to prevent relay rate-limiting
             queueHandler.postDelayed(() -> {
                 reSignAndSend(originalEvent);
-                
+
                 // If this was the last item in the tier, wait 3 seconds and start next tier
                 if (isLastInTier && nextTier != -1) {
                     sendForensicLog("ORDER: Tier " + tier + " complete. Transitioning...");
@@ -189,7 +198,7 @@ public class SequentialBroadcastQueue {
             newEvent.put("pubkey", db.getPublicKey());
             newEvent.put("created_at", System.currentTimeMillis() / 1000); // RESET PRUNING CLOCK
             newEvent.put("content", contentStr);
-            
+
             // TAG INTEGRITY: Carry over all indexing tags (t-tags, d-tags) for correct filtering
             newEvent.put("tags", oldEvent.getJSONArray("tags"));
 
