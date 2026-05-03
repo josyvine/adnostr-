@@ -41,6 +41,7 @@ import java.util.Set;
  * VOLATILITY & SEQUENTIAL HEALING FIX:
  * - KEY_FORENSIC_ARCHIVE_JSON: The "Immutable Source of Truth". Unlike the cache, this ONLY grows.
  * - saveToForensicArchive: Hard-locks every seen category/spec/brand into local permanent storage.
+ * - REPAIR UPDATE: getForensicArchive now filters results against the Wiped blocklist for integrity.
  */
 public class AdNostrDatabaseHelper {
 
@@ -198,9 +199,36 @@ public class AdNostrDatabaseHelper {
 
     /**
      * Retrieves the entire permanent truth table for network healing.
+     * REPAIR UPDATE: Cross-references results with the wiped schema blocklist 
+     * to ensure deleted data stays deleted.
      */
     public String getForensicArchive() {
-        return prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
+        try {
+            String rawArchive = prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
+            Set<String> wipedIds = prefs.getStringSet(KEY_WIPED_SCHEMA_IDS, new HashSet<>());
+
+            // Optimization: If nothing is wiped, return the raw string instantly
+            if (wipedIds.isEmpty()) return rawArchive;
+
+            JSONArray originalArray = new JSONArray(rawArchive);
+            JSONArray filteredArray = new JSONArray();
+
+            for (int i = 0; i < originalArray.length(); i++) {
+                JSONObject event = originalArray.getJSONObject(i);
+                String id = event.optString("id", "");
+                
+                // ARCHIVE INTEGRITY GATE: Filter out IDs in the permanent blocklist
+                if (!wipedIds.contains(id)) {
+                    filteredArray.put(event);
+                }
+            }
+
+            return filteredArray.toString();
+
+        } catch (Exception e) {
+            android.util.Log.e("AdNostr_Archive", "Archive Integrity Check Failed: " + e.getMessage());
+            return "[]"; // Safety fallback
+        }
     }
 
     // =========================================================================
