@@ -58,12 +58,12 @@ public class SchemaHeartbeatWorker extends Worker {
             // - Hierarchical sorting (Cat -> Sub -> Spec -> Brand)
             // - Fresh BIP-340 Timestamp signing
             // - Inter-tier timing delays to prevent relay flood rejection.
-            MarketplaceSchemaManager.executeSequentialHealing(context);
+            MarketplaceSchemaManager.executeSequentialHealing(context, null);
 
             // 4. LOG SUCCESS
             // This confirms that the "Collective Memory" has been refreshed.
             Log.i(TAG, "Heartbeat Successful: Global marketplace database refreshed and pruning clocks reset.");
-            
+
             return Result.success();
 
         } catch (Exception e) {
