@@ -44,11 +44,11 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     private ActivityReportBinding binding;
     private AdNostrDatabaseHelper db;
     private WebSocketClientManager wsManager;
-    
+
     private final List<JSONObject> fullMasterList = new ArrayList<>();
     private final List<JSONObject> displayList = new ArrayList<>();
     private ReportAdapter adapter;
-    
+
     private String currentFilter = "ALL";
 
     @Override
@@ -58,7 +58,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         // 1. Immersive Control Room UI Setup
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         getWindow().setStatusBarColor(android.graphics.Color.BLACK);
-        
+
         binding = ActivityReportBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
@@ -86,7 +86,8 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         fetchGlobalContributions();
 
         // AUTO-CLICK LOGIC: Automatically trigger a network heal when Admin enters
-        MarketplaceSchemaManager.executeSequentialHealing(this);
+        // REPAIR UPDATE: Fixed signature mismatch by passing null for background trigger
+        MarketplaceSchemaManager.executeSequentialHealing(this, null);
     }
 
     private void setupToolbar() {
@@ -106,7 +107,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         try {
             String archiveJson = db.getForensicArchive();
             JSONArray archiveArray = new JSONArray(archiveJson);
-            
+
             for (int i = 0; i < archiveArray.length(); i++) {
                 JSONObject event = archiveArray.getJSONObject(i);
                 String id = event.getString("id");
@@ -116,7 +117,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
                 fullMasterList.add(event);
             }
-            
+
             Log.i(TAG, "Console populated with " + fullMasterList.size() + " archive entries.");
             applyFilter();
 
@@ -130,7 +131,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
      */
     private void setupRecyclerView() {
         binding.rvForensicFeed.setLayoutManager(new LinearLayoutManager(this));
-        
+
         // The adapter handles the complex card logic and Admin-only trash icons
         adapter = new ReportAdapter(displayList, db.getReportLastSeen(), new ReportAdapter.OnPurgeListener() {
             @Override
@@ -149,7 +150,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 executeLocalDismiss(event);
             }
         });
-        
+
         binding.rvForensicFeed.setAdapter(adapter);
     }
 
@@ -159,15 +160,15 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     private void setupFilterRibbon() {
         binding.chipGroupFilters.setOnCheckedStateChangeListener((group, checkedIds) -> {
             if (checkedIds.isEmpty()) return;
-            
+
             Chip chip = findViewById(checkedIds.get(0));
             String filterText = chip.getText().toString().toUpperCase();
-            
+
             if (filterText.contains("ALL")) currentFilter = "ALL";
             else if (filterText.contains("CATEGORIES")) currentFilter = "CATEGORY";
             else if (filterText.contains("TECH SPECS")) currentFilter = "FIELD";
             else if (filterText.contains("BRANDS")) currentFilter = "VALUE";
-            
+
             applyFilter();
         });
     }
@@ -182,10 +183,10 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         try {
             JSONObject filter = new JSONObject();
             filter.put("kinds", new JSONArray().put(30006).put(30007));
-            
+
             String subId = "forensic-" + UUID.randomUUID().toString().substring(0, 4);
             String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
-            
+
             wsManager.connectPool(db.getRelayPool());
             wsManager.broadcastEvent(req); // Manual trigger for connected relays
 
@@ -203,7 +204,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         runOnUiThread(() -> {
             try {
                 String eventId = event.getString("id");
-                
+
                 // Prevent duplicate entries in the forensic list
                 for (JSONObject existing : fullMasterList) {
                     if (existing.getString("id").equals(eventId)) return;
@@ -221,10 +222,10 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 }
 
                 fullMasterList.add(event);
-                
+
                 // VOLATILITY FIX: Lock any newly discovered network metadata to the archive
                 db.saveToForensicArchive(event.toString());
-                
+
                 // Sort Descending (Newest at top)
                 Collections.sort(fullMasterList, (a, b) -> 
                     Long.compare(b.optLong("created_at"), a.optLong("created_at")));
@@ -244,7 +245,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 String contentStr = event.getString("content");
                 JSONObject content = new JSONObject(contentStr);
                 int kind = event.getInt("kind");
-                
+
                 if (currentFilter.equals("ALL")) {
                     displayList.add(event);
                 } else if (currentFilter.equals("CATEGORY")) {
@@ -266,12 +267,12 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         try {
             String id = event.getString("id");
             db.addWipedSchemaId(id);
-            
+
             // Broadcast Kind 5 Deletion
             List<String> idList = new ArrayList<>();
             idList.add(id);
             broadcastWipe(idList, null);
-            
+
             fullMasterList.remove(event);
             applyFilter();
             Toast.makeText(this, "Item Purged.", Toast.LENGTH_SHORT).show();
@@ -291,10 +292,10 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             try {
                 String contentStr = event.getString("content");
                 JSONObject content = new JSONObject(contentStr);
-                
+
                 boolean isTarget = categoryName.equals(content.optString("sub")) || 
                                   categoryName.equals(content.optString("category"));
-                
+
                 if (isTarget) {
                     String eid = event.getString("id");
                     idsToWipe.add(eid);
@@ -374,7 +375,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             final StringBuilder healerLogs = new StringBuilder();
             healerLogs.append("=== INITIATING MANUAL NETWORK RESTORATION ===\n\n");
             healerLogs.append("Pulling data from Immutable Forensic Archive...\n");
-            
+
             final RelayReportDialog report = RelayReportDialog.newInstance(
                     "HEALING CONSOLE", 
                     "Restoring Collective Memory...", 
