@@ -113,8 +113,12 @@ public class SequentialBroadcastQueue {
             return true;
 
         } catch (Exception e) {
+            // REPAIR UPDATE: Provide detailed length and snippet of the failing data for the user
+            int dataLen = (archiveJson != null) ? archiveJson.length() : 0;
+            String snippet = (archiveJson != null && dataLen > 50) ? archiveJson.substring(0, 50) : archiveJson;
+            
             Log.e(TAG, "Queue preparation failed: " + e.getMessage());
-            sendForensicLog("ERROR: Archive sorting failed - " + e.getMessage());
+            sendForensicLog("ERROR: Archive sorting failed - " + e.getMessage() + " (Len: " + dataLen + ", Snippet: " + snippet + ")");
             return false;
         }
     }
