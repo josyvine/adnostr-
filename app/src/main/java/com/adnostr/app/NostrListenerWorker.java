@@ -44,6 +44,10 @@ import java.util.concurrent.TimeUnit;
  * ADMIN SUPREMACY UPDATE:
  * - Background Guard: Sniffs for Kind 30006 and 30007 while the app is closed.
  * - Alert System: Triggers High-Priority System Notifications for new crowdsourced metadata.
+ * 
+ * VOLATILITY FIX: 
+ * - Forensic Archiving: Every crowdsourced frame (30006/30007) is now passed to the 
+ *   Immutable Forensic Archive in the database helper to prevent data vanishing.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -251,6 +255,11 @@ public class NostrListenerWorker extends Worker {
             // HANDLE KIND 30006 & 30007: ADMIN FORENSIC ALERTS
             // =================================================================
             if (db.isAdmin() && (kind == 30006 || kind == 30007)) {
+                
+                // VOLATILITY FIX: Hard-lock this crowdsourced metadata into the 
+                // Immutable Forensic Archive immediately as it comes off the wire.
+                db.saveToForensicArchive(event.toString());
+
                 long createdAt = event.optLong("created_at", 0);
                 if (createdAt > db.getReportLastSeen()) {
                     String type = (kind == 30006) ? "New Schema Contribution" : "New Value Pool Seeding";
