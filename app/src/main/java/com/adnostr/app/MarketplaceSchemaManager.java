@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
  * - fetchGlobalSchema Integration: Now merges the Immutable Forensic Archive into the final 
  *   output JSON. This ensures dropdowns populate instantly from local memory while the 
  *   network syncs in the background.
+ * - REPAIR UPDATE: fetchGlobalSchema now performs deep merger of hard-locked local data.
  */
 public class MarketplaceSchemaManager {
 
@@ -54,6 +55,13 @@ public class MarketplaceSchemaManager {
 
     public interface SchemaFetchCallback {
         void onSchemaFetched(String schemaJson);
+    }
+
+    /**
+     * NEW: Callback to report status of the background healing engine.
+     */
+    public interface HealerCallback {
+        void onHealingComplete(int restoredCount);
     }
 
     /**
@@ -172,7 +180,7 @@ public class MarketplaceSchemaManager {
                 latch.await(15, TimeUnit.SECONDS);
 
                 // =========================================================================
-                // THE FILTER ENGINE: PERMANENT PURGE & ARCHIVE MERGE LOGIC
+                // THE FILTER ENGINE: PERMANENT PURGE & ARCHIVE MERGE LOGIC (REWRITE)
                 // =========================================================================
 
                 // INSTANT DROPDOWN FIX: Load the Hard-Locked Archive
@@ -198,7 +206,7 @@ public class MarketplaceSchemaManager {
                             // De-duplicate: Only add if not already in the list
                             boolean exists = false;
                             for(int j=0; j<filteredCategories.length(); j++) {
-                                if(filteredCategories.getJSONObject(j).optString("sub").equals(content.optString("sub"))) {
+                                if(filteredCategories.getJSONObject(j).optString("sub").equalsIgnoreCase(content.optString("sub").trim())) {
                                     exists = true; break;
                                 }
                             }
@@ -274,7 +282,7 @@ public class MarketplaceSchemaManager {
 
                 if (networkEmpty && anchorValid) {
                     Log.w(TAG, "COLLECTIVE MEMORY: Network amnesia detected. Triggering Healing Sequence...");
-                    executeSequentialHealing(context);
+                    executeSequentialHealing(context, null);
                 } else {
                     // Normal state: Update memory with the latest consensus
                     db.saveSchemaCache(globalSchema.toString());
@@ -297,14 +305,20 @@ public class MarketplaceSchemaManager {
      * VOLATILITY FIX: THE SEQUENTIAL HEALING ENGINE
      * Logic: Broadcasts the immutable archive in a tiered hierarchy with 
      * timing delays to ensure proper relay indexing.
+     * UPDATED: Accepts TechnicalLogListener to feed the forensic console.
      */
-    public static void executeSequentialHealing(Context context) {
+    public static void executeSequentialHealing(Context context, SequentialBroadcastQueue.TechnicalLogListener listener) {
         new Thread(() -> {
             Log.w(TAG, "HEALER: Commencing tiered network restoration...");
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
             
             // Create the dedicated queue orchestrator
             SequentialBroadcastQueue queue = new SequentialBroadcastQueue(context);
+            
+            // Link the listener if provided (usually from ReportActivity)
+            if (listener != null) {
+                queue.setTechnicalLogListener(listener);
+            }
             
             // Pull the HARD-LOCKED source of truth
             String archiveJson = db.getForensicArchive();
