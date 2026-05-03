@@ -38,6 +38,10 @@ import java.util.concurrent.TimeUnit;
  * ADMIN SUPREMACY UPDATE:
  * - Executioner Authority: Admin can target and delete events authored by ANY user.
  * - Persistence Gate: fetchGlobalSchema strictly cross-references the local WIPED_SCHEMA_IDS blocklist.
+ * 
+ * VOLATILITY & SEQUENTIAL HEALING FIX:
+ * - executeSequentialHealing: Logic to re-inject data in Tiered Order (Cat -> Sub -> Spec -> Value).
+ * - Fresh Timestamping: Reset relay pruning clocks by re-signing with current time.
  */
 public class MarketplaceSchemaManager {
 
@@ -213,8 +217,8 @@ public class MarketplaceSchemaManager {
 
                 if (networkEmpty && anchorValid) {
                     Log.w(TAG, "COLLECTIVE MEMORY: Network amnesia detected. Triggering Healing Sequence...");
-                    // Initiate background re-broadcast of the missing data
-                    CreateProductActivity.triggerAutomaticHealing(context);
+                    // VOLATILITY FIX: Use the new Sequential Healing Engine
+                    executeSequentialHealing(context);
                 } else {
                     // Normal state: Update memory with the latest consensus
                     db.saveSchemaCache(globalSchema.toString());
@@ -231,6 +235,81 @@ public class MarketplaceSchemaManager {
                 });
             }
         }).start();
+    }
+
+    /**
+     * VOLATILITY FIX: THE SEQUENTIAL HEALING ENGINE
+     * Logic: Broadcasts the immutable archive in a tiered hierarchy with 
+     * timing delays to ensure proper relay indexing.
+     */
+    public static void executeSequentialHealing(Context context) {
+        new Thread(() -> {
+            Log.w(TAG, "HEALER: Commencing tiered network restoration...");
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            WebSocketClientManager wsManager = WebSocketClientManager.getInstance();
+            
+            // Pull the HARD-LOCKED source of truth
+            String archiveJson = db.getForensicArchive();
+            if (archiveJson == null || archiveJson.equals("[]")) return;
+
+            try {
+                JSONArray fullArchive = new JSONArray(archiveJson);
+                
+                // TIER 1: Main Categories (Sub-type 'category')
+                for (int i = 0; i < fullArchive.length(); i++) {
+                    JSONObject event = fullArchive.getJSONObject(i);
+                    JSONObject content = new JSONObject(event.getString("content"));
+                    if (event.getInt("kind") == 30006 && "category".equals(content.optString("type"))) {
+                        reBroadcastWithFreshTime(context, wsManager, event);
+                    }
+                }
+                Thread.sleep(2000); // 2-second index gap
+
+                // TIER 2: Tech Fields (Sub-type 'field')
+                for (int i = 0; i < fullArchive.length(); i++) {
+                    JSONObject event = fullArchive.getJSONObject(i);
+                    JSONObject content = new JSONObject(event.getString("content"));
+                    if (event.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
+                        reBroadcastWithFreshTime(context, wsManager, event);
+                    }
+                }
+                Thread.sleep(2000);
+
+                // TIER 3: Value Pools / Brands (Kind 30007)
+                for (int i = 0; i < fullArchive.length(); i++) {
+                    JSONObject event = fullArchive.getJSONObject(i);
+                    if (event.getInt("kind") == 30007) {
+                        reBroadcastWithFreshTime(context, wsManager, event);
+                    }
+                }
+
+                Log.i(TAG, "HEALER: Hierarchical restoration push complete.");
+
+            } catch (Exception e) {
+                Log.e(TAG, "HEALER_FAIL: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    /**
+     * Logic: Resets the pruning clock on relays by generating a fresh signature.
+     */
+    private static void reBroadcastWithFreshTime(Context context, WebSocketClientManager ws, JSONObject oldEvent) {
+        try {
+            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            
+            JSONObject newEvent = new JSONObject();
+            newEvent.put("kind", oldEvent.getInt("kind"));
+            newEvent.put("pubkey", db.getPublicKey());
+            newEvent.put("created_at", System.currentTimeMillis() / 1000); // FRESH TIME
+            newEvent.put("content", oldEvent.getString("content"));
+            newEvent.put("tags", oldEvent.getJSONArray("tags"));
+
+            JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), newEvent);
+            if (signed != null) {
+                ws.broadcastEvent(signed.toString());
+            }
+        } catch (Exception ignored) {}
     }
 
     /**
