@@ -205,9 +205,10 @@ public class AdNostrDatabaseHelper {
     public String getForensicArchive() {
         try {
             String rawArchive = prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
-            
+
             // CRITICAL REPAIR: Sanitize empty strings to prevent "End of input at character 0" error
             if (rawArchive == null || rawArchive.trim().isEmpty()) {
+                android.util.Log.e("AdNostr_Archive", "SYSTEM: Local archive key found but is empty string.");
                 rawArchive = "[]";
             }
 
