@@ -2,6 +2,8 @@ package com.adnostr.app;
 
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
@@ -30,6 +32,10 @@ import java.util.UUID;
  * CROWDSOURCED DATA FIX:
  * - Local Hide: Integrated Dismissal logic to clear cards locally without network wipes.
  * - Persistence: Blocks dismissed IDs from re-entering the feed during active sessions.
+ * 
+ * VOLATILITY FIX:
+ * - Immutable Aggregation: Now loads data from the Hard-Locked Forensic Archive on startup.
+ * - Network Healing: Integrated Refresh icon to trigger the Hourly Sequential Re-Publisher manually.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -69,8 +75,17 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         setupRecyclerView();
         setupFilterRibbon();
 
+        // =========================================================================
+        // VOLATILITY FIX: AGGREGATE PERMANENT ARCHIVE
+        // Before scanning the network, load every crowdsourced item we have saved locally.
+        // =========================================================================
+        loadArchiveToConsole();
+
         // 2. Initiate Global Discovery Scan
         fetchGlobalContributions();
+
+        // AUTO-CLICK LOGIC: Automatically trigger a network heal when Admin enters
+        MarketplaceSchemaManager.executeSequentialHealing(this);
     }
 
     private void setupToolbar() {
@@ -80,6 +95,33 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
         binding.toolbarReport.setNavigationOnClickListener(v -> finish());
+    }
+
+    /**
+     * VOLATILITY FIX: Pulls data from the Hard-Locked archive so the console is 
+     * never empty, even if the network was just wiped.
+     */
+    private void loadArchiveToConsole() {
+        try {
+            String archiveJson = db.getForensicArchive();
+            JSONArray archiveArray = new JSONArray(archiveJson);
+            
+            for (int i = 0; i < archiveArray.length(); i++) {
+                JSONObject event = archiveArray.getJSONObject(i);
+                String id = event.getString("id");
+
+                // Skip if dismissed locally or wiped globally
+                if (db.isReportDismissed(id) || db.isSchemaWiped(id)) continue;
+
+                fullMasterList.add(event);
+            }
+            
+            Log.i(TAG, "Console populated with " + fullMasterList.size() + " archive entries.");
+            applyFilter();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Archive Load Error: " + e.getMessage());
+        }
     }
 
     /**
@@ -178,6 +220,9 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 }
 
                 fullMasterList.add(event);
+                
+                // VOLATILITY FIX: Lock any newly discovered network metadata to the archive
+                db.saveToForensicArchive(event.toString());
                 
                 // Sort Descending (Newest at top)
                 Collections.sort(fullMasterList, (a, b) -> 
@@ -306,6 +351,30 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 wsManager.broadcastEvent(signed.toString());
             }
         } catch (Exception ignored) {}
+    }
+
+    // =========================================================================
+    // VOLATILITY FIX: RE-PUBLISH MENU LOGIC
+    // =========================================================================
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate a standard refresh icon into the toolbar
+        MenuItem refreshItem = menu.add(Menu.NONE, 1001, Menu.NONE, "Heal Network");
+        refreshItem.setIcon(android.R.drawable.stat_notify_sync);
+        refreshItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == 1001) {
+            Toast.makeText(this, "Initiating Sequential Network Healing...", Toast.LENGTH_SHORT).show();
+            // Manually trigger the tiered re-broadcast
+            MarketplaceSchemaManager.executeSequentialHealing(this);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
