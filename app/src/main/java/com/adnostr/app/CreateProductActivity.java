@@ -46,8 +46,13 @@ import java.util.UUID;
  * ADMIN SUPREMACY UPDATE:
  * - Status Injection: Automatically informs the HTML engine if the user has Admin privileges.
  * - Deletion Unlocking: Enables the management of hardcoded and crowdsourced categories via the JS bridge.
+ * 
+ * UI AUTO-REFRESH FIX (NEW):
+ * - SchemaEventListener: The Activity now monitors the network for 30006/30007 events.
+ * - Auto-Injection: As tiers finish re-publishing, the WebView dropdowns are refreshed 
+ *   automatically without requiring an activity restart.
  */
-public class CreateProductActivity extends AppCompatActivity {
+public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
     private static final String TAG = "AdNostr_CreateProduct";
     private ActivityCreateProductBinding binding;
@@ -75,6 +80,9 @@ public class CreateProductActivity extends AppCompatActivity {
         db = AdNostrDatabaseHelper.getInstance(this);
         cloudHelper = new CloudflareHelper();
         wsManager = WebSocketClientManager.getInstance();
+
+        // UI AUTO-REFRESH: Register this activity to listen for real-time schema updates
+        wsManager.addSchemaListener(this);
 
         filePickerLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -106,6 +114,23 @@ public class CreateProductActivity extends AppCompatActivity {
 
         setupWebView();
         binding.btnBackCreator.setOnClickListener(v -> finish());
+    }
+
+    /**
+     * UI AUTO-REFRESH: Implementation of SchemaEventListener.
+     * Logic: If a re-published tier (Bajaj/Audi) is detected on the wire, 
+     * re-trigger the schema merge and inject it into the WebView instantly.
+     */
+    @Override
+    public void onSchemaEventReceived(String url, JSONObject event) {
+        runOnUiThread(() -> {
+            // Re-fetch with the newly arrived metadata merged
+            MarketplaceSchemaManager.fetchGlobalSchema(this, schemaJson -> {
+                fetchedGlobalSchemaJson = schemaJson;
+                injectSchemaIfReady();
+                logTechnicalEvent("UI_SYNC: Dropdowns refreshed with data from " + url);
+            });
+        });
     }
 
     /**
@@ -511,6 +536,15 @@ public class CreateProductActivity extends AppCompatActivity {
 
         technicalConsole.append("[").append(System.currentTimeMillis()).append("] ").append(filteredMsg).append("\n");
         Log.d(TAG, filteredMsg);
+    }
+
+    @Override
+    protected void onDestroy() {
+        // UI AUTO-REFRESH: Remove the listener to prevent memory leaks
+        if (wsManager != null) {
+            wsManager.removeSchemaListener(this);
+        }
+        super.onDestroy();
     }
 
     @Override
