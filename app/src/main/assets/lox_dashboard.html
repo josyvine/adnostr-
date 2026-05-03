@@ -929,19 +929,18 @@
      * CROWDSOURCED DATA FIX (PERSISTENT MEMORY):
      * Logic: Merges local cache with network data.
      * Prevents Bajaj models and years from vanishing after 12 hours.
+     * UPDATED: Strict Category Mapping. Trimmed and case-insensitive check ensures 
+     * re-signed archived brands (Cars/Bikes) map to the correct dropdown list.
      */
     function injectGlobalSchema(jsonString) {
         try {
             const schema = JSON.parse(jsonString);
 
             // 1. SMART DOM REFRESH
-            // Only clear custom categories that have been explicitly deleted by the network
             const customGroup = document.getElementById('og_custom');
             const hiddenItems = schema.hidden_hardcoded || [];
             
-            // 2. PERSISTENCE OVERRIDE (FIX)
-            // We no longer wipe all dynamic categories. 
-            // We only remove categories that are explicitly blocked.
+            // 2. PERSISTENCE OVERRIDE
             if (hiddenItems.length > 0) {
                 const catSelect = document.getElementById('cat');
                 hiddenItems.forEach(name => {
@@ -960,7 +959,6 @@
             // 3. MERGE Crowdsourced Categories
             if (schema.categories && schema.categories.length > 0) {
                 schema.categories.forEach(c => {
-                    // Do not add if it was just deleted
                     if (!hiddenItems.includes(c.sub)) {
                         if (!CATEGORY_SCHEMA[c.sub]) CATEGORY_SCHEMA[c.sub] = [];
                         addCategoryToDOM(c.main, c.sub);
@@ -985,17 +983,22 @@
             }
 
             // 5. STABILIZE Historical Auto-Complete Datalists
-            // Logic: Appends new Bajaj models/years to existing lists to prevent vanishing.
+            // FIX: Aggressive key matching for re-signed archived brands.
             if (schema.values && schema.values.length > 0) {
                 const dlContainer = document.getElementById('datalistContainer');
                 
                 schema.values.forEach(v => {
                     if (v.category && v.specs) {
+                        // NORMALIZATION: Handle inconsistent category strings from re-signing
+                        let targetCategory = v.category.trim();
                         const context = v.context || {}; 
+
                         for (const [fieldId, val] of Object.entries(v.specs)) {
-                            let dlId = `dl_${v.category}_${fieldId}`;
+                            // Map "Cars" or "Bikes" to the correct HTML datalist ID
+                            let dlId = `dl_${targetCategory}_${fieldId}`;
+                            
                             if (context.field && context.value) {
-                                dlId += `_${context.field}_${context.value}`;
+                                dlId += `_${context.field}_${context.value.trim()}`;
                             }
 
                             let dl = document.getElementById(dlId);
