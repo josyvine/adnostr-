@@ -85,7 +85,7 @@ public class AdNostrDatabaseHelper {
 
     // PHANTOM AD PREVENTION
     private static final String KEY_WIPED_AD_IDS = "wiped_deleted_ad_ids";
-    
+
     // SCHEMA PURGE PERSISTENCE
     private static final String KEY_WIPED_SCHEMA_IDS = "wiped_schema_event_ids";
     private static final String KEY_HIDDEN_HARDCODED = "globally_hidden_hardcoded_names";
@@ -205,9 +205,15 @@ public class AdNostrDatabaseHelper {
     public String getForensicArchive() {
         try {
             String rawArchive = prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
+            
+            // CRITICAL REPAIR: Sanitize empty strings to prevent "End of input at character 0" error
+            if (rawArchive == null || rawArchive.trim().isEmpty()) {
+                rawArchive = "[]";
+            }
+
             Set<String> wipedIds = prefs.getStringSet(KEY_WIPED_SCHEMA_IDS, new HashSet<>());
 
-            // Optimization: If nothing is wiped, return the raw string instantly
+            // Optimization: If nothing is wiped, return the sanitized raw string instantly
             if (wipedIds.isEmpty()) return rawArchive;
 
             JSONArray originalArray = new JSONArray(rawArchive);
@@ -216,7 +222,7 @@ public class AdNostrDatabaseHelper {
             for (int i = 0; i < originalArray.length(); i++) {
                 JSONObject event = originalArray.getJSONObject(i);
                 String id = event.optString("id", "");
-                
+
                 // ARCHIVE INTEGRITY GATE: Filter out IDs in the permanent blocklist
                 if (!wipedIds.contains(id)) {
                     filteredArray.put(event);
@@ -368,7 +374,7 @@ public class AdNostrDatabaseHelper {
     public Set<String> getInterests() {
         String role = getUserRole();
         Set<String> roleSpecific = prefs.getStringSet(KEY_USER_INTERESTS + "_" + role, new HashSet<>());
-        
+
         // LEGACY FALLBACK: If role-specific is empty, check the first-zip base key
         if (roleSpecific.isEmpty()) {
             Set<String> legacy = prefs.getStringSet(KEY_USER_INTERESTS, new HashSet<>());
