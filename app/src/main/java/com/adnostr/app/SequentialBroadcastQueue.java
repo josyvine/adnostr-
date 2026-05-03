@@ -1,0 +1,158 @@
+package com.adnostr.app;
+
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * NEW: THE HIERARCHICAL RE-PUBLISH QUEUE
+ * Role: Orchestrator for Sequential Network Healing.
+ * Logic: Manages the timing and order of metadata broadcasts to ensure 
+ * parent-child relationships (Category -> Sub -> Spec -> Brand) are indexed correctly.
+ * 
+ * This class prevents "Relay Flooding" and ensures that every re-broadcasted 
+ * archived item receives a fresh cryptographic signature.
+ */
+public class SequentialBroadcastQueue {
+
+    private static final String TAG = "AdNostr_Queue";
+    
+    // TIER DEFINITIONS
+    private static final int TIER_CATEGORY = 1;
+    private static final int TIER_FIELD = 2;
+    private static final int TIER_VALUE_POOL = 3;
+
+    private final Context context;
+    private final AdNostrDatabaseHelper db;
+    private final WebSocketClientManager wsManager;
+    private final Handler queueHandler;
+
+    // Internal lists for tiered sorting
+    private final List<JSONObject> catTier = new ArrayList<>();
+    private final List<JSONObject> fieldTier = new ArrayList<>();
+    private final List<JSONObject> valueTier = new ArrayList<>();
+
+    public SequentialBroadcastQueue(Context context) {
+        this.context = context.getApplicationContext();
+        this.db = AdNostrDatabaseHelper.getInstance(context);
+        this.wsManager = WebSocketClientManager.getInstance();
+        this.queueHandler = new Handler(Looper.getMainLooper());
+    }
+
+    /**
+     * Logic: Accepts the full forensic archive and sorts it into dependency tiers.
+     */
+    public void prepareArchive(String archiveJson) {
+        try {
+            JSONArray archive = new JSONArray(archiveJson);
+            catTier.clear();
+            fieldTier.clear();
+            valueTier.clear();
+
+            for (int i = 0; i < archive.length(); i++) {
+                JSONObject event = archive.getJSONObject(i);
+                int kind = event.getInt("kind");
+                String contentStr = event.getString("content");
+                JSONObject content = new JSONObject(contentStr);
+
+                if (kind == 30006) {
+                    if ("category".equals(content.optString("type"))) {
+                        catTier.add(event);
+                    } else if ("field".equals(content.optString("type"))) {
+                        fieldTier.add(event);
+                    }
+                } else if (kind == 30007) {
+                    valueTier.add(event);
+                }
+            }
+            
+            Log.d(TAG, "Queue Prepared: Tier1=" + catTier.size() + ", Tier2=" + fieldTier.size() + ", Tier3=" + valueTier.size());
+
+        } catch (Exception e) {
+            Log.e(TAG, "Queue preparation failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Logic: Starts the cascading re-broadcast with timing delays.
+     */
+    public void startBroadcast() {
+        processTier(TIER_CATEGORY);
+    }
+
+    private void processTier(int tier) {
+        List<JSONObject> targetList;
+        int nextTier;
+
+        switch (tier) {
+            case TIER_CATEGORY:
+                targetList = catTier;
+                nextTier = TIER_FIELD;
+                break;
+            case TIER_FIELD:
+                targetList = fieldTier;
+                nextTier = TIER_VALUE_POOL;
+                break;
+            case TIER_VALUE_POOL:
+                targetList = valueTier;
+                nextTier = -1; // End of chain
+                break;
+            default:
+                return;
+        }
+
+        if (targetList.isEmpty()) {
+            if (nextTier != -1) processTier(nextTier);
+            return;
+        }
+
+        Log.i(TAG, "Processing Tier " + tier + ": Sending " + targetList.size() + " items.");
+
+        // Broadcast items in this tier with a short delay between each item
+        for (int i = 0; i < targetList.size(); i++) {
+            final JSONObject originalEvent = targetList.get(i);
+            final int index = i;
+            final boolean isLastInTier = (i == targetList.size() - 1);
+
+            // Delay each item by 500ms to prevent relay rate-limiting
+            queueHandler.postDelayed(() -> {
+                reSignAndSend(originalEvent);
+                
+                // If this was the last item in the tier, wait 3 seconds and start next tier
+                if (isLastInTier && nextTier != -1) {
+                    queueHandler.postDelayed(() -> processTier(nextTier), 3000);
+                }
+            }, i * 500L);
+        }
+    }
+
+    /**
+     * Logic: Generates a fresh BIP-340 signature with the CURRENT timestamp.
+     * This is critical to force relays to overwrite their old pruned indexes.
+     */
+    private void reSignAndSend(JSONObject oldEvent) {
+        try {
+            JSONObject newEvent = new JSONObject();
+            newEvent.put("kind", oldEvent.getInt("kind"));
+            newEvent.put("pubkey", db.getPublicKey());
+            newEvent.put("created_at", System.currentTimeMillis() / 1000); // RESET PRUNING CLOCK
+            newEvent.put("content", oldEvent.getString("content"));
+            newEvent.put("tags", oldEvent.getJSONArray("tags"));
+
+            JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), newEvent);
+            if (signed != null) {
+                wsManager.broadcastEvent(signed.toString());
+                Log.d(TAG, "Sequentially broadcasted archived item: " + signed.optString("id"));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Re-sign failure: " + e.getMessage());
+        }
+    }
+}
