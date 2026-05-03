@@ -24,6 +24,7 @@ import java.util.List;
  * - Context Preservation: Ensures that when re-signing "Audi" or "Bajaj", the 
  *   category "Cars" or "Bikes" is strictly maintained in the tags and content.
  * - Forensic Feedback: Detailed trace logging added to monitor tiered indexing.
+ * - REPAIR UPDATE: Implemented TechnicalLogListener to feed the forensic console.
  */
 public class SequentialBroadcastQueue {
 
@@ -44,11 +45,33 @@ public class SequentialBroadcastQueue {
     private final List<JSONObject> fieldTier = new ArrayList<>();
     private final List<JSONObject> valueTier = new ArrayList<>();
 
+    /**
+     * NEW: Interface to pipe technical traces back to the UI Activity.
+     */
+    public interface TechnicalLogListener {
+        void onLogGenerated(String message);
+    }
+
+    private TechnicalLogListener logListener;
+
+    public void setTechnicalLogListener(TechnicalLogListener listener) {
+        this.logListener = listener;
+    }
+
     public SequentialBroadcastQueue(Context context) {
         this.context = context.getApplicationContext();
         this.db = AdNostrDatabaseHelper.getInstance(context);
         this.wsManager = WebSocketClientManager.getInstance();
         this.queueHandler = new Handler(Looper.getMainLooper());
+    }
+
+    /**
+     * Helper to safely dispatch logs to the listener.
+     */
+    private void sendForensicLog(String msg) {
+        if (logListener != null) {
+            logListener.onLogGenerated(msg);
+        }
     }
 
     /**
@@ -79,9 +102,11 @@ public class SequentialBroadcastQueue {
             }
             
             Log.d(TAG, "Queue Prepared: Tier1=" + catTier.size() + ", Tier2=" + fieldTier.size() + ", Tier3=" + valueTier.size());
+            sendForensicLog("SUCCESS: Archive sorted into " + (catTier.size() + fieldTier.size() + valueTier.size()) + " restoration frames.");
 
         } catch (Exception e) {
             Log.e(TAG, "Queue preparation failed: " + e.getMessage());
+            sendForensicLog("ERROR: Archive sorting failed - " + e.getMessage());
         }
     }
 
@@ -89,6 +114,7 @@ public class SequentialBroadcastQueue {
      * Logic: Starts the cascading re-broadcast with timing delays.
      */
     public void startBroadcast() {
+        sendForensicLog("ORDER: Executing Hierarchical Publish sequence...");
         processTier(TIER_CATEGORY);
     }
 
@@ -119,6 +145,7 @@ public class SequentialBroadcastQueue {
         }
 
         Log.i(TAG, "Processing Tier " + tier + ": Sending " + targetList.size() + " items.");
+        sendForensicLog("ORDER: Commencing Tier " + tier + " (" + targetList.size() + " items)");
 
         // Broadcast items in this tier with a short delay between each item
         for (int i = 0; i < targetList.size(); i++) {
@@ -132,7 +159,10 @@ public class SequentialBroadcastQueue {
                 
                 // If this was the last item in the tier, wait 3 seconds and start next tier
                 if (isLastInTier && nextTier != -1) {
+                    sendForensicLog("ORDER: Tier " + tier + " complete. Transitioning...");
                     queueHandler.postDelayed(() -> processTier(nextTier), 3000);
+                } else if (isLastInTier && nextTier == -1) {
+                    sendForensicLog("\n=== HEALING SEQUENCE COMPLETE ===");
                 }
             }, i * 500L);
         }
@@ -153,6 +183,7 @@ public class SequentialBroadcastQueue {
             // DROPDOWN DROPOUT TRACE: Identify which category is being healed
             String contextLabel = content.optString("category", content.optString("sub", "Unknown"));
             Log.i(TAG, "HEAL_TRACE: Re-signing Kind " + kind + " for target '" + contextLabel + "'");
+            sendForensicLog("HEAL: Re-signing " + kind + " for '" + contextLabel + "'");
 
             newEvent.put("kind", kind);
             newEvent.put("pubkey", db.getPublicKey());
@@ -166,9 +197,13 @@ public class SequentialBroadcastQueue {
             if (signed != null) {
                 wsManager.broadcastEvent(signed.toString());
                 Log.d(TAG, "Sequentially broadcasted archived item: " + signed.optString("id") + " (Context: " + contextLabel + ")");
+                sendForensicLog("CRYPTO: BIP-340 Schnorr Proof OK. Broadcasted.");
+            } else {
+                sendForensicLog("CRYPTO: FAILED to sign archived item.");
             }
         } catch (Exception e) {
             Log.e(TAG, "Re-sign failure: " + e.getMessage());
+            sendForensicLog("ERROR: Re-signing exception - " + e.getMessage());
         }
     }
 }
