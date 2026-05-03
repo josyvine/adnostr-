@@ -275,7 +275,7 @@ public class MarketplaceSchemaManager {
                 // =========================================================================
                 // STEP 2: RE-CACHE & AUTO-HEAL (COLLECTIVE MEMORY UPDATE)
                 // =========================================================================
-
+                
                 // Detection: Did the network return nothing but we have something saved?
                 boolean networkEmpty = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
                 boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
@@ -322,7 +322,7 @@ public class MarketplaceSchemaManager {
 
             // Pull the HARD-LOCKED source of truth
             String archiveJson = db.getForensicArchive();
-            
+
             // REPAIR UPDATE: Strengthened guard clause to handle empty strings and safety reset
             if (archiveJson == null || archiveJson.trim().isEmpty() || archiveJson.equals("[]")) {
                 if (listener != null) {
@@ -331,9 +331,14 @@ public class MarketplaceSchemaManager {
                 return;
             }
 
-            // Load and start the hierarchical re-publish
-            queue.prepareArchive(archiveJson);
-            queue.startBroadcast();
+            // REPAIR UPDATE: Check preparation success before proceeding with broadcast
+            if (queue.prepareArchive(archiveJson)) {
+                queue.startBroadcast();
+            } else {
+                if (listener != null) {
+                    listener.onLogGenerated("ABORTED: Restoration stopped due to empty or corrupt archive.");
+                }
+            }
 
         }).start();
     }
