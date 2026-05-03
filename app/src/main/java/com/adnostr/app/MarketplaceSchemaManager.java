@@ -42,6 +42,11 @@ import java.util.concurrent.TimeUnit;
  * VOLATILITY & SEQUENTIAL HEALING FIX:
  * - executeSequentialHealing: Logic to re-inject data in Tiered Order (Cat -> Sub -> Spec -> Value).
  * - Fresh Timestamping: Reset relay pruning clocks by re-signing with current time.
+ * 
+ * INSTANT DROPDOWN SYNC (NEW):
+ * - fetchGlobalSchema Integration: Now merges the Immutable Forensic Archive into the final 
+ *   output JSON. This ensures dropdowns populate instantly from local memory while the 
+ *   network syncs in the background.
  */
 public class MarketplaceSchemaManager {
 
@@ -55,6 +60,7 @@ public class MarketplaceSchemaManager {
      * Fetches all crowdsourced categories, fields, and historical values from the network.
      * NEW: Also fetches Kind 5 events to identify and purge deleted entries.
      * FIXED: Now utilizes Local Cache first and has an extended 15-second network window.
+     * UPDATED LOGIC: Internally merges the Forensic Archive to fix empty UI dropdowns.
      */
     public static void fetchGlobalSchema(Context context, SchemaFetchCallback callback) {
         new Thread(() -> {
@@ -62,7 +68,7 @@ public class MarketplaceSchemaManager {
 
             // =========================================================================
             // STEP 1: PERSISTENCE FIRST (LOCAL MEMORY LOAD)
-            // Immediately return cached Bajaj data so the UI is never empty.
+            // Immediately return cached data so the UI is never empty.
             // =========================================================================
             String cachedSchema = db.getSchemaCache();
             if (cachedSchema != null && !cachedSchema.equals("{}")) {
@@ -166,19 +172,42 @@ public class MarketplaceSchemaManager {
                 latch.await(15, TimeUnit.SECONDS);
 
                 // =========================================================================
-                // THE FILTER ENGINE: PERMANENT PURGE LOGIC
+                // THE FILTER ENGINE: PERMANENT PURGE & ARCHIVE MERGE LOGIC
                 // =========================================================================
 
-                // 1. Filter Categories (Check Kind 5 set AND Local Database Blocklist)
+                // INSTANT DROPDOWN FIX: Load the Hard-Locked Archive
+                String archiveJson = db.getForensicArchive();
+                JSONArray archiveArray = new JSONArray(archiveJson);
+
+                // 1. Process Categories (Archive + Network)
                 JSONArray filteredCategories = new JSONArray();
+                // Phase A: Add from Network
                 for (JSONObject cat : categoryEvents) {
                     String eid = cat.optString("_event_id");
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
                         filteredCategories.put(cat);
                     }
                 }
+                // Phase B: Merge Unique items from Immutable Archive
+                for (int i = 0; i < archiveArray.length(); i++) {
+                    JSONObject arcEvent = archiveArray.getJSONObject(i);
+                    JSONObject content = new JSONObject(arcEvent.getString("content"));
+                    String eid = arcEvent.getString("id");
+                    if (arcEvent.getInt("kind") == 30006 && "category".equals(content.optString("type"))) {
+                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid)) {
+                            // De-duplicate: Only add if not already in the list
+                            boolean exists = false;
+                            for(int j=0; j<filteredCategories.length(); j++) {
+                                if(filteredCategories.getJSONObject(j).optString("sub").equals(content.optString("sub"))) {
+                                    exists = true; break;
+                                }
+                            }
+                            if(!exists) { content.put("_event_id", eid); filteredCategories.put(content); }
+                        }
+                    }
+                }
 
-                // 2. Filter Fields (Check Kind 5 set AND Local Database Blocklist)
+                // 2. Process Fields (Archive + Network)
                 JSONArray filteredFields = new JSONArray();
                 for (JSONObject field : fieldEvents) {
                     String eid = field.optString("_event_id");
@@ -186,13 +215,41 @@ public class MarketplaceSchemaManager {
                         filteredFields.put(field);
                     }
                 }
+                for (int i = 0; i < archiveArray.length(); i++) {
+                    JSONObject arcEvent = archiveArray.getJSONObject(i);
+                    JSONObject content = new JSONObject(arcEvent.getString("content"));
+                    String eid = arcEvent.getString("id");
+                    if (arcEvent.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
+                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid)) {
+                            boolean exists = false;
+                            for(int j=0; j<filteredFields.length(); j++) {
+                                if(filteredFields.getJSONObject(j).optString("id").equals(content.optString("id"))) {
+                                    exists = true; break;
+                                }
+                            }
+                            if(!exists) { content.put("_event_id", eid); filteredFields.put(content); }
+                        }
+                    }
+                }
 
-                // 3. Filter Value Pools (Check Kind 5 set AND Local Database Blocklist)
+                // 3. Process Value Pools (Archive + Network)
                 JSONArray filteredValues = new JSONArray();
                 for (JSONObject val : valueEvents) {
                     String eid = val.optString("_event_id");
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
                         filteredValues.put(val);
+                    }
+                }
+                for (int i = 0; i < archiveArray.length(); i++) {
+                    JSONObject arcEvent = archiveArray.getJSONObject(i);
+                    JSONObject content = new JSONObject(arcEvent.getString("content"));
+                    String eid = arcEvent.getString("id");
+                    if (arcEvent.getInt("kind") == 30007) {
+                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid)) {
+                            // Merge all archived value pools to ensure Bajaj/Audi dropdowns are never empty
+                            content.put("_event_id", eid); 
+                            filteredValues.put(content);
+                        }
                     }
                 }
 
@@ -212,12 +269,11 @@ public class MarketplaceSchemaManager {
                 // =========================================================================
                 
                 // Detection: Did the network return nothing but we have something saved?
-                boolean networkEmpty = (filteredCategories.length() == 0 && filteredFields.length() == 0 && filteredValues.length() == 0);
+                boolean networkEmpty = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
                 boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
 
                 if (networkEmpty && anchorValid) {
                     Log.w(TAG, "COLLECTIVE MEMORY: Network amnesia detected. Triggering Healing Sequence...");
-                    // VOLATILITY FIX: Use the new Sequential Healing Engine
                     executeSequentialHealing(context);
                 } else {
                     // Normal state: Update memory with the latest consensus
@@ -246,71 +302,25 @@ public class MarketplaceSchemaManager {
         new Thread(() -> {
             Log.w(TAG, "HEALER: Commencing tiered network restoration...");
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
-            WebSocketClientManager wsManager = WebSocketClientManager.getInstance();
+            
+            // Create the dedicated queue orchestrator
+            SequentialBroadcastQueue queue = new SequentialBroadcastQueue(context);
             
             // Pull the HARD-LOCKED source of truth
             String archiveJson = db.getForensicArchive();
             if (archiveJson == null || archiveJson.equals("[]")) return;
 
-            try {
-                JSONArray fullArchive = new JSONArray(archiveJson);
-                
-                // TIER 1: Main Categories (Sub-type 'category')
-                for (int i = 0; i < fullArchive.length(); i++) {
-                    JSONObject event = fullArchive.getJSONObject(i);
-                    JSONObject content = new JSONObject(event.getString("content"));
-                    if (event.getInt("kind") == 30006 && "category".equals(content.optString("type"))) {
-                        reBroadcastWithFreshTime(context, wsManager, event);
-                    }
-                }
-                Thread.sleep(2000); // 2-second index gap
+            // Load and start the hierarchical re-publish
+            queue.prepareArchive(archiveJson);
+            queue.startBroadcast();
 
-                // TIER 2: Tech Fields (Sub-type 'field')
-                for (int i = 0; i < fullArchive.length(); i++) {
-                    JSONObject event = fullArchive.getJSONObject(i);
-                    JSONObject content = new JSONObject(event.getString("content"));
-                    if (event.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
-                        reBroadcastWithFreshTime(context, wsManager, event);
-                    }
-                }
-                Thread.sleep(2000);
-
-                // TIER 3: Value Pools / Brands (Kind 30007)
-                for (int i = 0; i < fullArchive.length(); i++) {
-                    JSONObject event = fullArchive.getJSONObject(i);
-                    if (event.getInt("kind") == 30007) {
-                        reBroadcastWithFreshTime(context, wsManager, event);
-                    }
-                }
-
-                Log.i(TAG, "HEALER: Hierarchical restoration push complete.");
-
-            } catch (Exception e) {
-                Log.e(TAG, "HEALER_FAIL: " + e.getMessage());
-            }
         }).start();
     }
 
     /**
      * Logic: Resets the pruning clock on relays by generating a fresh signature.
+     * REMOVED: redundant reBroadcastWithFreshTime (Logic moved to SequentialBroadcastQueue)
      */
-    private static void reBroadcastWithFreshTime(Context context, WebSocketClientManager ws, JSONObject oldEvent) {
-        try {
-            AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
-            
-            JSONObject newEvent = new JSONObject();
-            newEvent.put("kind", oldEvent.getInt("kind"));
-            newEvent.put("pubkey", db.getPublicKey());
-            newEvent.put("created_at", System.currentTimeMillis() / 1000); // FRESH TIME
-            newEvent.put("content", oldEvent.getString("content"));
-            newEvent.put("tags", oldEvent.getJSONArray("tags"));
-
-            JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), newEvent);
-            if (signed != null) {
-                ws.broadcastEvent(signed.toString());
-            }
-        } catch (Exception ignored) {}
-    }
 
     /**
      * Broadcasts a new Category added by this advertiser.
@@ -347,7 +357,6 @@ public class MarketplaceSchemaManager {
 
     /**
      * GLOBAL DELETE: Scans for the original event and issues a Kind 5 Deletion.
-     * ADMIN SUPREMACY: If isAdmin is true, search across ALL authors.
      */
     public static void broadcastFieldDeletion(Context context, String category, String fieldLabel) {
         new Thread(() -> {
@@ -360,8 +369,6 @@ public class MarketplaceSchemaManager {
             try {
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006));
-                
-                // ADMIN SUPREMACY: Strip author filter to allow Admin to delete others' events
                 if (!db.isAdmin()) {
                     filter.put("authors", new JSONArray().put(myPubKey));
                 }
@@ -395,10 +402,8 @@ public class MarketplaceSchemaManager {
                 }
 
                 latch.await(5, TimeUnit.SECONDS);
-
                 if (!eventIdsToDelete.isEmpty()) {
                     issueKind5(context, eventIdsToDelete, null);
-                    Log.i(TAG, "Permanent Deletion Broadcasted for field: " + fieldLabel);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Deletion Broadcast Failed: " + e.getMessage());
@@ -408,8 +413,6 @@ public class MarketplaceSchemaManager {
 
     /**
      * CASCADING GLOBAL CATEGORY DELETE: Wipes Category, associated Fields, and associated Value Pools (Brands).
-     * UPDATED: Now searches Kind 30006 AND 30007 for any items matching the category name.
-     * ADMIN SUPREMACY: Admin can target cascading wipes against ANY contributor.
      */
     public static void broadcastCategoryDeletion(Context context, String categoryName) {
         new Thread(() -> {
@@ -420,11 +423,8 @@ public class MarketplaceSchemaManager {
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             try {
-                // DEEP SCAN: Request Kind 30006 (Schema/Fields) AND 30007 (Value Pools/Brands)
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006).put(30007));
-                
-                // ADMIN SUPREMACY: If not admin, restrict search to only own events
                 if (!db.isAdmin()) {
                     filter.put("authors", new JSONArray().put(myPubKey));
                 }
@@ -443,14 +443,9 @@ public class MarketplaceSchemaManager {
                                     if ("EVENT".equals(msg.getString(0))) {
                                         JSONObject event = msg.getJSONObject(2);
                                         JSONObject content = new JSONObject(event.getString("content"));
-                                        
-                                        // Match if it's the Category definition, a Field in that category, or a Value Pool for that category
                                         boolean isMatch = categoryName.equals(content.optString("sub")) || 
                                                           categoryName.equals(content.optString("category"));
-                                        
-                                        if (isMatch) {
-                                            eventIdsToDelete.add(event.getString("id"));
-                                        }
+                                        if (isMatch) { eventIdsToDelete.add(event.getString("id")); }
                                     } else if ("EOSE".equals(msg.getString(0))) { close(); }
                                 } catch (Exception ignored) {}
                             }
@@ -462,11 +457,7 @@ public class MarketplaceSchemaManager {
                 }
 
                 latch.await(6, TimeUnit.SECONDS);
-
-                // Broadcast bulk Kind 5 for all found IDs and the hardcoded name override
                 issueKind5(context, eventIdsToDelete, categoryName);
-                Log.i(TAG, "Cascading Global Wipe initiated for category: " + categoryName);
-
             } catch (Exception e) {
                 Log.e(TAG, "Category cascading wipe failure: " + e.getMessage());
             }
@@ -486,17 +477,14 @@ public class MarketplaceSchemaManager {
             delEvent.put("content", "AdNostr Schema Cleanup");
 
             JSONArray tags = new JSONArray();
-            // Tags for Event IDs
             for (String id : ids) {
                 tags.put(new JSONArray().put("e").put(id));
-                db.addWipedSchemaId(id); // Block ID permanently in local DB blocklist
+                db.addWipedSchemaId(id);
             }
-            // Tag for Hardcoded Override
             if (hardcodedName != null) {
                 tags.put(new JSONArray().put("hardcoded_name").put(hardcodedName));
-                db.addHiddenHardcodedName(hardcodedName); // Block hardcoded name in local DB
+                db.addHiddenHardcodedName(hardcodedName);
             }
-
             delEvent.put("tags", tags);
 
             JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), delEvent);
