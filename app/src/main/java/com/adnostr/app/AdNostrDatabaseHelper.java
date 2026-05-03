@@ -3,6 +3,9 @@ package com.adnostr.app;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -34,6 +37,10 @@ import java.util.Set;
  * ADMIN SUPREMACY UPDATE:
  * - Hardcoded master ADMIN_PUBKEY from verified identity passport.
  * - Integrated KEY_REPORT_LAST_SEEN for Forensic Badge counter synchronization.
+ * 
+ * VOLATILITY & SEQUENTIAL HEALING FIX:
+ * - KEY_FORENSIC_ARCHIVE_JSON: The "Immutable Source of Truth". Unlike the cache, this ONLY grows.
+ * - saveToForensicArchive: Hard-locks every seen category/spec/brand into local permanent storage.
  */
 public class AdNostrDatabaseHelper {
 
@@ -100,6 +107,9 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_CONSOLE_LOG_ENABLED = "system_console_log_enabled";
     private static final String KEY_DEBUG_MODE_ACTIVE = "system_debug_mode_active";
 
+    // VOLATILITY FIX: Master Forensic Archive Key
+    private static final String KEY_FORENSIC_ARCHIVE_JSON = "forensic_permanent_archive_master";
+
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
 
@@ -147,6 +157,50 @@ public class AdNostrDatabaseHelper {
             instance = new AdNostrDatabaseHelper(context.getApplicationContext());
         }
         return instance;
+    }
+
+    // =========================================================================
+    // VOLATILITY FIX: MASTER IMMUTABLE ARCHIVE METHODS
+    // =========================================================================
+
+    /**
+     * Logic: Permanent Hard-Locking of crowdsourced data.
+     * Unlike the "Schema Cache" which updates based on the network, this Archive 
+     * never removes an item. It serves as the primary source for Sequential Re-publishing.
+     */
+    public synchronized void saveToForensicArchive(String eventJson) {
+        try {
+            JSONObject newEvent = new JSONObject(eventJson);
+            String newId = newEvent.getString("id");
+
+            String currentArchive = prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
+            JSONArray archiveArray = new JSONArray(currentArchive);
+
+            // De-duplication Logic: Ensure we don't save the same Bajaj model twice
+            boolean exists = false;
+            for (int i = 0; i < archiveArray.length(); i++) {
+                if (archiveArray.getJSONObject(i).getString("id").equals(newId)) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                archiveArray.put(newEvent);
+                // Synchronous commit to ensure data is locked to disk immediately
+                prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, archiveArray.toString()).commit();
+                android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive.");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("AdNostr_Archive", "Failed to append to permanent archive: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Retrieves the entire permanent truth table for network healing.
+     */
+    public String getForensicArchive() {
+        return prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
     }
 
     // =========================================================================
