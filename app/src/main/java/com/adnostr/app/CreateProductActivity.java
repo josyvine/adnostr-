@@ -51,6 +51,7 @@ import java.util.UUID;
  * - SchemaEventListener: The Activity now monitors the network for 30006/30007 events.
  * - Auto-Injection: As tiers finish re-publishing, the WebView dropdowns are refreshed 
  *   automatically without requiring an activity restart.
+ * - REPAIR UPDATE: onSchemaEventReceived now re-fetches merged archive data for real-time UI population.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -120,13 +121,15 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
      * UI AUTO-REFRESH: Implementation of SchemaEventListener.
      * Logic: If a re-published tier (Bajaj/Audi) is detected on the wire, 
      * re-trigger the schema merge and inject it into the WebView instantly.
+     * REPAIR UPDATE: Triggers immediate fetch of merged forensic archive data.
      */
     @Override
     public void onSchemaEventReceived(String url, JSONObject event) {
         runOnUiThread(() -> {
-            // Re-fetch with the newly arrived metadata merged
+            // Re-fetch with the newly arrived metadata merged from the Hard-Locked Archive
             MarketplaceSchemaManager.fetchGlobalSchema(this, schemaJson -> {
                 fetchedGlobalSchemaJson = schemaJson;
+                // Zero-Refresh Injection: Repopulate dropdowns in real-time
                 injectSchemaIfReady();
                 logTechnicalEvent("UI_SYNC: Dropdowns refreshed with data from " + url);
             });
