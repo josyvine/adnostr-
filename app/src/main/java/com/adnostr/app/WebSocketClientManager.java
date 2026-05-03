@@ -36,6 +36,7 @@ import java.util.List;
  * ADMIN SUPREMACY UPDATE:
  * - Schema Observer: Added a high-level hook to notify the system when new crowdsourced metadata arrives.
  * - Forensic Sniffing: Automatic identification and dispatch of Kind 30006/30007 events.
+ * - REPAIR UPDATE: NOTICE and CLOSED frames are now routed to listeners for forensic error reporting.
  */
 public class WebSocketClientManager {
 
@@ -153,6 +154,10 @@ public class WebSocketClientManager {
                 logOutput = "Outbound Cryptographic Signature sent to Network.";
             } else if (message.contains("FRAME_SEND (MANUAL_REQ)")) {
                 logOutput = "Manual Discovery: Scanning directory for matching profiles.";
+            } else if (message.startsWith("[\"NOTICE\"")) {
+                logOutput = "Relay issued a notification or status update.";
+            } else if (message.startsWith("[\"CLOSED\"")) {
+                logOutput = "Relay terminated a specific subscription channel.";
             }
         }
 
@@ -239,7 +244,9 @@ public class WebSocketClientManager {
                     try {
                         if (message.startsWith("[")) {
                             JSONArray msgArray = new JSONArray(message);
-                            if ("EVENT".equals(msgArray.getString(0))) {
+                            String type = msgArray.getString(0);
+
+                            if ("EVENT".equals(type)) {
                                 JSONObject event = msgArray.getJSONObject(2);
                                 int kind = event.optInt("kind", -1);
                                 if (kind == 30006 || kind == 30007) {
@@ -249,6 +256,38 @@ public class WebSocketClientManager {
                                         }
                                     });
                                 }
+                            }
+                            // REPAIR UPDATE: Route NOTICE error frames to forensic listeners
+                            else if ("NOTICE".equals(type)) {
+                                String detail = msgArray.optString(1, "Relay status update");
+                                JSONObject noticeEv = new JSONObject();
+                                noticeEv.put("id", "ntc-" + UUID.randomUUID().toString());
+                                noticeEv.put("kind", -1); // Internal kind for errors
+                                noticeEv.put("content", "RELAY_NOTICE: " + detail);
+                                noticeEv.put("pubkey", "system");
+                                noticeEv.put("created_at", System.currentTimeMillis() / 1000);
+
+                                mHandler.post(() -> {
+                                    for (SchemaEventListener schemaListener : schemaListeners) {
+                                        schemaListener.onSchemaEventReceived(relayUrl, noticeEv);
+                                    }
+                                });
+                            }
+                            // REPAIR UPDATE: Route CLOSED frames (Rate Limiting/Auth) to forensic listeners
+                            else if ("CLOSED".equals(type)) {
+                                String reason = msgArray.optString(2, "Subscription closed by relay");
+                                JSONObject closedEv = new JSONObject();
+                                closedEv.put("id", "cls-" + UUID.randomUUID().toString());
+                                closedEv.put("kind", -2); // Internal kind for errors
+                                closedEv.put("content", "RELAY_CLOSED: " + reason);
+                                closedEv.put("pubkey", "system");
+                                closedEv.put("created_at", System.currentTimeMillis() / 1000);
+
+                                mHandler.post(() -> {
+                                    for (SchemaEventListener schemaListener : schemaListeners) {
+                                        schemaListener.onSchemaEventReceived(relayUrl, closedEv);
+                                    }
+                                });
                             }
                         }
                     } catch (Exception ignored) {}
