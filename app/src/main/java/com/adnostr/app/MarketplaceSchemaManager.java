@@ -275,7 +275,7 @@ public class MarketplaceSchemaManager {
                 // =========================================================================
                 // STEP 2: RE-CACHE & AUTO-HEAL (COLLECTIVE MEMORY UPDATE)
                 // =========================================================================
-                
+
                 // Detection: Did the network return nothing but we have something saved?
                 boolean networkEmpty = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
                 boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
@@ -311,18 +311,25 @@ public class MarketplaceSchemaManager {
         new Thread(() -> {
             Log.w(TAG, "HEALER: Commencing tiered network restoration...");
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
-            
+
             // Create the dedicated queue orchestrator
             SequentialBroadcastQueue queue = new SequentialBroadcastQueue(context);
-            
+
             // Link the listener if provided (usually from ReportActivity)
             if (listener != null) {
                 queue.setTechnicalLogListener(listener);
             }
-            
+
             // Pull the HARD-LOCKED source of truth
             String archiveJson = db.getForensicArchive();
-            if (archiveJson == null || archiveJson.equals("[]")) return;
+            
+            // REPAIR UPDATE: Strengthened guard clause to handle empty strings and safety reset
+            if (archiveJson == null || archiveJson.trim().isEmpty() || archiveJson.equals("[]")) {
+                if (listener != null) {
+                    listener.onLogGenerated("SYSTEM: Archive is empty. Restoration aborted.");
+                }
+                return;
+            }
 
             // Load and start the hierarchical re-publish
             queue.prepareArchive(archiveJson);
