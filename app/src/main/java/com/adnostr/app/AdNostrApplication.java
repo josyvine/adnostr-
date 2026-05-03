@@ -7,8 +7,13 @@ import android.content.Intent;
 import android.os.Build;
 import android.util.Log;
 
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Global Application class for AdNostr.
@@ -18,6 +23,10 @@ import java.io.StringWriter;
  * 
  * ADMIN SUPREMACY UPDATE:
  * - Admin Alert Channel: High-priority registration for real-time forensic monitoring alerts.
+ * 
+ * VOLATILITY FIX:
+ * - Heartbeat Initialization: Automatically schedules the Hourly Sequential Re-Publisher
+ *   to keep the crowdsourced database alive on ephemeral Nostr relays.
  */
 public class AdNostrApplication extends Application {
 
@@ -42,8 +51,36 @@ public class AdNostrApplication extends Application {
         // This section originally started the IPFS node service.
         // It has been removed to prevent build failures and native crashes,
         // as the app now uses Encrypted HTTP Media Relays.
+
+        // =========================================================================
+        // VOLATILITY FIX: THE HEARTBEAT ENGINE
+        // =========================================================================
+        // Schedule the hourly sequential re-publisher if this is the Admin device.
+        // This ensures that even if the app is closed, the device wakes up 
+        // every hour to push the immutable archive back to the network.
+        if (AdNostrDatabaseHelper.getInstance(this).isAdmin()) {
+            scheduleSchemaHeartbeat();
+            Log.i(TAG, "ADMIN DETECTED: Hourly Schema Heartbeat engine scheduled.");
+        }
         
         Log.i(TAG, "AdNostr Application Started and Protected by Crash Watchdog.");
+    }
+
+    /**
+     * Logic: Registers the Background Re-Publisher with WorkManager.
+     * Frequency: 1 Hour (Balance between relay persistence and battery life).
+     */
+    private void scheduleSchemaHeartbeat() {
+        PeriodicWorkRequest heartbeatRequest = new PeriodicWorkRequest.Builder(
+                SchemaHeartbeatWorker.class, 1, TimeUnit.HOURS)
+                .addTag("SCHEMA_HEARTBEAT")
+                .build();
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "AdNostrSchemaHealer", 
+                ExistingPeriodicWorkPolicy.KEEP, 
+                heartbeatRequest
+        );
     }
 
     /**
