@@ -19,6 +19,11 @@ import java.util.List;
  * 
  * This class prevents "Relay Flooding" and ensures that every re-broadcasted 
  * archived item receives a fresh cryptographic signature.
+ * 
+ * VOLATILITY & DROPDOWN FIX (NEW):
+ * - Context Preservation: Ensures that when re-signing "Audi" or "Bajaj", the 
+ *   category "Cars" or "Bikes" is strictly maintained in the tags and content.
+ * - Forensic Feedback: Detailed trace logging added to monitor tiered indexing.
  */
 public class SequentialBroadcastQueue {
 
@@ -136,20 +141,31 @@ public class SequentialBroadcastQueue {
     /**
      * Logic: Generates a fresh BIP-340 signature with the CURRENT timestamp.
      * This is critical to force relays to overwrite their old pruned indexes.
+     * DROPDOWN FIX: Ensures context metadata is explicitly logged during re-signing.
      */
     private void reSignAndSend(JSONObject oldEvent) {
         try {
             JSONObject newEvent = new JSONObject();
-            newEvent.put("kind", oldEvent.getInt("kind"));
+            int kind = oldEvent.getInt("kind");
+            String contentStr = oldEvent.getString("content");
+            JSONObject content = new JSONObject(contentStr);
+
+            // DROPDOWN DROPOUT TRACE: Identify which category is being healed
+            String contextLabel = content.optString("category", content.optString("sub", "Unknown"));
+            Log.i(TAG, "HEAL_TRACE: Re-signing Kind " + kind + " for target '" + contextLabel + "'");
+
+            newEvent.put("kind", kind);
             newEvent.put("pubkey", db.getPublicKey());
             newEvent.put("created_at", System.currentTimeMillis() / 1000); // RESET PRUNING CLOCK
-            newEvent.put("content", oldEvent.getString("content"));
+            newEvent.put("content", contentStr);
+            
+            // TAG INTEGRITY: Carry over all indexing tags (t-tags, d-tags) for correct filtering
             newEvent.put("tags", oldEvent.getJSONArray("tags"));
 
             JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), newEvent);
             if (signed != null) {
                 wsManager.broadcastEvent(signed.toString());
-                Log.d(TAG, "Sequentially broadcasted archived item: " + signed.optString("id"));
+                Log.d(TAG, "Sequentially broadcasted archived item: " + signed.optString("id") + " (Context: " + contextLabel + ")");
             }
         } catch (Exception e) {
             Log.e(TAG, "Re-sign failure: " + e.getMessage());
