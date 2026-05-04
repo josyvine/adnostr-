@@ -25,6 +25,7 @@ import java.util.List;
  *   category "Cars" or "Bikes" is strictly maintained in the tags and content.
  * - Forensic Feedback: Detailed trace logging added to monitor tiered indexing.
  * - REPAIR UPDATE: Implemented TechnicalLogListener to feed the forensic console.
+ * - TIER 2 RECOVERY: Fixed logic in prepareArchive to ensure Technical Fields are never skipped.
  */
 public class SequentialBroadcastQueue {
 
@@ -77,6 +78,7 @@ public class SequentialBroadcastQueue {
     /**
      * Logic: Accepts the full forensic archive and sorts it into dependency tiers.
      * REPAIR UPDATE: Implemented Defensive Parsing to skip ghost frames without crashing the queue.
+     * FIXED: Explicitly identifies Tier 2 (Fields) to prevent dropdown dropout.
      */
     public boolean prepareArchive(String archiveJson) {
         // CRITICAL FIX: Check for empty strings to prevent "End of input at character 0"
@@ -107,9 +109,11 @@ public class SequentialBroadcastQueue {
                     int kind = event.getInt("kind");
 
                     if (kind == 30006) {
-                        if ("category".equals(content.optString("type"))) {
+                        String metadataType = content.optString("type", "").trim().toLowerCase();
+                        if ("category".equals(metadataType)) {
                             catTier.add(event);
-                        } else if ("field".equals(content.optString("type"))) {
+                        } else if ("field".equals(metadataType)) {
+                            // TIER 2 RECOVERY: Ensure tech specs are correctly added to the field list
                             fieldTier.add(event);
                         }
                     } else if (kind == 30007) {
@@ -124,6 +128,9 @@ public class SequentialBroadcastQueue {
 
             Log.d(TAG, "Queue Prepared: Tier1=" + catTier.size() + ", Tier2=" + fieldTier.size() + ", Tier3=" + valueTier.size());
             
+            // Forensic feedback for the Admin Console
+            sendForensicLog("TIER_MAP: Cat=" + catTier.size() + " | Field=" + fieldTier.size() + " | Value=" + valueTier.size());
+
             // Check if we actually found any valid items to restore
             if (catTier.isEmpty() && fieldTier.isEmpty() && valueTier.isEmpty()) {
                 sendForensicLog("SYSTEM: No valid metadata frames found in archive.");
@@ -174,7 +181,10 @@ public class SequentialBroadcastQueue {
         }
 
         if (targetList.isEmpty()) {
-            if (nextTier != -1) processTier(nextTier);
+            if (nextTier != -1) {
+                sendForensicLog("ORDER: Tier " + tier + " is empty. Skipping to next.");
+                processTier(nextTier);
+            }
             return;
         }
 
@@ -193,7 +203,7 @@ public class SequentialBroadcastQueue {
 
                 // If this was the last item in the tier, wait 3 seconds and start next tier
                 if (isLastInTier && nextTier != -1) {
-                    sendForensicLog("ORDER: Tier " + tier + " complete. Transitioning...");
+                    sendForensicLog("ORDER: Tier " + tier + " complete. Transitioning to Tier " + nextTier + " in 3s...");
                     queueHandler.postDelayed(() -> processTier(nextTier), 3000);
                 } else if (isLastInTier && nextTier == -1) {
                     sendForensicLog("\n=== HEALING SEQUENCE COMPLETE ===");
