@@ -45,6 +45,7 @@ import java.util.List;
  * 
  * FORENSIC ERROR FIX:
  * - OK Frame Sniffer: Explicitly parses ["OK", event_id, success, message] to identify rejections.
+ * - Session Deduplication: Prevents duplicate log prints for the same event arriving from multiple relays.
  */
 public class WebSocketClientManager {
 
@@ -66,6 +67,9 @@ public class WebSocketClientManager {
     // ADMIN SUPREMACY: Dedicated listeners for crowdsourced schema events
     private final List<SchemaEventListener> schemaListeners = new CopyOnWriteArrayList<>();
     
+    // SESSION DEDUPLICATION: Tracks IDs processed in the current app session to stop log spam
+    private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
+
     // CRASH FIX: Handler to dispatch events to the Main UI Thread
     private final Handler mHandler = new Handler(Looper.getMainLooper());
 
@@ -167,7 +171,7 @@ public class WebSocketClientManager {
             } else if (message.startsWith("[\"CLOSED\"")) {
                 logOutput = "Relay terminated a specific subscription channel.";
             } else if (message.contains("RELAY_REJECTION")) {
-                // Always show rejections even in professional mode
+                // Always show rejections even in professional mode for forensic clarity
                 logOutput = message;
             }
         }
@@ -175,8 +179,8 @@ public class WebSocketClientManager {
         String time = timeFormat.format(new Date());
         // PREPEND to the log so the newest network events appear at the top
         liveLogs.insert(0, "[" + time + "] " + logOutput + "\n\n");
-        if (liveLogs.length() > 60000) {
-            liveLogs.setLength(50000); // Prevent memory bloat while keeping 50k chars of history
+        if (liveLogs.length() > 80000) {
+            liveLogs.setLength(60000); // Prevent memory bloat while keeping history
         }
     }
 
@@ -186,6 +190,7 @@ public class WebSocketClientManager {
 
     public void clearLogs() {
         liveLogs.setLength(0);
+        processedEventIds.clear();
     }
 
     /**
@@ -259,63 +264,66 @@ public class WebSocketClientManager {
 
                             // =========================================================================
                             // FORENSIC ERROR FIX: OK FRAME SNIFFER
-                            // Identifies WHY a relay rejected your Category, Field, or Value Pool.
+                            // Explicitly identifies WHY a relay rejected a Category, Field, or Value.
+                            // This solves the generic Error Toast by providing specific reasons.
                             // =========================================================================
                             if ("OK".equals(type)) {
                                 String eventId = msgArray.getString(1);
                                 boolean success = msgArray.getBoolean(2);
                                 String reason = msgArray.optString(3, "No reason provided");
-                                
+
                                 if (!success) {
-                                    addToLog("RELAY_REJECTION FROM [" + relayUrl + "]:\n" +
-                                             "Target ID: " + eventId + "\n" +
-                                             "Relay Reason: " + reason);
+                                    addToLog("!!! RELAY_REJECTION FROM [" + relayUrl + "] !!!\n" +
+                                             "TARGET_ID: " + eventId + "\n" +
+                                             "RELAY_REASON: " + reason);
                                 } else {
-                                    addToLog("RELAY_CONFIRMED [" + relayUrl + "]: Event " + eventId + " published.");
+                                    addToLog("RELAY_CONFIRMED [" + relayUrl + "]: Node accepted event " + eventId);
                                 }
                             }
                             
                             else if ("EVENT".equals(type)) {
                                 JSONObject event = msgArray.getJSONObject(2);
-                                int kind = event.optInt("kind", -1);
-                                if (kind == 30006 || kind == 30007) {
-                                    // PERFORMANCE FIX: We no longer post to mHandler (Main Thread) here.
-                                    // Observers are notified on the background thread to prevent UI hangs.
-                                    for (SchemaEventListener schemaListener : schemaListeners) {
-                                        schemaListener.onSchemaEventReceived(relayUrl, event);
+                                String eventId = event.getString("id");
+                                
+                                // SESSION DEDUPLICATION: Don't process the same event multiple times per session
+                                if (processedEventIds.add(eventId)) {
+                                    int kind = event.optInt("kind", -1);
+                                    if (kind == 30006 || kind == 30007) {
+                                        // PERFORMANCE FIX: Background thread dispatch to prevent UI hangs.
+                                        for (SchemaEventListener schemaListener : schemaListeners) {
+                                            schemaListener.onSchemaEventReceived(relayUrl, event);
+                                        }
                                     }
                                 }
                             }
-                            // REPAIR UPDATE: Route NOTICE error frames to forensic listeners
+                            // REPAIR UPDATE: Detailed Relay Notifications
                             else if ("NOTICE".equals(type)) {
                                 String detail = msgArray.optString(1, "Relay status update");
                                 addToLog("RELAY_NOTICE [" + relayUrl + "]: " + detail);
                                 
                                 JSONObject noticeEv = new JSONObject();
                                 noticeEv.put("id", "ntc-" + UUID.randomUUID().toString());
-                                noticeEv.put("kind", -1); // Internal kind for errors
+                                noticeEv.put("kind", -1); // Internal error marker
                                 noticeEv.put("content", "RELAY_NOTICE: " + detail);
                                 noticeEv.put("pubkey", "system");
                                 noticeEv.put("created_at", System.currentTimeMillis() / 1000);
 
-                                // PERFORMANCE FIX: Notify background observers
                                 for (SchemaEventListener schemaListener : schemaListeners) {
                                     schemaListener.onSchemaEventReceived(relayUrl, noticeEv);
                                 }
                             }
-                            // REPAIR UPDATE: Route CLOSED frames (Rate Limiting/Auth) to forensic listeners
+                            // REPAIR UPDATE: Subscription Shutdown Tracing
                             else if ("CLOSED".equals(type)) {
                                 String reason = msgArray.optString(2, "Subscription closed by relay");
                                 addToLog("RELAY_CLOSED [" + relayUrl + "]: " + reason);
                                 
                                 JSONObject closedEv = new JSONObject();
                                 closedEv.put("id", "cls-" + UUID.randomUUID().toString());
-                                closedEv.put("kind", -2); // Internal kind for errors
+                                closedEv.put("kind", -2); // Internal error marker
                                 closedEv.put("content", "RELAY_CLOSED: " + reason);
                                 closedEv.put("pubkey", "system");
                                 closedEv.put("created_at", System.currentTimeMillis() / 1000);
 
-                                // PERFORMANCE FIX: Notify background observers
                                 for (SchemaEventListener schemaListener : schemaListeners) {
                                     schemaListener.onSchemaEventReceived(relayUrl, closedEv);
                                 }
@@ -353,7 +361,7 @@ public class WebSocketClientManager {
                     Log.e(TAG, "Relay Failure [" + relayUrl + "]: " + ex.getMessage());
                     activeRelays.remove(relayUrl);
                     
-                    // FORENSIC: Full stack trace for identifying socket timeouts or SSL issues
+                    // FORENSIC: Identifying socket timeouts or SSL issues
                     addToLog("NETWORK_ERROR: " + relayUrl + "\nException: " + ex.toString());
                     
                     // CRASH FIX: Dispatch to listeners on Main Thread
