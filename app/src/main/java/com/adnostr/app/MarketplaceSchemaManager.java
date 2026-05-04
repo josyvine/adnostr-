@@ -99,7 +99,7 @@ public class MarketplaceSchemaManager {
             
             // =========================================================================
             // STABILITY FIX: INCREASED TIMEOUT
-            // Increased to 20 seconds to ensure heavy metadata merges finish on slow nodes.
+            // Increased to 20 seconds to ensure Bajaj Models (large payloads) finish syncing.
             // =========================================================================
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
@@ -182,7 +182,7 @@ public class MarketplaceSchemaManager {
                             @Override public void onClose(int c, String r, boolean m) { latch.countDown(); }
                             @Override public void onError(Exception ex) { latch.countDown(); }
                         };
-                        client.setConnectionLostTimeout(20); // Sync with latch timeout
+                        client.setConnectionLostTimeout(20); 
                         client.connect();
                     } catch (Exception e) {
                         latch.countDown();
@@ -196,13 +196,13 @@ public class MarketplaceSchemaManager {
                 // THE FILTER ENGINE: PERMANENT PURGE & ARCHIVE MERGE LOGIC (REWRITE)
                 // =========================================================================
                 
-                // DE-DUPLICATION TRACKER
+                // DE-DUPLICATION TRACKER: Stops log spam and WebView bloat
                 Set<String> contentFingerprints = new HashSet<>();
                 
-                // INTEGRITY TRACKER: Validates which Fields exist to anchor child values
+                // INTEGRITY TRACKER: Validates which technical fields exist to anchor Bajaj models
                 Set<String> validFieldAnchors = new HashSet<>();
 
-                // INSTANT DROPDOWN FIX: Load the Hard-Locked Archive
+                // INSTANT DROPDOWN FIX: Pull directly from the Hard-Locked Archive
                 String archiveJson = db.getForensicArchive();
                 JSONArray archiveArray = new JSONArray(archiveJson);
 
@@ -218,7 +218,7 @@ public class MarketplaceSchemaManager {
                         contentFingerprints.add(finger);
                     }
                 }
-                // Phase B: Merge Unique items from Immutable Archive
+                // Phase B: Merge Unique items from local memory
                 for (int i = 0; i < archiveArray.length(); i++) {
                     JSONObject arcEvent = archiveArray.getJSONObject(i);
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
@@ -235,17 +235,17 @@ public class MarketplaceSchemaManager {
 
                 // 2. Process Fields (Archive + Network)
                 JSONArray filteredFields = new JSONArray();
-                // For Fields: "field:[category]:[label]"
+                // For Fields: "field:[category]:[label]" (e.g. field:bikes:brand)
                 for (JSONObject field : fieldEvents) {
                     String eid = field.optString("_event_id");
                     String catName = field.optString("category", "").toLowerCase();
                     String labelName = field.optString("label", "").toLowerCase();
                     String finger = "field:" + catName + ":" + labelName;
-                    
+
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredFields.put(field);
                         contentFingerprints.add(finger);
-                        validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3 verification
+                        validFieldAnchors.add(catName + ":" + labelName); // Anchor restored
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
@@ -255,13 +255,13 @@ public class MarketplaceSchemaManager {
                     String catName = content.optString("category", "").toLowerCase();
                     String labelName = content.optString("label", "").toLowerCase();
                     String finger = "field:" + catName + ":" + labelName;
-                    
+
                     if (arcEvent.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
                         if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                             content.put("_event_id", eid); 
                             filteredFields.put(content);
                             contentFingerprints.add(finger);
-                            validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3 verification
+                            validFieldAnchors.add(catName + ":" + labelName); // Anchor restored
                         }
                     }
                 }
@@ -274,10 +274,10 @@ public class MarketplaceSchemaManager {
                     String cat = val.optString("category", "").toLowerCase();
                     JSONObject specs = val.optJSONObject("specs");
                     String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
-                    
+
                     String finger = "val:" + cat + ":" + (specs != null ? specs.toString() : "null");
 
-                    // INTEGRITY GATE: Only add values if their parent Field exists to prevent empty dropdowns
+                    // INTEGRITY GATE: Values (Bajaj) only included if parent Field (Brand) exists
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         if (validFieldAnchors.contains(cat + ":" + specsKey) || specsKey.equals("unknown")) {
                             filteredValues.put(val);
@@ -293,7 +293,7 @@ public class MarketplaceSchemaManager {
                         String cat = content.optString("category", "").toLowerCase();
                         JSONObject specs = content.optJSONObject("specs");
                         String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
-                        
+
                         String finger = "val:" + cat + ":" + (specs != null ? specs.toString() : "null");
                         if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                             if (validFieldAnchors.contains(cat + ":" + specsKey) || specsKey.equals("unknown")) {
@@ -320,7 +320,7 @@ public class MarketplaceSchemaManager {
                 // STEP 2: RE-CACHE & AUTO-HEAL (COLLECTIVE MEMORY UPDATE)
                 // =========================================================================
 
-                // Detection: Did the network return nothing but we have something saved?
+                // Detection: Did the network return nothing but we have something saved locally?
                 boolean networkEmpty = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
                 boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
 
@@ -328,7 +328,7 @@ public class MarketplaceSchemaManager {
                     Log.w(TAG, "COLLECTIVE MEMORY: Network amnesia detected. Triggering Healing Sequence...");
                     executeSequentialHealing(context, null);
                 } else {
-                    // Normal state: Update memory with the latest consensus
+                    // Normal state: Update local memory with the latest network consensus
                     db.saveSchemaCache(globalSchema.toString());
                 }
 
@@ -347,53 +347,46 @@ public class MarketplaceSchemaManager {
 
     /**
      * VOLATILITY FIX: THE SEQUENTIAL HEALING ENGINE
-     * Logic: Broadcasts the immutable archive in a tiered hierarchy with 
-     * timing delays to ensure proper relay indexing.
-     * UPDATED: Accepts TechnicalLogListener to feed the forensic console.
-     * OPTIMIZATION: Now de-duplicates the 1,375 redundant items before preparation to prevent spam rejection.
+     * Logic: Broadcasts the immutable archive in a tiered hierarchy.
      */
     public static void executeSequentialHealing(Context context, SequentialBroadcastQueue.TechnicalLogListener listener) {
         new Thread(() -> {
             Log.w(TAG, "HEALER: Commencing tiered network restoration...");
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
 
-            // Create the dedicated queue orchestrator
             SequentialBroadcastQueue queue = new SequentialBroadcastQueue(context);
 
-            // Link the listener if provided (usually from ReportActivity)
             if (listener != null) {
                 queue.setTechnicalLogListener(listener);
             }
 
-            // Pull the HARD-LOCKED source of truth
             String archiveJson = db.getForensicArchive();
 
-            // REPAIR UPDATE: Strengthened guard clause to handle empty strings and safety reset
             if (archiveJson == null || archiveJson.trim().isEmpty() || archiveJson.equals("[]")) {
                 if (listener != null) {
                     listener.onLogGenerated("SYSTEM: Archive is empty. Restoration aborted.");
                 }
                 return;
             }
-            
+
             // =========================================================================
             // HEALER DE-DUPLICATION LAYER (CRITICAL FIX FOR 1,375 REDUNDANT ITEMS)
-            // Filters redundant categories/values to stop relays from flagging spam.
+            // Ensures only unique frames are re-signed to prevent relay spam blocks.
             // =========================================================================
             try {
                 JSONArray rawArchive = new JSONArray(archiveJson);
                 JSONArray uniqueArchive = new JSONArray();
                 Set<String> fingerprints = new HashSet<>();
-                
+
                 for (int i = 0; i < rawArchive.length(); i++) {
                     JSONObject event = rawArchive.getJSONObject(i);
                     String contentStr = event.optString("content", "");
                     if(contentStr.isEmpty()) continue;
-                    
+
                     JSONObject content = new JSONObject(contentStr);
                     int kind = event.getInt("kind");
                     String finger = "";
-                    
+
                     if (kind == 30006) {
                         finger = kind + ":" + content.optString("type") + ":" + 
                                  content.optString("sub", content.optString("label", "none"));
@@ -401,13 +394,13 @@ public class MarketplaceSchemaManager {
                         finger = kind + ":" + content.optString("category") + ":" + 
                                  (content.optJSONObject("specs") != null ? content.optJSONObject("specs").toString() : "none");
                     }
-                    
+
                     if (!fingerprints.contains(finger.toLowerCase())) {
                         uniqueArchive.put(event);
                         fingerprints.add(finger.toLowerCase());
                     }
                 }
-                
+
                 archiveJson = uniqueArchive.toString();
                 if (listener != null) {
                     listener.onLogGenerated("OPTIMIZER: Compressed " + rawArchive.length() + " items down to " + uniqueArchive.length() + " unique frames.");
@@ -416,7 +409,6 @@ public class MarketplaceSchemaManager {
                 Log.e(TAG, "Healer Optimization Failed: " + e.getMessage());
             }
 
-            // REPAIR UPDATE: Check preparation success before proceeding with broadcast
             if (queue.prepareArchive(archiveJson)) {
                 queue.startBroadcast();
             } else {
