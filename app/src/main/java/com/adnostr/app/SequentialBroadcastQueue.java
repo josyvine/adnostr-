@@ -97,7 +97,7 @@ public class SequentialBroadcastQueue {
             fieldTier.clear();
             valueTier.clear();
 
-            // Internal set for session deduplication (Prevents re-signing 158 identical categories)
+            // Internal set for session deduplication (Prevents re-signing redundant categories)
             Set<String> contentFingerprints = new HashSet<>();
 
             for (int i = 0; i < archive.length(); i++) {
@@ -116,30 +116,36 @@ public class SequentialBroadcastQueue {
                     int kind = event.getInt("kind");
 
                     if (kind == 30006) {
-                        String type = content.optString("type", "").trim().toLowerCase();
+                        String metadataType = content.optString("type", "").trim().toLowerCase();
                         String sub = content.optString("sub", "").trim().toLowerCase();
                         String cat = content.optString("category", "").trim().toLowerCase();
                         String label = content.optString("label", "").trim().toLowerCase();
 
-                        if ("category".equals(type)) {
-                            // Deduplicate based on sub-category name
+                        // =========================================================================
+                        // HIERARCHY REPAIR: TIER 1 vs TIER 2
+                        // Separates Category (Bikes) from Fields (Brand/Model)
+                        // =========================================================================
+                        if ("category".equals(metadataType)) {
+                            // Deduplicate based on sub-category name (e.g. Bikes)
                             if (contentFingerprints.add("cat:" + sub)) {
                                 catTier.add(event);
                             }
-                        } else if ("field".equals(type)) {
-                            // Deduplicate based on Category + Label (e.g. Cars:Brand)
-                            // FIXED: Explicitly added to fieldTier to fix "Field=0" error
+                        } else if ("field".equals(metadataType) || content.has("label")) {
+                            // TIER 2 RECOVERY: Captured Technical Field anchors (The Brand/Model/Year boxes)
+                            // Deduplicate based on Category + Label (e.g. Bikes:Brand)
                             if (contentFingerprints.add("field:" + cat + ":" + label)) {
                                 fieldTier.add(event);
                             }
                         }
                     } else if (kind == 30007) {
-                        // TIER 3: Bulk Values (e.g. Bajaj, 2024, etc.)
+                        // =========================================================================
+                        // TIER 3: VALUE POOLS (Bajaj, Pulsar, Discover, 2024, etc.)
+                        // =========================================================================
                         String cat = content.optString("category", "").trim().toLowerCase();
                         JSONObject specs = content.optJSONObject("specs");
                         String specsStr = (specs != null) ? specs.toString() : "";
 
-                        // Deduplicate value pools
+                        // Deduplicate value pools to stop relay spamming
                         if (contentFingerprints.add("val:" + cat + ":" + specsStr)) {
                             valueTier.add(event);
                         }
@@ -249,7 +255,7 @@ public class SequentialBroadcastQueue {
             String contentStr = oldEvent.getString("content");
             JSONObject content = new JSONObject(contentStr);
 
-            // Identifies which metadata target is being healed
+            // Identifies which metadata target is being healed for the console log
             String contextLabel = content.optString("category", content.optString("sub", content.optString("label", "Unknown")));
             Log.i(TAG, "HEAL_TRACE: Re-signing Kind " + kind + " for target '" + contextLabel + "'");
             sendForensicLog("HEAL: Re-signing " + kind + " for '" + contextLabel + "'");
@@ -259,7 +265,7 @@ public class SequentialBroadcastQueue {
 
             // =========================================================================
             // REFRESH NETWORK PERSISTENCE: OVERWRITE TIMESTAMP
-            // Resetting created_at resets the pruning clock on relays.
+            // This method uses current time to trick relays into resetting the pruning clock.
             // =========================================================================
             newEvent.put("created_at", System.currentTimeMillis() / 1000); 
 
@@ -268,7 +274,8 @@ public class SequentialBroadcastQueue {
             // TAG INTEGRITY: Carry over all indexing tags (t-tags, d-tags) for correct filtering
             newEvent.put("tags", oldEvent.getJSONArray("tags"));
 
-            JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), newEvent);
+            // IMPORTANT: Uses the re-signing logic that updates the Event ID and Signature
+            JSONObject signed = NostrEventSigner.signHealedEvent(db.getPrivateKey(), newEvent);
             if (signed != null) {
                 wsManager.broadcastEvent(signed.toString());
                 Log.d(TAG, "Healed: " + signed.optString("id") + " (" + contextLabel + ")");
