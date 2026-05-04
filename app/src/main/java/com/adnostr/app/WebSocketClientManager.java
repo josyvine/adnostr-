@@ -42,6 +42,9 @@ import java.util.List;
  * - Background Schema Notification: SchemaEventListener notifications are now dispatched 
  *   on the background WebSocket thread. This allows ReportActivity to perform heavy 
  *   database archival without blocking the Main UI thread.
+ * 
+ * FORENSIC ERROR FIX:
+ * - OK Frame Sniffer: Explicitly parses ["OK", event_id, success, message] to identify rejections.
  */
 public class WebSocketClientManager {
 
@@ -163,6 +166,9 @@ public class WebSocketClientManager {
                 logOutput = "Relay issued a notification or status update.";
             } else if (message.startsWith("[\"CLOSED\"")) {
                 logOutput = "Relay terminated a specific subscription channel.";
+            } else if (message.contains("RELAY_REJECTION")) {
+                // Always show rejections even in professional mode
+                logOutput = message;
             }
         }
 
@@ -251,7 +257,25 @@ public class WebSocketClientManager {
                             JSONArray msgArray = new JSONArray(message);
                             String type = msgArray.getString(0);
 
-                            if ("EVENT".equals(type)) {
+                            // =========================================================================
+                            // FORENSIC ERROR FIX: OK FRAME SNIFFER
+                            // Identifies WHY a relay rejected your Category, Field, or Value Pool.
+                            // =========================================================================
+                            if ("OK".equals(type)) {
+                                String eventId = msgArray.getString(1);
+                                boolean success = msgArray.getBoolean(2);
+                                String reason = msgArray.optString(3, "No reason provided");
+                                
+                                if (!success) {
+                                    addToLog("RELAY_REJECTION FROM [" + relayUrl + "]:\n" +
+                                             "Target ID: " + eventId + "\n" +
+                                             "Relay Reason: " + reason);
+                                } else {
+                                    addToLog("RELAY_CONFIRMED [" + relayUrl + "]: Event " + eventId + " published.");
+                                }
+                            }
+                            
+                            else if ("EVENT".equals(type)) {
                                 JSONObject event = msgArray.getJSONObject(2);
                                 int kind = event.optInt("kind", -1);
                                 if (kind == 30006 || kind == 30007) {
@@ -265,6 +289,8 @@ public class WebSocketClientManager {
                             // REPAIR UPDATE: Route NOTICE error frames to forensic listeners
                             else if ("NOTICE".equals(type)) {
                                 String detail = msgArray.optString(1, "Relay status update");
+                                addToLog("RELAY_NOTICE [" + relayUrl + "]: " + detail);
+                                
                                 JSONObject noticeEv = new JSONObject();
                                 noticeEv.put("id", "ntc-" + UUID.randomUUID().toString());
                                 noticeEv.put("kind", -1); // Internal kind for errors
@@ -280,6 +306,8 @@ public class WebSocketClientManager {
                             // REPAIR UPDATE: Route CLOSED frames (Rate Limiting/Auth) to forensic listeners
                             else if ("CLOSED".equals(type)) {
                                 String reason = msgArray.optString(2, "Subscription closed by relay");
+                                addToLog("RELAY_CLOSED [" + relayUrl + "]: " + reason);
+                                
                                 JSONObject closedEv = new JSONObject();
                                 closedEv.put("id", "cls-" + UUID.randomUUID().toString());
                                 closedEv.put("kind", -2); // Internal kind for errors
