@@ -42,6 +42,7 @@ import java.util.Set;
  * - KEY_FORENSIC_ARCHIVE_JSON: The "Immutable Source of Truth". Unlike the cache, this ONLY grows.
  * - saveToForensicArchive: Hard-locks every seen category/spec/brand into local permanent storage.
  * - REPAIR UPDATE: getForensicArchive now filters results against the Wiped blocklist for integrity.
+ * - DUPLICATE GATEKEEPER: Added content-aware de-duplication to prevent archive bloat and relay spam rejections.
  */
 public class AdNostrDatabaseHelper {
 
@@ -169,14 +170,17 @@ public class AdNostrDatabaseHelper {
      * Unlike the "Schema Cache" which updates based on the network, this Archive 
      * never removes an item. It serves as the primary source for Sequential Re-publishing.
      * REPAIR UPDATE: Rejects events with empty content to prevent archive corruption.
+     * DUPLICATE GATEKEEPER: Now parses content to ensure unique metadata entries.
      */
     public synchronized void saveToForensicArchive(String eventJson) {
         try {
             JSONObject newEvent = new JSONObject(eventJson);
             String newId = newEvent.getString("id");
+            int kind = newEvent.optInt("kind", -1);
+            String contentStr = newEvent.optString("content", "");
 
-            // GATEKEEPER: Prevent "End of input" crashes by rejecting empty content frames
-            if (newEvent.optString("content", "").isEmpty()) {
+            // GATEKEEPER 1: Prevent "End of input" crashes by rejecting empty content frames
+            if (contentStr.isEmpty()) {
                 android.util.Log.w("AdNostr_Archive", "REJECTED: Attempted to save empty content frame to archive.");
                 return;
             }
@@ -184,21 +188,56 @@ public class AdNostrDatabaseHelper {
             String currentArchive = prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
             JSONArray archiveArray = new JSONArray(currentArchive);
 
-            // De-duplication Logic: Ensure we don't save the same Bajaj model twice
-            boolean exists = false;
-            for (int i = 0; i < archiveArray.length(); i++) {
-                if (archiveArray.getJSONObject(i).getString("id").equals(newId)) {
-                    exists = true;
-                    break;
+            // GATEKEEPER 2: Deep Content De-duplication (Kind 30006/30007)
+            // This prevents saving the same "Bajaj" model 50 times from different relays.
+            if (kind == 30006 || kind == 30007) {
+                JSONObject newContent = new JSONObject(contentStr);
+                String newType = newContent.optString("type", "");
+                String newSub = newContent.optString("sub", "");
+                String newCat = newContent.optString("category", "");
+                String newLabel = newContent.optString("label", "");
+
+                for (int i = 0; i < archiveArray.length(); i++) {
+                    JSONObject existingEvent = archiveArray.getJSONObject(i);
+                    // Match unique ID first for speed
+                    if (existingEvent.getString("id").equals(newId)) return;
+
+                    // Match Content logic for Schema Persistence
+                    if (existingEvent.optInt("kind") == kind) {
+                        JSONObject existingContent = new JSONObject(existingEvent.getString("content"));
+                        
+                        // Case A: Duplicate Category
+                        if (kind == 30006 && "category".equals(newType)) {
+                            if (existingContent.optString("sub").equalsIgnoreCase(newSub)) return;
+                        }
+                        // Case B: Duplicate Technical Field
+                        else if (kind == 30006 && "field".equals(newType)) {
+                            if (existingContent.optString("category").equalsIgnoreCase(newCat) && 
+                                existingContent.optString("label").equalsIgnoreCase(newLabel)) return;
+                        }
+                        // Case C: Duplicate Brand/Value Pool
+                        else if (kind == 30007) {
+                            // Match by category and the keys within 'specs' (e.g., brand name)
+                            if (existingContent.optString("category").equalsIgnoreCase(newCat)) {
+                                JSONObject existingSpecs = existingContent.optJSONObject("specs");
+                                JSONObject newSpecs = newContent.optJSONObject("specs");
+                                if (existingSpecs != null && newSpecs != null && existingSpecs.toString().equals(newSpecs.toString())) return;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Standard de-duplication for non-schema events
+                for (int i = 0; i < archiveArray.length(); i++) {
+                    if (archiveArray.getJSONObject(i).getString("id").equals(newId)) return;
                 }
             }
 
-            if (!exists) {
-                archiveArray.put(newEvent);
-                // Synchronous commit to ensure data is locked to disk immediately
-                prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, archiveArray.toString()).commit();
-                android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive.");
-            }
+            archiveArray.put(newEvent);
+            // Synchronous commit to ensure data is locked to disk immediately
+            prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, archiveArray.toString()).commit();
+            android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive. Total Frames: " + archiveArray.length());
+            
         } catch (Exception e) {
             android.util.Log.e("AdNostr_Archive", "Failed to append to permanent archive: " + e.getMessage());
         }
