@@ -100,7 +100,6 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         fetchGlobalContributions();
 
         // AUTO-CLICK LOGIC: Automatically trigger a network heal when Admin enters
-        // REPAIR UPDATE: Fixed signature mismatch by passing null for background trigger
         MarketplaceSchemaManager.executeSequentialHealing(this, null);
     }
 
@@ -171,7 +170,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
             @Override
             public void onLocalDismiss(JSONObject event) {
-                // NEW: Logic to hide the card locally without global deletion
+                // Logic to hide the card locally without global deletion
                 executeLocalDismiss(event);
             }
         });
@@ -181,6 +180,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * Logic: Horizontal Chip Ribbon for real-time feed filtering.
+     * UPDATED: Integrated technical mapping for Bajaj / Tech Specs tab.
      */
     private void setupFilterRibbon() {
         binding.chipGroupFilters.setOnCheckedStateChangeListener((group, checkedIds) -> {
@@ -189,9 +189,10 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             Chip chip = findViewById(checkedIds.get(0));
             String filterText = chip.getText().toString().toUpperCase();
 
+            // Broaden filter mapping to match UI buttons
             if (filterText.contains("ALL")) currentFilter = "ALL";
             else if (filterText.contains("CATEGORIES")) currentFilter = "CATEGORY";
-            else if (filterText.contains("TECH SPECS")) currentFilter = "FIELD";
+            else if (filterText.contains("TECH SPECS")) currentFilter = "TECH_SPECS";
             else if (filterText.contains("BRANDS")) currentFilter = "VALUE";
 
             requestBatchUpdate();
@@ -224,14 +225,12 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
      * Interface: Called by WebSocketClientManager when Kind 30006/30007 arrives.
      * FIXED: Now checks for local dismissal to prevent Bajaj cards from returning.
      * PERFORMANCE FIX: Now debounces updates using requestBatchUpdate().
-     * NOTE: This now runs on a background thread per the updated WebSocketClientManager.
      */
     @Override
     public void onSchemaEventReceived(String url, JSONObject event) {
         try {
             String eventId = event.getString("id");
 
-            // PERFORMANCE: Use synchronized block to prevent concurrent modification hangs
             synchronized (fullMasterList) {
                 // Prevent duplicate entries in the forensic list
                 for (JSONObject existing : fullMasterList) {
@@ -241,17 +240,16 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 // Check blocklist before adding
                 if (db.isSchemaWiped(eventId)) return;
 
-                // LOCAL PERSISTENCE CHECK (NEW)
+                // LOCAL PERSISTENCE CHECK: Do not show if admin dismissed it
                 if (db.isReportDismissed(eventId)) return;
 
                 fullMasterList.add(event);
-                
-                // VOLATILITY FIX: Lock any newly discovered network metadata to the archive
-                // Note: File 1 update made this background-safe
+
+                // VOLATILITY FIX: Lock newly discovered network metadata to the archive
                 db.saveToForensicArchive(event.toString());
             }
 
-            // TRIGGER BATCH UPDATE: Instead of immediate sort/refresh
+            // TRIGGER BATCH UPDATE: Redraw UI efficiently
             requestBatchUpdate();
 
         } catch (Exception ignored) {}
@@ -274,18 +272,23 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     private void applyFilterAndNotify() {
         isUpdatePending = false;
         applyFilter();
-        
+
         if (binding != null) {
             binding.pbForensicLoading.setVisibility(View.GONE);
             binding.llEmptyForensic.setVisibility(displayList.isEmpty() ? View.VISIBLE : View.GONE);
         }
     }
 
+    /**
+     * CORE LOGIC: Tab Filtering.
+     * UPDATED: The "TECH SPECS" filter now specifically includes both Fields and Value Pools.
+     * This fixes the "Empty Tech Specs Tab" issue for Bajaj models.
+     */
     private void applyFilter() {
         synchronized (displayList) {
             displayList.clear();
             synchronized (fullMasterList) {
-                // PERFORMANCE FIX: Sort the data in place once before filtering
+                // Sort by relative timestamp (Newest at top)
                 Collections.sort(fullMasterList, (a, b) -> 
                     Long.compare(b.optLong("created_at"), a.optLong("created_at")));
 
@@ -297,19 +300,32 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
                         if (currentFilter.equals("ALL")) {
                             displayList.add(event);
-                        } else if (currentFilter.equals("CATEGORY")) {
+                        } 
+                        else if (currentFilter.equals("CATEGORY")) {
+                            // Only Category definitions
                             if (kind == 30006 && "category".equals(content.optString("type"))) displayList.add(event);
-                        } else if (currentFilter.equals("FIELD")) {
-                            if (kind == 30006 && "field".equals(content.optString("type"))) displayList.add(event);
-                        } else if (currentFilter.equals("VALUE")) {
+                        } 
+                        else if (currentFilter.equals("TECH_SPECS")) {
+                            // =========================================================================
+                            // TECH SPECS TAB REPAIR:
+                            // Aggregates Technical Fields (Brand/Model) and Value Pools (Bajaj Models).
+                            // =========================================================================
+                            boolean isField = (kind == 30006 && "field".equals(content.optString("type")));
+                            boolean isValuePool = (kind == 30007);
+                            
+                            if (isField || isValuePool) {
+                                displayList.add(event);
+                            }
+                        } 
+                        else if (currentFilter.equals("VALUE")) {
+                            // Just the raw value pools
                             if (kind == 30007) displayList.add(event);
                         }
                     } catch (Exception ignored) {}
                 }
             }
         }
-        
-        // Notify the adapter that the list is updated
+
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }
@@ -330,7 +346,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
             fullMasterList.remove(event);
             requestBatchUpdate();
-            Toast.makeText(this, "Item Purged.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Item Purged Globally.", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Log.e(TAG, "Wipe failed: " + e.getMessage());
         }
@@ -372,8 +388,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * NEW: Executes the local "Mark as Read" logic.
-     * Removes card from UI and saves the ID so it doesn't return, 
-     * but does NOT send a global delete command.
+     * Removes card from UI and saves the ID so it doesn't return.
      */
     private void executeLocalDismiss(JSONObject event) {
         try {
@@ -412,13 +427,8 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         } catch (Exception ignored) {}
     }
 
-    // =========================================================================
-    // VOLATILITY FIX: RE-PUBLISH MENU LOGIC (REPAIR UPDATE)
-    // =========================================================================
-
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate a standard refresh icon into the toolbar
         MenuItem refreshItem = menu.add(Menu.NONE, 1001, Menu.NONE, "Heal Network");
         refreshItem.setIcon(android.R.drawable.stat_notify_sync);
         refreshItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
@@ -428,7 +438,6 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == 1001) {
-            // ACTION: Full-Screen Forensic Console for Healing
             final StringBuilder healerLogs = new StringBuilder();
             healerLogs.append("=== INITIATING MANUAL NETWORK RESTORATION ===\n\n");
             healerLogs.append("Pulling data from Immutable Forensic Archive...\n");
@@ -440,16 +449,13 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             );
             report.showSafe(getSupportFragmentManager(), "HEAL_LOG");
 
-            // Bridge logic to capture strings from the Queue re-signing engine
             SequentialBroadcastQueue.TechnicalLogListener healerListener = msg -> {
                 runOnUiThread(() -> {
                     healerLogs.append(msg).append("\n");
-                    // Keep the console updated as every tiered item is processed
                     report.updateTechnicalLogs("Healing in Progress...", healerLogs.toString());
                 });
             };
 
-            // Trigger the sequential engine with the bridge listener
             MarketplaceSchemaManager.executeSequentialHealing(this, healerListener);
             return true;
         }
@@ -458,11 +464,8 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     @Override
     protected void onDestroy() {
-        // ADMIN SUPREMACY: Reset notification state on exit
         db.saveReportLastSeen();
         wsManager.removeSchemaListener(this);
-        
-        // PERFORMANCE: Clean up pending UI updates to prevent memory leaks
         uiUpdateHandler.removeCallbacks(uiRefreshRunnable);
         super.onDestroy();
     }
