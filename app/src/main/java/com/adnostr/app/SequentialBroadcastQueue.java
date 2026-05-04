@@ -49,16 +49,14 @@ public class SequentialBroadcastQueue {
     private final List<JSONObject> fieldTier = new ArrayList<>();
     private final List<JSONObject> valueTier = new ArrayList<>();
 
+    // Updated to use the unified listener from MarketplaceSchemaManager
+    private MarketplaceSchemaManager.TechnicalLogListener logListener;
+
     /**
-     * NEW: Interface to pipe technical traces back to the UI Activity.
+     * UPDATED: Now accepts the MarketplaceSchemaManager version of the listener
+     * to resolve the type mismatch error.
      */
-    public interface TechnicalLogListener {
-        void onLogGenerated(String message);
-    }
-
-    private TechnicalLogListener logListener;
-
-    public void setTechnicalLogListener(TechnicalLogListener listener) {
+    public void setTechnicalLogListener(MarketplaceSchemaManager.TechnicalLogListener listener) {
         this.logListener = listener;
     }
 
