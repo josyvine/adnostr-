@@ -49,6 +49,12 @@ import java.util.concurrent.TimeUnit;
  *   network syncs in the background.
  * - REPAIR UPDATE: fetchGlobalSchema now performs deep merger of hard-locked local data.
  * - DE-DUPLICATION ENGINE: Added logic to filter 1,375 redundant items into a lean unique dataset to prevent relay rate-limiting.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - Optimized Threaded Execution: Heavy JSON parsing and content-fingerprint comparisons 
+ *   are strictly offloaded to background threads.
+ * - Non-Blocking Database Interaction: Leveraging background disk writes to prevent stalls 
+ *   during high-frequency relay sync.
  */
 public class MarketplaceSchemaManager {
 
