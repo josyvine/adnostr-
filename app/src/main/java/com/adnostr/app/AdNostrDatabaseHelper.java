@@ -198,14 +198,17 @@ public class AdNostrDatabaseHelper {
             String currentArchive = prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
             JSONArray archiveArray = new JSONArray(currentArchive);
 
-            // GATEKEEPER 2: Deep Content De-duplication (Kind 30006/30007)
-            // This prevents saving the same "Bajaj" model 50 times from different relays.
+            // =========================================================================
+            // DUPLICATE GATEKEEPER (FIXES RE-SIGNING SPAM)
+            // Analyzes the ACTUAL content (Bajaj, Electric Vehicles, etc.)
+            // If the same data already exists in archive, we don't need another copy.
+            // =========================================================================
             if (kind == 30006 || kind == 30007) {
                 JSONObject newContent = new JSONObject(contentStr);
                 String newType = newContent.optString("type", "");
-                String newSub = newContent.optString("sub", "");
-                String newCat = newContent.optString("category", "");
-                String newLabel = newContent.optString("label", "");
+                String newSub = newContent.optString("sub", "").trim().toLowerCase();
+                String newCat = newContent.optString("category", "").trim().toLowerCase();
+                String newLabel = newContent.optString("label", "").trim().toLowerCase();
 
                 for (int i = 0; i < archiveArray.length(); i++) {
                     JSONObject existingEvent = archiveArray.getJSONObject(i);
@@ -216,22 +219,28 @@ public class AdNostrDatabaseHelper {
                     if (existingEvent.optInt("kind") == kind) {
                         JSONObject existingContent = new JSONObject(existingEvent.getString("content"));
                         
-                        // Case A: Duplicate Category
+                        // CASE A: Duplicate Category (Kind 30006, type: category)
                         if (kind == 30006 && "category".equals(newType)) {
-                            if (existingContent.optString("sub").equalsIgnoreCase(newSub)) return;
+                            if (existingContent.optString("sub", "").trim().toLowerCase().equals(newSub)) {
+                                return; // Block duplicate "Electric Vehicles"
+                            }
                         }
-                        // Case B: Duplicate Technical Field
+                        // CASE B: Duplicate Technical Field (Kind 30006, type: field)
                         else if (kind == 30006 && "field".equals(newType)) {
-                            if (existingContent.optString("category").equalsIgnoreCase(newCat) && 
-                                existingContent.optString("label").equalsIgnoreCase(newLabel)) return;
+                            if (existingContent.optString("category", "").trim().toLowerCase().equals(newCat) && 
+                                existingContent.optString("label", "").trim().toLowerCase().equals(newLabel)) {
+                                return; // Block duplicate "Brand" for "Cars"
+                            }
                         }
-                        // Case C: Duplicate Brand/Value Pool
+                        // CASE C: Duplicate Brand/Value Pool (Kind 30007)
                         else if (kind == 30007) {
-                            // Match by category and the keys within 'specs' (e.g., brand name)
-                            if (existingContent.optString("category").equalsIgnoreCase(newCat)) {
+                            if (existingContent.optString("category", "").trim().toLowerCase().equals(newCat)) {
                                 JSONObject existingSpecs = existingContent.optJSONObject("specs");
                                 JSONObject newSpecs = newContent.optJSONObject("specs");
-                                if (existingSpecs != null && newSpecs != null && existingSpecs.toString().equals(newSpecs.toString())) return;
+                                // Deep compare specs to ensure we aren't re-saving the same list of Bajaj models
+                                if (existingSpecs != null && newSpecs != null && existingSpecs.toString().equals(newSpecs.toString())) {
+                                    return;
+                                }
                             }
                         }
                     }
@@ -250,7 +259,7 @@ public class AdNostrDatabaseHelper {
             diskExecutor.execute(() -> {
                 // Synchronous commit to ensure data is locked to disk immediately
                 prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, finalArchive).commit();
-                android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive.");
+                android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive. Total items: " + archiveArray.length());
             });
             
         } catch (Exception e) {
@@ -781,4 +790,4 @@ public class AdNostrDatabaseHelper {
             prefs.edit().clear().commit();
         });
     }
-} 
+}
