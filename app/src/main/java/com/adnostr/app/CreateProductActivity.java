@@ -53,6 +53,10 @@ import java.util.UUID;
  *   automatically without requiring an activity restart.
  * - REPAIR UPDATE: onSchemaEventReceived now re-fetches merged archive data for real-time UI population.
  * - RETRIEVAL ENGINE: Added native bridge methods to allow the HTML engine to "Pull" crowdsourced data on-demand from the forensic archive.
+ * 
+ * DISTRIBUTED MEMORY FIX (DAY ZERO):
+ * - Retrieve Bridge: Now shows a Detailed Gathering Console Overlay for ALL advertisers (Admin and B).
+ * - Archiving: Every advertiser device now sniffs and saves database frames to their local archive.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -64,7 +68,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
     private ValueCallback<Uri[]> uploadMessage;
     private ActivityResultLauncher<Intent> filePickerLauncher;
-
+    
     // Forensic log accumulator
     private final StringBuilder technicalConsole = new StringBuilder();
 
@@ -113,7 +117,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             fetchedGlobalSchemaJson = schemaJson;
             logTechnicalEvent("SCHEMA: Global JSON downloaded from forensic archive. Length: " + schemaJson.length());
             injectSchemaIfReady();
-        });
+        }, null);
 
         setupWebView();
         binding.btnBackCreator.setOnClickListener(v -> finish());
@@ -134,7 +138,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 // Zero-Refresh Injection: Repopulate dropdowns in real-time
                 injectSchemaIfReady();
                 logTechnicalEvent("UI_SYNC: Dropdowns refreshed with live data from " + url);
-            });
+            }, null);
         });
     }
 
@@ -149,7 +153,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                     // Normalize the JSON string to ensure no illegal characters break the bridge
                     String sanitizedJson = fetchedGlobalSchemaJson;
                     String base64Encoded = Base64.encodeToString(sanitizedJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-
+                    
                     // The decodeURIComponent(escape(window.atob(...))) sequence handles multi-byte UTF-8 (emojis/special chars)
                     String jsCommand = "injectGlobalSchema(decodeURIComponent(escape(window.atob('" + base64Encoded + "'))))";
                     binding.wvProductCreator.evaluateJavascript(jsCommand, null);
@@ -218,7 +222,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 super.onPageFinished(view, url);
                 isWebViewReady = true;
                 logTechnicalEvent("WEBVIEW: Dashboard DOM Loaded.");
-
+                
                 // ADMIN SUPREMACY: Inject status to toggle UI management tools
                 boolean isAdmin = db.isAdmin();
                 binding.wvProductCreator.evaluateJavascript("if(window.injectAdminStatus) injectAdminStatus(" + isAdmin + ");", null);
@@ -270,25 +274,41 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
         /**
          * =========================================================================
-         * RETRIEVAL ENGINE: THE "RETRIEVE" ICON BRIDGE
-         * Logic: When Advertiser clicks retrieve, launch the Full Screen Forensic Console.
-         * It also forces a re-sync of the archive to repopulate the local bajaj models.
+         * RETRIEVAL ENGINE: THE "RETRIEVE" ICON BRIDGE (REPAIRED)
+         * Triggered by any Advertiser (including Admin) to pull crowdsourced 
+         * metadata from their local Forensic Console archive.
+         * 
+         * Logic: Instead of launching an activity, it pops up the RelayReportDialog 
+         * overlay and shows very detailed "GATHERING" logs of the archive extract.
          * =========================================================================
          */
         @JavascriptInterface
         public void retrieveArchiveData() {
             runOnUiThread(() -> {
-                logTechnicalEvent("ACTION: Native retrieval requested. Launching Forensic Console.");
-                
-                // Launch Forensic Console in Full Screen
-                Intent intent = new Intent(CreateProductActivity.this, ReportActivity.class);
-                startActivity(intent);
+                final StringBuilder gatheringLogs = new StringBuilder();
+                gatheringLogs.append("=== INITIATING DATA RETRIEVAL SEQUENCE ===\n");
+                gatheringLogs.append("SOURCE: Local Immutable Forensic Archive\n\n");
 
-                // In parallel, force a heavy fetch from archive to update dropdowns in the background
+                // Launch the technical console overlay directly over the dashboard
+                RelayReportDialog reportDialog = RelayReportDialog.newInstance(
+                        "DATA GATHERING CONSOLE", 
+                        "Gathering crowdsourced memory...", 
+                        gatheringLogs.toString()
+                );
+                reportDialog.showSafe(getSupportFragmentManager(), "GATHER_LOG");
+
+                // Execute the deep sync pull from the local archive
                 MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, schemaJson -> {
                     fetchedGlobalSchemaJson = schemaJson;
                     injectSchemaIfReady();
-                    logTechnicalEvent("RETRIEVAL: Forensic archive successfully pulled and injected.");
+                    
+                    gatheringLogs.append("\n[SUCCESS] Archive extraction complete. Injection successful.");
+                    reportDialog.updateTechnicalLogs("GATHERING COMPLETE", gatheringLogs.toString());
+                    
+                }, message -> {
+                    // Pipe every gathering step (Found Bajaj, Found Model, etc.) to the console overlay
+                    gatheringLogs.append(message).append("\n");
+                    reportDialog.updateTechnicalLogs("GATHERING: Extracting data frames...", gatheringLogs.toString());
                 });
             });
         }
@@ -322,10 +342,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         @JavascriptInterface
         public void deleteCategory(String categoryName) {
             logTechnicalEvent("ACTION: Permanent Category Deletion request for '" + categoryName + "'");
-
+            
             // PERMANENCE FIX: Immediately mark the name as hidden in the local database
             db.addHiddenHardcodedName(categoryName);
-
+            
             // GLOBAL FIX: Trigger the network broadcast to wipe for everyone else
             MarketplaceSchemaManager.broadcastCategoryDeletion(CreateProductActivity.this, categoryName);
         }
@@ -361,7 +381,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
      */
     private void handleIncomingProduct(String rawJson) {
         logTechnicalEvent("PUBLISH: Form data received. Size: " + rawJson.length());
-
+        
         // ENHANCEMENT: Only show the popup if console is enabled
         if (db.isConsoleLogEnabled()) {
             RelayReportDialog report = RelayReportDialog.newInstance("MARKETPLACE PUBLISH", "Uploading metadata...", technicalConsole.toString());
@@ -453,7 +473,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             dTag.put("d");
             dTag.put("adnostr_listing_" + UUID.randomUUID().toString().substring(0, 8));
             tags.put(dTag);
-
+            
             JSONArray tTag = new JSONArray();
             tTag.put("t");
             tTag.put("marketplace_product");
