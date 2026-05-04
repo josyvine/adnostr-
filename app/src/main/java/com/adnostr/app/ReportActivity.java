@@ -44,6 +44,8 @@ import java.util.UUID;
  * - UI Debouncing: Implemented a Handler-based batch update system to prevent redrawing the UI 
  *   hundreds of times per second during heavy relay traffic.
  * - Async Loading: Archive processing moved to background to prevent startup freezes.
+ * - Background Processing: Leverages the updated WebSocketClientManager background 
+ *   dispatch to perform archival and de-duplication off the Main Thread.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -222,6 +224,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
      * Interface: Called by WebSocketClientManager when Kind 30006/30007 arrives.
      * FIXED: Now checks for local dismissal to prevent Bajaj cards from returning.
      * PERFORMANCE FIX: Now debounces updates using requestBatchUpdate().
+     * NOTE: This now runs on a background thread per the updated WebSocketClientManager.
      */
     @Override
     public void onSchemaEventReceived(String url, JSONObject event) {
@@ -244,6 +247,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 fullMasterList.add(event);
                 
                 // VOLATILITY FIX: Lock any newly discovered network metadata to the archive
+                // Note: File 1 update made this background-safe
                 db.saveToForensicArchive(event.toString());
             }
 
