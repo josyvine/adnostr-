@@ -19,6 +19,9 @@ import java.util.Arrays;
  * generates REAL BIP-340 Schnorr signatures using the user's private key.
  * FIXED: Enforced strict canonical serialization to resolve "invalid: bad event id".
  * Content strings are now handled raw to ensure the Hash matches the transmission.
+ * 
+ * REFRESH NETWORK PERSISTENCE FIX:
+ * - Added signHealedEvent to reset relay pruning clocks via timestamp overwriting.
  */
 public class NostrEventSigner {
 
@@ -51,6 +54,35 @@ public class NostrEventSigner {
 
         } catch (Exception e) {
             Log.e(TAG, "Cryptographic signing failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * NEW: Specialized signer for the Collective Auto-Healing logic.
+     * Logic: Force-overwrites the 'created_at' field with current time to reset relay pruning.
+     */
+    public static JSONObject signHealedEvent(String privateKeyHex, JSONObject event) {
+        try {
+            // =========================================================================
+            // REFRESH PERSISTENCE: Overwrite with current Unix timestamp.
+            // This ensures relays treat the re-published archive as "Fresh Trend" data.
+            // =========================================================================
+            long currentTimestamp = System.currentTimeMillis() / 1000;
+            event.put("created_at", currentTimestamp);
+
+            // Proceed with standard canonical signing flow
+            String eventId = calculateEventId(event);
+            event.put("id", eventId);
+
+            String signature = generateSignature(privateKeyHex, eventId);
+            event.put("sig", signature);
+
+            Log.i(TAG, "Healed Event Signed with Fresh Timestamp: " + currentTimestamp);
+            return event;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Healed signing failed: " + e.getMessage());
             return null;
         }
     }
