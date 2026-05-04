@@ -99,7 +99,7 @@ public class MarketplaceSchemaManager {
             
             // =========================================================================
             // STABILITY FIX: INCREASED TIMEOUT
-            // Increased from 15 to 20 seconds to ensure heavy metadata merges finish.
+            // Increased to 20 seconds to ensure heavy metadata merges finish on slow nodes.
             // =========================================================================
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
@@ -182,7 +182,7 @@ public class MarketplaceSchemaManager {
                             @Override public void onClose(int c, String r, boolean m) { latch.countDown(); }
                             @Override public void onError(Exception ex) { latch.countDown(); }
                         };
-                        client.setConnectionLostTimeout(20); // Sync with await timeout
+                        client.setConnectionLostTimeout(20); // Sync with latch timeout
                         client.connect();
                     } catch (Exception e) {
                         latch.countDown();
@@ -199,7 +199,7 @@ public class MarketplaceSchemaManager {
                 // DE-DUPLICATION TRACKER
                 Set<String> contentFingerprints = new HashSet<>();
                 
-                // INTEGRITY TRACKER: Identifies which technical fields exist to anchor values
+                // INTEGRITY TRACKER: Validates which Fields exist to anchor child values
                 Set<String> validFieldAnchors = new HashSet<>();
 
                 // INSTANT DROPDOWN FIX: Load the Hard-Locked Archive
@@ -212,7 +212,7 @@ public class MarketplaceSchemaManager {
                 // Phase A: Add from Network
                 for (JSONObject cat : categoryEvents) {
                     String eid = cat.optString("_event_id");
-                    String finger = "cat:" + cat.optString("sub").trim().toLowerCase();
+                    String finger = "cat:" + cat.optString("sub", "").trim().toLowerCase();
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredCategories.put(cat);
                         contentFingerprints.add(finger);
@@ -223,7 +223,7 @@ public class MarketplaceSchemaManager {
                     JSONObject arcEvent = archiveArray.getJSONObject(i);
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
-                    String finger = "cat:" + content.optString("sub").trim().toLowerCase();
+                    String finger = "cat:" + content.optString("sub", "").trim().toLowerCase();
                     if (arcEvent.getInt("kind") == 30006 && "category".equals(content.optString("type"))) {
                         if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                             content.put("_event_id", eid); 
@@ -238,28 +238,30 @@ public class MarketplaceSchemaManager {
                 // For Fields: "field:[category]:[label]"
                 for (JSONObject field : fieldEvents) {
                     String eid = field.optString("_event_id");
-                    String catName = field.optString("category").toLowerCase();
-                    String labelName = field.optString("label").toLowerCase();
+                    String catName = field.optString("category", "").toLowerCase();
+                    String labelName = field.optString("label", "").toLowerCase();
                     String finger = "field:" + catName + ":" + labelName;
+                    
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredFields.put(field);
                         contentFingerprints.add(finger);
-                        validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3
+                        validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3 verification
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
                     JSONObject arcEvent = archiveArray.getJSONObject(i);
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
-                    String catName = content.optString("category").toLowerCase();
-                    String labelName = content.optString("label").toLowerCase();
+                    String catName = content.optString("category", "").toLowerCase();
+                    String labelName = content.optString("label", "").toLowerCase();
                     String finger = "field:" + catName + ":" + labelName;
+                    
                     if (arcEvent.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
                         if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                             content.put("_event_id", eid); 
                             filteredFields.put(content);
                             contentFingerprints.add(finger);
-                            validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3
+                            validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3 verification
                         }
                     }
                 }
@@ -269,13 +271,13 @@ public class MarketplaceSchemaManager {
                 // For Values: "val:[category]:[specsString]"
                 for (JSONObject val : valueEvents) {
                     String eid = val.optString("_event_id");
-                    String cat = val.optString("category").toLowerCase();
+                    String cat = val.optString("category", "").toLowerCase();
                     JSONObject specs = val.optJSONObject("specs");
                     String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
                     
                     String finger = "val:" + cat + ":" + (specs != null ? specs.toString() : "null");
-                    
-                    // INTEGRITY GATE: Filter values if their parent Field anchor doesn't exist
+
+                    // INTEGRITY GATE: Only add values if their parent Field exists to prevent empty dropdowns
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         if (validFieldAnchors.contains(cat + ":" + specsKey) || specsKey.equals("unknown")) {
                             filteredValues.put(val);
@@ -288,7 +290,7 @@ public class MarketplaceSchemaManager {
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
                     if (arcEvent.getInt("kind") == 30007) {
-                        String cat = content.optString("category").toLowerCase();
+                        String cat = content.optString("category", "").toLowerCase();
                         JSONObject specs = content.optJSONObject("specs");
                         String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
                         
@@ -376,7 +378,7 @@ public class MarketplaceSchemaManager {
             
             // =========================================================================
             // HEALER DE-DUPLICATION LAYER (CRITICAL FIX FOR 1,375 REDUNDANT ITEMS)
-            // This ensures the restoration doesn't get blocked by relays as spam.
+            // Filters redundant categories/values to stop relays from flagging spam.
             // =========================================================================
             try {
                 JSONArray rawArchive = new JSONArray(archiveJson);
@@ -385,14 +387,19 @@ public class MarketplaceSchemaManager {
                 
                 for (int i = 0; i < rawArchive.length(); i++) {
                     JSONObject event = rawArchive.getJSONObject(i);
-                    JSONObject content = new JSONObject(event.getString("content"));
+                    String contentStr = event.optString("content", "");
+                    if(contentStr.isEmpty()) continue;
+                    
+                    JSONObject content = new JSONObject(contentStr);
                     int kind = event.getInt("kind");
                     String finger = "";
                     
                     if (kind == 30006) {
-                        finger = kind + ":" + content.optString("type") + ":" + content.optString("sub", content.optString("label"));
+                        finger = kind + ":" + content.optString("type") + ":" + 
+                                 content.optString("sub", content.optString("label", "none"));
                     } else if (kind == 30007) {
-                        finger = kind + ":" + content.optString("category") + ":" + content.optJSONObject("specs").toString();
+                        finger = kind + ":" + content.optString("category") + ":" + 
+                                 (content.optJSONObject("specs") != null ? content.optJSONObject("specs").toString() : "none");
                     }
                     
                     if (!fingerprints.contains(finger.toLowerCase())) {
@@ -403,7 +410,7 @@ public class MarketplaceSchemaManager {
                 
                 archiveJson = uniqueArchive.toString();
                 if (listener != null) {
-                    listener.onLogGenerated("OPTIMIZER: Filtered " + rawArchive.length() + " items down to " + uniqueArchive.length() + " unique frames.");
+                    listener.onLogGenerated("OPTIMIZER: Compressed " + rawArchive.length() + " items down to " + uniqueArchive.length() + " unique frames.");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Healer Optimization Failed: " + e.getMessage());
