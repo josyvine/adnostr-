@@ -46,6 +46,10 @@ import java.util.concurrent.Executors;
  * - REPAIR UPDATE: getForensicArchive now filters results against the Wiped blocklist for integrity.
  * - DUPLICATE GATEKEEPER: Added content-aware de-duplication to prevent archive bloat and relay spam rejections.
  * 
+ * UNIVERSAL DISTRIBUTED MEMORY UPDATE:
+ * - Removed Admin-only archiving restrictions. Every device now acts as a Distributed Memory node.
+ * - Implementation of deep semantic deduplication to prevent relay-side spam blocking.
+ * 
  * PERFORMANCE FIX (ANTI-HANG):
  * - Disk Executor: Offloads blocking .commit() calls to a single-threaded background executor to prevent UI thread fsync hangs.
  */
@@ -119,7 +123,7 @@ public class AdNostrDatabaseHelper {
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
-    
+
     // PERFORMANCE FIX: Dedicated thread for hard-locking SharedPreferences to disk
     private final ExecutorService diskExecutor = Executors.newSingleThreadExecutor();
 
@@ -218,7 +222,7 @@ public class AdNostrDatabaseHelper {
                     // Match Content logic for Schema Persistence
                     if (existingEvent.optInt("kind") == kind) {
                         JSONObject existingContent = new JSONObject(existingEvent.getString("content"));
-                        
+
                         // CASE A: Duplicate Category (Kind 30006, type: category)
                         if (kind == 30006 && "category".equals(newType)) {
                             if (existingContent.optString("sub", "").trim().toLowerCase().equals(newSub)) {
@@ -253,7 +257,7 @@ public class AdNostrDatabaseHelper {
             }
 
             archiveArray.put(newEvent);
-            
+
             // PERFORMANCE FIX: Move blocking disk write to background thread
             final String finalArchive = archiveArray.toString();
             diskExecutor.execute(() -> {
@@ -261,7 +265,7 @@ public class AdNostrDatabaseHelper {
                 prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, finalArchive).commit();
                 android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive. Total items: " + archiveArray.length());
             });
-            
+
         } catch (Exception e) {
             android.util.Log.e("AdNostr_Archive", "Failed to append to permanent archive: " + e.getMessage());
         }
