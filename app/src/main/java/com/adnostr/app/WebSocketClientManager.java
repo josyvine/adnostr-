@@ -37,6 +37,11 @@ import java.util.List;
  * - Schema Observer: Added a high-level hook to notify the system when new crowdsourced metadata arrives.
  * - Forensic Sniffing: Automatic identification and dispatch of Kind 30006/30007 events.
  * - REPAIR UPDATE: NOTICE and CLOSED frames are now routed to listeners for forensic error reporting.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - Background Schema Notification: SchemaEventListener notifications are now dispatched 
+ *   on the background WebSocket thread. This allows ReportActivity to perform heavy 
+ *   database archival without blocking the Main UI thread.
  */
 public class WebSocketClientManager {
 
@@ -250,11 +255,11 @@ public class WebSocketClientManager {
                                 JSONObject event = msgArray.getJSONObject(2);
                                 int kind = event.optInt("kind", -1);
                                 if (kind == 30006 || kind == 30007) {
-                                    mHandler.post(() -> {
-                                        for (SchemaEventListener schemaListener : schemaListeners) {
-                                            schemaListener.onSchemaEventReceived(relayUrl, event);
-                                        }
-                                    });
+                                    // PERFORMANCE FIX: We no longer post to mHandler (Main Thread) here.
+                                    // Observers are notified on the background thread to prevent UI hangs.
+                                    for (SchemaEventListener schemaListener : schemaListeners) {
+                                        schemaListener.onSchemaEventReceived(relayUrl, event);
+                                    }
                                 }
                             }
                             // REPAIR UPDATE: Route NOTICE error frames to forensic listeners
@@ -267,11 +272,10 @@ public class WebSocketClientManager {
                                 noticeEv.put("pubkey", "system");
                                 noticeEv.put("created_at", System.currentTimeMillis() / 1000);
 
-                                mHandler.post(() -> {
-                                    for (SchemaEventListener schemaListener : schemaListeners) {
-                                        schemaListener.onSchemaEventReceived(relayUrl, noticeEv);
-                                    }
-                                });
+                                // PERFORMANCE FIX: Notify background observers
+                                for (SchemaEventListener schemaListener : schemaListeners) {
+                                    schemaListener.onSchemaEventReceived(relayUrl, noticeEv);
+                                }
                             }
                             // REPAIR UPDATE: Route CLOSED frames (Rate Limiting/Auth) to forensic listeners
                             else if ("CLOSED".equals(type)) {
@@ -283,16 +287,15 @@ public class WebSocketClientManager {
                                 closedEv.put("pubkey", "system");
                                 closedEv.put("created_at", System.currentTimeMillis() / 1000);
 
-                                mHandler.post(() -> {
-                                    for (SchemaEventListener schemaListener : schemaListeners) {
-                                        schemaListener.onSchemaEventReceived(relayUrl, closedEv);
-                                    }
-                                });
+                                // PERFORMANCE FIX: Notify background observers
+                                for (SchemaEventListener schemaListener : schemaListeners) {
+                                    schemaListener.onSchemaEventReceived(relayUrl, closedEv);
+                                }
                             }
                         }
                     } catch (Exception ignored) {}
 
-                    // CRASH FIX: Dispatch to listeners on Main Thread
+                    // CRASH FIX: Dispatch status updates to listeners on Main Thread for UI compatibility
                     mHandler.post(() -> {
                         for (RelayStatusListener listener : listeners) {
                             listener.onMessageReceived(relayUrl, message);
