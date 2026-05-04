@@ -52,6 +52,7 @@ import java.util.UUID;
  * - Auto-Injection: As tiers finish re-publishing, the WebView dropdowns are refreshed 
  *   automatically without requiring an activity restart.
  * - REPAIR UPDATE: onSchemaEventReceived now re-fetches merged archive data for real-time UI population.
+ * - RETRIEVAL ENGINE: Added native bridge methods to allow the HTML engine to "Pull" crowdsourced data on-demand from the forensic archive.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -107,9 +108,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         );
 
         // INITIATE GLOBAL SCHEMA FETCH (Background Thread)
+        // Initial load pulls from Cache/Forensic Archive immediately
         MarketplaceSchemaManager.fetchGlobalSchema(this, schemaJson -> {
             fetchedGlobalSchemaJson = schemaJson;
-            logTechnicalEvent("SCHEMA: Global JSON downloaded. Length: " + schemaJson.length());
+            logTechnicalEvent("SCHEMA: Global JSON downloaded from forensic archive. Length: " + schemaJson.length());
             injectSchemaIfReady();
         });
 
@@ -131,7 +133,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 fetchedGlobalSchemaJson = schemaJson;
                 // Zero-Refresh Injection: Repopulate dropdowns in real-time
                 injectSchemaIfReady();
-                logTechnicalEvent("UI_SYNC: Dropdowns refreshed with data from " + url);
+                logTechnicalEvent("UI_SYNC: Dropdowns refreshed with live data from " + url);
             });
         });
     }
@@ -144,10 +146,14 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         if (isWebViewReady && !fetchedGlobalSchemaJson.equals("{}")) {
             runOnUiThread(() -> {
                 try {
-                    String base64Encoded = Base64.encodeToString(fetchedGlobalSchemaJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+                    // Normalize the JSON string to ensure no illegal characters break the bridge
+                    String sanitizedJson = fetchedGlobalSchemaJson;
+                    String base64Encoded = Base64.encodeToString(sanitizedJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+                    
+                    // The decodeURIComponent(escape(window.atob(...))) sequence handles multi-byte UTF-8 (emojis/special chars)
                     String jsCommand = "injectGlobalSchema(decodeURIComponent(escape(window.atob('" + base64Encoded + "'))))";
                     binding.wvProductCreator.evaluateJavascript(jsCommand, null);
-                    logTechnicalEvent("SCHEMA: Injected into HTML engine.");
+                    logTechnicalEvent("SCHEMA: Injected de-duplicated archive into HTML engine.");
                 } catch (Exception e) {
                     logTechnicalEvent("SCHEMA_ERROR: Failed to inject base64. " + e.getMessage());
                 }
@@ -260,6 +266,21 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
             technicalConsole.append(filteredMsg).append("\n");
             Log.d(TAG, "Forensic: " + filteredMsg);
+        }
+
+        /**
+         * NEW: RETRIEVAL TRIGGER
+         * Allows the HTML engine to manually request a forensic data re-sync
+         * when a user interacts with specific dropdowns.
+         */
+        @JavascriptInterface
+        public void retrieveArchiveData() {
+            logTechnicalEvent("ACTION: On-demand retrieval requested for crowdsourced metadata.");
+            MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, schemaJson -> {
+                fetchedGlobalSchemaJson = schemaJson;
+                injectSchemaIfReady();
+                logTechnicalEvent("RETRIEVAL: Forensic archive pull completed and injected.");
+            });
         }
 
         // CROWDSOURCED SCHEMA: Native triggers from HTML Modals
