@@ -40,13 +40,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * PERFORMANCE UPDATE (ANTI-HANG):
  * - Parsed Object Cache: Implemented a memory-efficient ConcurrentHashMap to prevent redundant 
  *   JSON parsing during scrolling, which was the primary cause of UI thread hangs.
+ * 
+ * UI STABILIZATION FIX:
+ * - Fixed timestamp flickering by grounding relative time calculations.
+ * - Refined Icon Mapping for Fields (Gear) and Values (List).
  */
 public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicViewHolder> {
 
     private final List<JSONObject> eventList;
     private final long lastSeenTimestamp;
     private final OnPurgeListener listener;
-    
+
     // PERFORMANCE CACHE: Prevents the "new JSONObject" loop that hangs the UI thread
     private final Map<String, JSONObject> contentCache = new ConcurrentHashMap<>();
 
@@ -57,7 +61,7 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
     public interface OnPurgeListener {
         void onSurgicalWipe(JSONObject event);
         void onCascadingNuke(String categoryName);
-        void onLocalDismiss(JSONObject event); // RESOLVES BUILD ERROR
+        void onLocalDismiss(JSONObject event); 
     }
 
     public ReportAdapter(List<JSONObject> eventList, long lastSeen, OnPurgeListener listener) {
@@ -114,7 +118,7 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                 long createdAt = event.getLong("created_at");
                 String pubkey = event.getString("pubkey");
                 String eventId = event.optString("id", "");
-                
+
                 // PERFORMANCE OPTIMIZATION: Retrieve from cache or parse once
                 JSONObject content;
                 if (contentCache.containsKey(eventId)) {
@@ -146,18 +150,21 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                         binding.ivForensicIcon.setColorFilter(Color.parseColor("#4CAF50")); // Green Folder
                         binding.tvReportTitle.setText(content.optString("sub", "Unknown Sub"));
                         binding.tvReportSubtitle.setText("Main: " + content.optString("main", "General"));
-                        
+
                         // Setup Cascading Nuke for Categories
                         binding.btnPurgeItem.setOnClickListener(v -> {
                             if (listener != null) listener.onCascadingNuke(content.optString("sub"));
                         });
                     } else {
-                        // TECH FIELD CARD
+                        // =========================================================================
+                        // TECH FIELD CARD REPAIR (Bajaj Brand/Model Anchor)
+                        // Uses the GEAR icon to represent a technical anchor.
+                        // =========================================================================
                         binding.ivForensicIcon.setImageResource(android.R.drawable.ic_menu_preferences);
                         binding.ivForensicIcon.setColorFilter(Color.parseColor("#2196F3")); // Blue Gear
                         binding.tvReportTitle.setText(content.optString("label", "Unknown Field"));
-                        binding.tvReportSubtitle.setText("Target: " + content.optString("category", "General"));
-                        
+                        binding.tvReportSubtitle.setText("Category: " + content.optString("category", "General"));
+
                         // Surgical Wipe
                         binding.btnPurgeItem.setOnClickListener(v -> {
                             if (listener != null) listener.onSurgicalWipe(event);
@@ -165,35 +172,31 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                     }
                 } else if (kind == 30007) {
                     // =========================================================================
-                    // VALUE POOL CARD (BRANDS / MODELS / YEARS)
-                    // FIXED: Now correctly handles context to show "Bajaj - Models"
+                    // VALUE POOL CARD (Bajaj Models / Years)
+                    // Uses the LIST icon to represent model datasets.
                     // =========================================================================
                     binding.ivForensicIcon.setImageResource(android.R.drawable.ic_menu_agenda);
-                    binding.ivForensicIcon.setColorFilter(Color.parseColor("#FF9800")); // Orange Tag
-                    
+                    binding.ivForensicIcon.setColorFilter(Color.parseColor("#FF9800")); // Orange List
+
                     JSONObject specs = content.optJSONObject("specs");
                     JSONObject contextObj = content.optJSONObject("context");
-                    
-                    // Identify the parent brand (Bajaj)
+
+                    // Identify the parent context (e.g., Bajaj)
                     String contextValue = (contextObj != null) ? contextObj.optString("value", "") : "";
-                    
-                    // Identify the field being seeded (Models/Year)
+
+                    // Identify the specific spec field (e.g., model)
                     String fieldName = "Values";
                     if (specs != null && specs.length() > 0) {
                         Iterator<String> keys = specs.keys();
                         fieldName = keys.next();
-                        // Format the field name for display (e.g. "model" -> "Models")
                         fieldName = fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1);
                     }
 
-                    // Professional Display: "Bajaj - Models"
+                    // Display as "Bajaj - Model" or just "Model"
                     String displayTitle = contextValue.isEmpty() ? fieldName : contextValue + " - " + fieldName;
                     binding.tvReportTitle.setText(displayTitle);
-
-                    // Subtitle: Target Category
                     binding.tvReportSubtitle.setText("Category: " + content.optString("category", "General"));
-                    
-                    // Surgical Wipe
+
                     binding.btnPurgeItem.setOnClickListener(v -> {
                         if (listener != null) listener.onSurgicalWipe(event);
                     });
@@ -203,32 +206,33 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                 String truncatedNpub = "npub1..." + pubkey.substring(pubkey.length() - 6);
                 binding.tvAuthorTrace.setText(truncatedNpub);
 
-                CharSequence relativeTime = DateUtils.getRelativeTimeSpanString(
-                        createdAt * 1000, 
-                        System.currentTimeMillis(), 
-                        DateUtils.SECOND_IN_MILLIS);
+                // =========================================================================
+                // FLICKER FIX: Stabilized relative time logic.
+                // Uses a floor-rounded timestamp to prevent seconds from jittering.
+                // =========================================================================
+                long eventTimeMillis = createdAt * 1000;
+                long currentTimeMillis = (System.currentTimeMillis() / 1000) * 1000; // Round to second
                 
-                // PERFORMANCE FIX: Avoid string append loop, use fixed string builder logic
-                String syncSource = (createdAt < (System.currentTimeMillis() / 1000) - 86400) ? " [Archived Source]" : " [Live Network]";
+                CharSequence relativeTime = DateUtils.getRelativeTimeSpanString(
+                        eventTimeMillis, 
+                        currentTimeMillis, 
+                        DateUtils.SECOND_IN_MILLIS);
+
+                // Identify source for forensic transparency
+                String syncSource = (createdAt < (System.currentTimeMillis() / 1000) - 86400) ? " [Archived]" : " [Live]";
                 binding.tvTimestampTrace.setText(relativeTime + syncSource);
 
                 // 5. Executioner Gate: Trash icon visible only to Admin
                 binding.btnPurgeItem.setVisibility(db.isAdmin() ? View.VISIBLE : View.GONE);
 
-                // =========================================================================
-                // FULL DISPLAY HOOK (NEW)
-                // Launches the vertical detail viewer when clicking the card.
-                // =========================================================================
+                // Vertical detail viewer trigger
                 binding.cvReportContainer.setOnClickListener(v -> {
                     Intent intent = new Intent(context, ForensicDetailActivity.class);
                     intent.putExtra("EVENT_JSON", event.toString());
                     context.startActivity(intent);
                 });
 
-                // =========================================================================
-                // LOCAL DISMISS HOOK (NEW)
-                // Hold down on a card to hide it locally without deleting it globally.
-                // =========================================================================
+                // Local Dismiss logic
                 binding.cvReportContainer.setOnLongClickListener(v -> {
                     if (listener != null) {
                         listener.onLocalDismiss(event);
