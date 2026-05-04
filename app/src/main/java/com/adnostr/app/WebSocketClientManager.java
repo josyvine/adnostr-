@@ -46,6 +46,10 @@ import java.util.List;
  * FORENSIC ERROR FIX:
  * - OK Frame Sniffer: Explicitly parses ["OK", event_id, success, message] to identify rejections.
  * - Session Deduplication: Prevents duplicate log prints for the same event arriving from multiple relays.
+ * 
+ * DISTRIBUTED MEMORY FIX:
+ * - Universal Archiving: Every device now sniffs and saves crowdsourced database frames 
+ *   into the local Forensic Archive to prevent "Memory Vacuum" on fresh installs.
  */
 public class WebSocketClientManager {
 
@@ -171,7 +175,7 @@ public class WebSocketClientManager {
             } else if (message.startsWith("[\"CLOSED\"")) {
                 logOutput = "Relay terminated a specific subscription channel.";
             } else if (message.contains("RELAY_REJECTION")) {
-                // Always show rejections even in professional mode for forensic clarity
+                // Always show rejections even in professional mode
                 logOutput = message;
             }
         }
@@ -256,7 +260,7 @@ public class WebSocketClientManager {
                     // FORENSIC: Capture raw incoming JSON frame
                     addToLog("FRAME_RECV FROM [" + relayUrl + "]:\n" + message);
 
-                    // ADMIN SUPREMACY: Pre-parse schema events to notify observers efficiently
+                    // ADMIN SUPREMACY & DISTRIBUTED MEMORY: Pre-parse schema events efficiently
                     try {
                         if (message.startsWith("[")) {
                             JSONArray msgArray = new JSONArray(message);
@@ -277,7 +281,7 @@ public class WebSocketClientManager {
                                              "TARGET_ID: " + eventId + "\n" +
                                              "RELAY_REASON: " + reason);
                                 } else {
-                                    addToLog("RELAY_CONFIRMED [" + relayUrl + "]: Node accepted event " + eventId);
+                                    addToLog("RELAY_CONFIRMED [" + relayUrl + "]: Event " + eventId + " published.");
                                 }
                             }
                             
@@ -289,14 +293,25 @@ public class WebSocketClientManager {
                                 if (processedEventIds.add(eventId)) {
                                     int kind = event.optInt("kind", -1);
                                     if (kind == 30006 || kind == 30007) {
-                                        // PERFORMANCE FIX: Background thread dispatch to prevent UI hangs.
+                                        
+                                        // =========================================================================
+                                        // DISTRIBUTED MEMORY FIX: UNIVERSAL ARCHIVE LOCK
+                                        // Every device acting as an Advertiser now hard-locks discovered data.
+                                        // This ensures that fresh installs learn from the network immediately.
+                                        // =========================================================================
+                                        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(appContext);
+                                        if (RoleSelectionActivity.ROLE_ADVERTISER.equals(db.getUserRole()) || db.isAdmin()) {
+                                            db.saveToForensicArchive(event.toString());
+                                        }
+
+                                        // PERFORMANCE FIX: Background thread dispatch to observers
                                         for (SchemaEventListener schemaListener : schemaListeners) {
                                             schemaListener.onSchemaEventReceived(relayUrl, event);
                                         }
                                     }
                                 }
                             }
-                            // REPAIR UPDATE: Detailed Relay Notifications
+                            // REPAIR UPDATE: Route NOTICE error frames to forensic listeners
                             else if ("NOTICE".equals(type)) {
                                 String detail = msgArray.optString(1, "Relay status update");
                                 addToLog("RELAY_NOTICE [" + relayUrl + "]: " + detail);
@@ -361,7 +376,7 @@ public class WebSocketClientManager {
                     Log.e(TAG, "Relay Failure [" + relayUrl + "]: " + ex.getMessage());
                     activeRelays.remove(relayUrl);
                     
-                    // FORENSIC: Identifying socket timeouts or SSL issues
+                    // FORENSIC: Full stack trace for identifying socket timeouts or SSL issues
                     addToLog("NETWORK_ERROR: " + relayUrl + "\nException: " + ex.toString());
                     
                     // CRASH FIX: Dispatch to listeners on Main Thread
