@@ -11,6 +11,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Local Data Management Utility for AdNostr.
@@ -43,6 +45,9 @@ import java.util.Set;
  * - saveToForensicArchive: Hard-locks every seen category/spec/brand into local permanent storage.
  * - REPAIR UPDATE: getForensicArchive now filters results against the Wiped blocklist for integrity.
  * - DUPLICATE GATEKEEPER: Added content-aware de-duplication to prevent archive bloat and relay spam rejections.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - Disk Executor: Offloads blocking .commit() calls to a single-threaded background executor to prevent UI thread fsync hangs.
  */
 public class AdNostrDatabaseHelper {
 
@@ -114,6 +119,9 @@ public class AdNostrDatabaseHelper {
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
+    
+    // PERFORMANCE FIX: Dedicated thread for hard-locking SharedPreferences to disk
+    private final ExecutorService diskExecutor = Executors.newSingleThreadExecutor();
 
     // BOOTSTRAP RELAY LIST
     private final String[] BOOTSTRAP_RELAYS = {
@@ -171,6 +179,8 @@ public class AdNostrDatabaseHelper {
      * never removes an item. It serves as the primary source for Sequential Re-publishing.
      * REPAIR UPDATE: Rejects events with empty content to prevent archive corruption.
      * DUPLICATE GATEKEEPER: Now parses content to ensure unique metadata entries.
+     * 
+     * PERFORMANCE FIX: Wrapping the blocking .commit() call in diskExecutor to prevent Main Thread hang.
      */
     public synchronized void saveToForensicArchive(String eventJson) {
         try {
@@ -234,9 +244,14 @@ public class AdNostrDatabaseHelper {
             }
 
             archiveArray.put(newEvent);
-            // Synchronous commit to ensure data is locked to disk immediately
-            prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, archiveArray.toString()).commit();
-            android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive. Total Frames: " + archiveArray.length());
+            
+            // PERFORMANCE FIX: Move blocking disk write to background thread
+            final String finalArchive = archiveArray.toString();
+            diskExecutor.execute(() -> {
+                // Synchronous commit to ensure data is locked to disk immediately
+                prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, finalArchive).commit();
+                android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive.");
+            });
             
         } catch (Exception e) {
             android.util.Log.e("AdNostr_Archive", "Failed to append to permanent archive: " + e.getMessage());
@@ -571,8 +586,10 @@ public class AdNostrDatabaseHelper {
      * COLLECTIVE MEMORY FIX: Implements an Integrity Gate. 
      * If the incoming JSON is empty/small but local memory is full, the save is rejected.
      * This prevents slow relays or network amnesia from wiping your Bajaj data.
+     * 
+     * PERFORMANCE FIX: Move blocking disk write to background thread.
      */
-    public void saveSchemaCache(String json) {
+    public void saveSchemaCache(final String json) {
         // 1. Density Check: Is the incoming data empty?
         if (json == null || json.equals("{}") || json.isEmpty() || json.length() < 10) {
             String existing = getSchemaCache();
@@ -591,8 +608,11 @@ public class AdNostrDatabaseHelper {
             }
         }
 
-        // Use commit() for synchronous hard-locking to the disk
-        prefs.edit().putString(KEY_SCHEMA_CACHE_JSON, json).commit();
+        // PERFORMANCE FIX: Move blocking disk write to background thread
+        diskExecutor.execute(() -> {
+            // Use commit() for synchronous hard-locking to the disk
+            prefs.edit().putString(KEY_SCHEMA_CACHE_JSON, json).commit();
+        });
     }
 
     /**
@@ -695,7 +715,9 @@ public class AdNostrDatabaseHelper {
      * Uses commit() for synchronous consistency across threads.
      */
     public void setConsoleLogEnabled(boolean isEnabled) {
-        prefs.edit().putBoolean(KEY_CONSOLE_LOG_ENABLED, isEnabled).commit();
+        diskExecutor.execute(() -> {
+            prefs.edit().putBoolean(KEY_CONSOLE_LOG_ENABLED, isEnabled).commit();
+        });
     }
 
     public boolean isConsoleLogEnabled() {
@@ -707,7 +729,9 @@ public class AdNostrDatabaseHelper {
      * Logic: Toggle between Professional summaries and raw JSON protocol frames.
      */
     public void setDebugModeActive(boolean isActive) {
-        prefs.edit().putBoolean(KEY_DEBUG_MODE_ACTIVE, isActive).commit();
+        diskExecutor.execute(() -> {
+            prefs.edit().putBoolean(KEY_DEBUG_MODE_ACTIVE, isActive).commit();
+        });
     }
 
     public boolean isDebugModeActive() {
@@ -724,33 +748,37 @@ public class AdNostrDatabaseHelper {
      * Used by the BackupManager when importing a Digital Passport JSON.
      * FIXED: Changed to .commit() to ensure synchronous write before app restart.
      */
-    public void batchRestoreAccount(String privKey, String pubKey, String username, String role, Set<String> interests, String cfUrl, String cfToken) {
-        SharedPreferences.Editor editor = prefs.edit();
+    public void batchRestoreAccount(final String privKey, final String pubKey, final String username, final String role, final Set<String> interests, final String cfUrl, final String cfToken) {
+        diskExecutor.execute(() -> {
+            SharedPreferences.Editor editor = prefs.edit();
 
-        // 1. Restore Identity
-        if (privKey != null && !privKey.isEmpty()) editor.putString(KEY_PRIVATE_KEY, privKey);
-        if (pubKey != null && !pubKey.isEmpty()) editor.putString(KEY_PUBLIC_KEY, pubKey);
-        if (username != null) editor.putString(KEY_USERNAME, username);
+            // 1. Restore Identity
+            if (privKey != null && !privKey.isEmpty()) editor.putString(KEY_PRIVATE_KEY, privKey);
+            if (pubKey != null && !pubKey.isEmpty()) editor.putString(KEY_PUBLIC_KEY, pubKey);
+            if (username != null) editor.putString(KEY_USERNAME, username);
 
-        // 2. Restore Role
-        if (role != null && !role.isEmpty()) editor.putString(KEY_USER_ROLE, role);
+            // 2. Restore Role
+            if (role != null && !role.isEmpty()) editor.putString(KEY_USER_ROLE, role);
 
-        // 3. Restore Interests (For Users) - Uses role-aware key logic
-        if (interests != null) editor.putStringSet(KEY_USER_INTERESTS + "_" + role, interests);
+            // 3. Restore Interests (For Users) - Uses role-aware key logic
+            if (interests != null) editor.putStringSet(KEY_USER_INTERESTS + "_" + role, interests);
 
-        // 4. Restore Private Cloudflare Credentials (For Advertisers)
-        if (cfUrl != null) editor.putString(KEY_CLOUDFLARE_WORKER_URL, cfUrl);
-        if (cfToken != null) editor.putString(KEY_CLOUDFLARE_SECRET_TOKEN, cfToken);
+            // 4. Restore Private Cloudflare Credentials (For Advertisers)
+            if (cfUrl != null) editor.putString(KEY_CLOUDFLARE_WORKER_URL, cfUrl);
+            if (cfToken != null) editor.putString(KEY_CLOUDFLARE_SECRET_TOKEN, cfToken);
 
-        // 5. Enforce Setup Completion
-        editor.putBoolean(KEY_SETUP_COMPLETE, true);
+            // 5. Enforce Setup Completion
+            editor.putBoolean(KEY_SETUP_COMPLETE, true);
 
-        // CRITICAL FIX: Synchronous commit forces write before System.exit()
-        editor.commit();
+            // CRITICAL FIX: Synchronous commit forces write before System.exit()
+            editor.commit();
+        });
     }
 
     public void clearAllData() {
-        // CRITICAL FIX: Synchronous commit forces wipe before BackupManager continues
-        prefs.edit().clear().commit();
+        diskExecutor.execute(() -> {
+            // CRITICAL FIX: Synchronous commit forces wipe before BackupManager continues
+            prefs.edit().clear().commit();
+        });
     }
 }
