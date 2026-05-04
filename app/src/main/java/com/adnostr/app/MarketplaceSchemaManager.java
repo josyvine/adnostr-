@@ -48,6 +48,7 @@ import java.util.concurrent.TimeUnit;
  *   output JSON. This ensures dropdowns populate instantly from local memory while the 
  *   network syncs in the background.
  * - REPAIR UPDATE: fetchGlobalSchema now performs deep merger of hard-locked local data.
+ * - DE-DUPLICATION ENGINE: Added logic to filter 1,375 redundant items into a lean unique dataset to prevent relay rate-limiting.
  */
 public class MarketplaceSchemaManager {
 
@@ -69,6 +70,7 @@ public class MarketplaceSchemaManager {
      * NEW: Also fetches Kind 5 events to identify and purge deleted entries.
      * FIXED: Now utilizes Local Cache first and has an extended 15-second network window.
      * UPDATED LOGIC: Internally merges the Forensic Archive to fix empty UI dropdowns.
+     * OPTIMIZATION: Uses a Fingerprint Set to ensure 1,375 redundant items don't crash the WebView.
      */
     public static void fetchGlobalSchema(Context context, SchemaFetchCallback callback) {
         new Thread(() -> {
@@ -182,6 +184,9 @@ public class MarketplaceSchemaManager {
                 // =========================================================================
                 // THE FILTER ENGINE: PERMANENT PURGE & ARCHIVE MERGE LOGIC (REWRITE)
                 // =========================================================================
+                
+                // DE-DUPLICATION TRACKER
+                Set<String> contentFingerprints = new HashSet<>();
 
                 // INSTANT DROPDOWN FIX: Load the Hard-Locked Archive
                 String archiveJson = db.getForensicArchive();
@@ -189,11 +194,17 @@ public class MarketplaceSchemaManager {
 
                 // 1. Process Categories (Archive + Network)
                 JSONArray filteredCategories = new JSONArray();
+                
+                // Lambda-style helper to check unique fingerprint
+                // For Categories: "cat:[subName]"
+                
                 // Phase A: Add from Network
                 for (JSONObject cat : categoryEvents) {
                     String eid = cat.optString("_event_id");
-                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
+                    String finger = "cat:" + cat.optString("sub").trim().toLowerCase();
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredCategories.put(cat);
+                        contentFingerprints.add(finger);
                     }
                 }
                 // Phase B: Merge Unique items from Immutable Archive
@@ -201,51 +212,50 @@ public class MarketplaceSchemaManager {
                     JSONObject arcEvent = archiveArray.getJSONObject(i);
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
+                    String finger = "cat:" + content.optString("sub").trim().toLowerCase();
                     if (arcEvent.getInt("kind") == 30006 && "category".equals(content.optString("type"))) {
-                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid)) {
-                            // De-duplicate: Only add if not already in the list
-                            boolean exists = false;
-                            for(int j=0; j<filteredCategories.length(); j++) {
-                                if(filteredCategories.getJSONObject(j).optString("sub").equalsIgnoreCase(content.optString("sub").trim())) {
-                                    exists = true; break;
-                                }
-                            }
-                            if(!exists) { content.put("_event_id", eid); filteredCategories.put(content); }
+                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
+                            content.put("_event_id", eid); 
+                            filteredCategories.put(content); 
+                            contentFingerprints.add(finger);
                         }
                     }
                 }
 
                 // 2. Process Fields (Archive + Network)
                 JSONArray filteredFields = new JSONArray();
+                // For Fields: "field:[category]:[label]"
                 for (JSONObject field : fieldEvents) {
                     String eid = field.optString("_event_id");
-                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
+                    String finger = "field:" + field.optString("category").toLowerCase() + ":" + field.optString("label").toLowerCase();
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredFields.put(field);
+                        contentFingerprints.add(finger);
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
                     JSONObject arcEvent = archiveArray.getJSONObject(i);
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
+                    String finger = "field:" + content.optString("category").toLowerCase() + ":" + content.optString("label").toLowerCase();
                     if (arcEvent.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
-                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid)) {
-                            boolean exists = false;
-                            for(int j=0; j<filteredFields.length(); j++) {
-                                if(filteredFields.getJSONObject(j).optString("id").equals(content.optString("id"))) {
-                                    exists = true; break;
-                                }
-                            }
-                            if(!exists) { content.put("_event_id", eid); filteredFields.put(content); }
+                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
+                            content.put("_event_id", eid); 
+                            filteredFields.put(content);
+                            contentFingerprints.add(finger);
                         }
                     }
                 }
 
                 // 3. Process Value Pools (Archive + Network)
                 JSONArray filteredValues = new JSONArray();
+                // For Values: "val:[category]:[specsString]"
                 for (JSONObject val : valueEvents) {
                     String eid = val.optString("_event_id");
-                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid)) {
+                    String finger = "val:" + val.optString("category").toLowerCase() + ":" + val.optJSONObject("specs").toString();
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredValues.put(val);
+                        contentFingerprints.add(finger);
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
@@ -253,10 +263,11 @@ public class MarketplaceSchemaManager {
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
                     if (arcEvent.getInt("kind") == 30007) {
-                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid)) {
-                            // Merge all archived value pools to ensure Bajaj/Audi dropdowns are never empty
+                        String finger = "val:" + content.optString("category").toLowerCase() + ":" + content.optJSONObject("specs").toString();
+                        if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                             content.put("_event_id", eid); 
                             filteredValues.put(content);
+                            contentFingerprints.add(finger);
                         }
                     }
                 }
@@ -306,6 +317,7 @@ public class MarketplaceSchemaManager {
      * Logic: Broadcasts the immutable archive in a tiered hierarchy with 
      * timing delays to ensure proper relay indexing.
      * UPDATED: Accepts TechnicalLogListener to feed the forensic console.
+     * OPTIMIZATION: Now de-duplicates the 1,375 redundant items before preparation to prevent spam rejection.
      */
     public static void executeSequentialHealing(Context context, SequentialBroadcastQueue.TechnicalLogListener listener) {
         new Thread(() -> {
@@ -330,6 +342,41 @@ public class MarketplaceSchemaManager {
                 }
                 return;
             }
+            
+            // =========================================================================
+            // HEALER DE-DUPLICATION LAYER (CRITICAL FIX FOR 1,375 REDUNDANT ITEMS)
+            // This ensures the restoration doesn't get blocked by relays as spam.
+            // =========================================================================
+            try {
+                JSONArray rawArchive = new JSONArray(archiveJson);
+                JSONArray uniqueArchive = new JSONArray();
+                Set<String> fingerprints = new HashSet<>();
+                
+                for (int i = 0; i < rawArchive.length(); i++) {
+                    JSONObject event = rawArchive.getJSONObject(i);
+                    JSONObject content = new JSONObject(event.getString("content"));
+                    int kind = event.getInt("kind");
+                    String finger = "";
+                    
+                    if (kind == 30006) {
+                        finger = kind + ":" + content.optString("type") + ":" + content.optString("sub", content.optString("label"));
+                    } else if (kind == 30007) {
+                        finger = kind + ":" + content.optString("category") + ":" + content.optJSONObject("specs").toString();
+                    }
+                    
+                    if (!fingerprints.contains(finger.toLowerCase())) {
+                        uniqueArchive.put(event);
+                        fingerprints.add(finger.toLowerCase());
+                    }
+                }
+                
+                archiveJson = uniqueArchive.toString();
+                if (listener != null) {
+                    listener.onLogGenerated("OPTIMIZER: Filtered " + rawArchive.length() + " items down to " + uniqueArchive.length() + " unique frames.");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Healer Optimization Failed: " + e.getMessage());
+            }
 
             // REPAIR UPDATE: Check preparation success before proceeding with broadcast
             if (queue.prepareArchive(archiveJson)) {
@@ -342,11 +389,6 @@ public class MarketplaceSchemaManager {
 
         }).start();
     }
-
-    /**
-     * Logic: Resets the pruning clock on relays by generating a fresh signature.
-     * REMOVED: redundant reBroadcastWithFreshTime (Logic moved to SequentialBroadcastQueue)
-     */
 
     /**
      * Broadcasts a new Category added by this advertiser.
