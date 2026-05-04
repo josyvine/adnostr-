@@ -64,7 +64,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
     private ValueCallback<Uri[]> uploadMessage;
     private ActivityResultLauncher<Intent> filePickerLauncher;
-    
+
     // Forensic log accumulator
     private final StringBuilder technicalConsole = new StringBuilder();
 
@@ -149,7 +149,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                     // Normalize the JSON string to ensure no illegal characters break the bridge
                     String sanitizedJson = fetchedGlobalSchemaJson;
                     String base64Encoded = Base64.encodeToString(sanitizedJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-                    
+
                     // The decodeURIComponent(escape(window.atob(...))) sequence handles multi-byte UTF-8 (emojis/special chars)
                     String jsCommand = "injectGlobalSchema(decodeURIComponent(escape(window.atob('" + base64Encoded + "'))))";
                     binding.wvProductCreator.evaluateJavascript(jsCommand, null);
@@ -218,7 +218,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 super.onPageFinished(view, url);
                 isWebViewReady = true;
                 logTechnicalEvent("WEBVIEW: Dashboard DOM Loaded.");
-                
+
                 // ADMIN SUPREMACY: Inject status to toggle UI management tools
                 boolean isAdmin = db.isAdmin();
                 binding.wvProductCreator.evaluateJavascript("if(window.injectAdminStatus) injectAdminStatus(" + isAdmin + ");", null);
@@ -269,17 +269,27 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         }
 
         /**
-         * NEW: RETRIEVAL TRIGGER
-         * Allows the HTML engine to manually request a forensic data re-sync
-         * when a user interacts with specific dropdowns.
+         * =========================================================================
+         * RETRIEVAL ENGINE: THE "RETRIEVE" ICON BRIDGE
+         * Logic: When Advertiser clicks retrieve, launch the Full Screen Forensic Console.
+         * It also forces a re-sync of the archive to repopulate the local bajaj models.
+         * =========================================================================
          */
         @JavascriptInterface
         public void retrieveArchiveData() {
-            logTechnicalEvent("ACTION: On-demand retrieval requested for crowdsourced metadata.");
-            MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, schemaJson -> {
-                fetchedGlobalSchemaJson = schemaJson;
-                injectSchemaIfReady();
-                logTechnicalEvent("RETRIEVAL: Forensic archive pull completed and injected.");
+            runOnUiThread(() -> {
+                logTechnicalEvent("ACTION: Native retrieval requested. Launching Forensic Console.");
+                
+                // Launch Forensic Console in Full Screen
+                Intent intent = new Intent(CreateProductActivity.this, ReportActivity.class);
+                startActivity(intent);
+
+                // In parallel, force a heavy fetch from archive to update dropdowns in the background
+                MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, schemaJson -> {
+                    fetchedGlobalSchemaJson = schemaJson;
+                    injectSchemaIfReady();
+                    logTechnicalEvent("RETRIEVAL: Forensic archive successfully pulled and injected.");
+                });
             });
         }
 
@@ -312,10 +322,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         @JavascriptInterface
         public void deleteCategory(String categoryName) {
             logTechnicalEvent("ACTION: Permanent Category Deletion request for '" + categoryName + "'");
-            
+
             // PERMANENCE FIX: Immediately mark the name as hidden in the local database
             db.addHiddenHardcodedName(categoryName);
-            
+
             // GLOBAL FIX: Trigger the network broadcast to wipe for everyone else
             MarketplaceSchemaManager.broadcastCategoryDeletion(CreateProductActivity.this, categoryName);
         }
@@ -351,7 +361,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
      */
     private void handleIncomingProduct(String rawJson) {
         logTechnicalEvent("PUBLISH: Form data received. Size: " + rawJson.length());
-        
+
         // ENHANCEMENT: Only show the popup if console is enabled
         if (db.isConsoleLogEnabled()) {
             RelayReportDialog report = RelayReportDialog.newInstance("MARKETPLACE PUBLISH", "Uploading metadata...", technicalConsole.toString());
@@ -443,7 +453,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             dTag.put("d");
             dTag.put("adnostr_listing_" + UUID.randomUUID().toString().substring(0, 8));
             tags.put(dTag);
-            
+
             JSONArray tTag = new JSONArray();
             tTag.put("t");
             tTag.put("marketplace_product");
