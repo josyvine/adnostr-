@@ -168,11 +168,18 @@ public class AdNostrDatabaseHelper {
      * Logic: Permanent Hard-Locking of crowdsourced data.
      * Unlike the "Schema Cache" which updates based on the network, this Archive 
      * never removes an item. It serves as the primary source for Sequential Re-publishing.
+     * REPAIR UPDATE: Rejects events with empty content to prevent archive corruption.
      */
     public synchronized void saveToForensicArchive(String eventJson) {
         try {
             JSONObject newEvent = new JSONObject(eventJson);
             String newId = newEvent.getString("id");
+
+            // GATEKEEPER: Prevent "End of input" crashes by rejecting empty content frames
+            if (newEvent.optString("content", "").isEmpty()) {
+                android.util.Log.w("AdNostr_Archive", "REJECTED: Attempted to save empty content frame to archive.");
+                return;
+            }
 
             String currentArchive = prefs.getString(KEY_FORENSIC_ARCHIVE_JSON, "[]");
             JSONArray archiveArray = new JSONArray(currentArchive);
