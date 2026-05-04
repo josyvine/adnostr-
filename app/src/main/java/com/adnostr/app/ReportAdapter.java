@@ -19,6 +19,8 @@ import org.json.JSONObject;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ADMIN SUPREMACY: Forensic Feed Multi-Adapter.
@@ -34,12 +36,19 @@ import java.util.List;
  * VOLATILITY FIX:
  * - Sync Feedback: Now identifies if a card was loaded from the Immutable Archive or found Live.
  * - Hierarchical Integrity: Ensures parent-child relationships (Category -> Brand) are visually mapped.
+ * 
+ * PERFORMANCE UPDATE (ANTI-HANG):
+ * - Parsed Object Cache: Implemented a memory-efficient ConcurrentHashMap to prevent redundant 
+ *   JSON parsing during scrolling, which was the primary cause of UI thread hangs.
  */
 public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicViewHolder> {
 
     private final List<JSONObject> eventList;
     private final long lastSeenTimestamp;
     private final OnPurgeListener listener;
+    
+    // PERFORMANCE CACHE: Prevents the "new JSONObject" loop that hangs the UI thread
+    private final Map<String, JSONObject> contentCache = new ConcurrentHashMap<>();
 
     /**
      * Interface for Admin Governance.
@@ -75,6 +84,13 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
         return eventList != null ? eventList.size() : 0;
     }
 
+    /**
+     * Clears the memory cache when the list is refreshed to ensure fresh data.
+     */
+    public void clearCache() {
+        contentCache.clear();
+    }
+
     class ForensicViewHolder extends RecyclerView.ViewHolder {
         private final ItemReportCardBinding binding;
 
@@ -86,6 +102,7 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
         /**
          * Logic: Maps Nostr metadata to specialized forensic UI components.
          * FIXED: Robust parsing for contextual value pools (Bajaj models/years).
+         * OPTIMIZED: Uses pre-parsed JSON cache to stop unresponsiveness during scrolling.
          */
         public void bind(JSONObject event) {
             try {
@@ -96,9 +113,17 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                 int kind = event.getInt("kind");
                 long createdAt = event.getLong("created_at");
                 String pubkey = event.getString("pubkey");
-                String contentStr = event.getString("content");
                 String eventId = event.optString("id", "");
-                JSONObject content = new JSONObject(contentStr);
+                
+                // PERFORMANCE OPTIMIZATION: Retrieve from cache or parse once
+                JSONObject content;
+                if (contentCache.containsKey(eventId)) {
+                    content = contentCache.get(eventId);
+                } else {
+                    String contentStr = event.getString("content");
+                    content = new JSONObject(contentStr);
+                    contentCache.put(eventId, content);
+                }
 
                 // 2. Determine NEW Status (Visual State Machine)
                 boolean isNew = createdAt > lastSeenTimestamp;
@@ -182,18 +207,10 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                         createdAt * 1000, 
                         System.currentTimeMillis(), 
                         DateUtils.SECOND_IN_MILLIS);
-                binding.tvTimestampTrace.setText(relativeTime);
-
-                // =========================================================================
-                // VOLATILITY FIX: SYNC STATUS INDICATOR
-                // If the event is extremely old compared to now, it came from the archive.
-                // =========================================================================
-                long oneDayAgo = (System.currentTimeMillis() / 1000) - 86400;
-                if (createdAt < oneDayAgo) {
-                    binding.tvTimestampTrace.append(" [Archived Source]");
-                } else {
-                    binding.tvTimestampTrace.append(" [Live Network]");
-                }
+                
+                // PERFORMANCE FIX: Avoid string append loop, use fixed string builder logic
+                String syncSource = (createdAt < (System.currentTimeMillis() / 1000) - 86400) ? " [Archived Source]" : " [Live Network]";
+                binding.tvTimestampTrace.setText(relativeTime + syncSource);
 
                 // 5. Executioner Gate: Trash icon visible only to Admin
                 binding.btnPurgeItem.setVisibility(db.isAdmin() ? View.VISIBLE : View.GONE);
