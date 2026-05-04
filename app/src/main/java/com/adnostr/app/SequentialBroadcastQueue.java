@@ -79,6 +79,7 @@ public class SequentialBroadcastQueue {
      * Logic: Accepts the full forensic archive and sorts it into dependency tiers.
      * REPAIR UPDATE: Implemented Defensive Parsing to skip ghost frames without crashing the queue.
      * FIXED: Explicitly identifies Tier 2 (Fields) to prevent dropdown dropout.
+     * IMPROVEMENT: Added strict content trimming to ensure JSON detection doesn't fail on white-spaces.
      */
     public boolean prepareArchive(String archiveJson) {
         // CRITICAL FIX: Check for empty strings to prevent "End of input at character 0"
@@ -97,7 +98,7 @@ public class SequentialBroadcastQueue {
                 JSONObject event = archive.getJSONObject(i);
                 
                 // REPAIR UPDATE: Verify content field before parsing
-                String contentStr = event.optString("content", "");
+                String contentStr = event.optString("content", "").trim();
                 
                 // LOGIC: If the frame is a "ghost frame" (empty content), ignore and move to valid Audi/Bajaj data
                 if (contentStr.isEmpty() || !contentStr.startsWith("{")) {
@@ -113,14 +114,16 @@ public class SequentialBroadcastQueue {
                         if ("category".equals(metadataType)) {
                             catTier.add(event);
                         } else if ("field".equals(metadataType)) {
-                            // TIER 2 RECOVERY: Ensure tech specs are correctly added to the field list
+                            // TIER 2 RECOVERY: Ensure tech specs (Brand, Model, Year anchors) are correctly added.
+                            // This resolves the "Field=0" failure seen in previous forensic logs.
                             fieldTier.add(event);
                         }
                     } else if (kind == 30007) {
+                        // TIER 3: Bulk Values (e.g. Pulsar, Discover, 2024)
                         valueTier.add(event);
                     }
                 } catch (Exception e) {
-                    // Skip individual malformed items within the loop
+                    // Skip individual malformed items within the loop to keep the queue moving
                     Log.w(TAG, "Skipping malformed frame at index " + i);
                     continue;
                 }
@@ -197,11 +200,12 @@ public class SequentialBroadcastQueue {
             final int index = i;
             final boolean isLastInTier = (i == targetList.size() - 1);
 
-            // Delay each item by 500ms to prevent relay rate-limiting
+            // Delay each item by 500ms to prevent relay rate-limiting (spam detection)
             queueHandler.postDelayed(() -> {
                 reSignAndSend(originalEvent);
 
-                // If this was the last item in the tier, wait 3 seconds and start next tier
+                // If this was the last item in the tier, wait 3 seconds and start next tier.
+                // The 3-second delay is critical for relays to index the Category/Field before Values arrive.
                 if (isLastInTier && nextTier != -1) {
                     sendForensicLog("ORDER: Tier " + tier + " complete. Transitioning to Tier " + nextTier + " in 3s...");
                     queueHandler.postDelayed(() -> processTier(nextTier), 3000);
@@ -231,7 +235,13 @@ public class SequentialBroadcastQueue {
 
             newEvent.put("kind", kind);
             newEvent.put("pubkey", db.getPublicKey());
-            newEvent.put("created_at", System.currentTimeMillis() / 1000); // RESET PRUNING CLOCK
+            
+            // =========================================================================
+            // REFRESH NETWORK PERSISTENCE: OVERWRITE TIMESTAMP
+            // Overwriting with current time prevents relays from pruning the data as "stale."
+            // =========================================================================
+            newEvent.put("created_at", System.currentTimeMillis() / 1000); 
+
             newEvent.put("content", contentStr);
 
             // TAG INTEGRITY: Carry over all indexing tags (t-tags, d-tags) for correct filtering
