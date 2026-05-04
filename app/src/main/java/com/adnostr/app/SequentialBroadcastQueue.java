@@ -76,7 +76,7 @@ public class SequentialBroadcastQueue {
 
     /**
      * Logic: Accepts the full forensic archive and sorts it into dependency tiers.
-     * REPAIR UPDATE: Returns boolean to skip broadcast if parsing fails or input is empty.
+     * REPAIR UPDATE: Implemented Defensive Parsing to skip ghost frames without crashing the queue.
      */
     public boolean prepareArchive(String archiveJson) {
         // CRITICAL FIX: Check for empty strings to prevent "End of input at character 0"
@@ -93,30 +93,51 @@ public class SequentialBroadcastQueue {
 
             for (int i = 0; i < archive.length(); i++) {
                 JSONObject event = archive.getJSONObject(i);
-                int kind = event.getInt("kind");
-                String contentStr = event.getString("content");
-                JSONObject content = new JSONObject(contentStr);
+                
+                // REPAIR UPDATE: Verify content field before parsing
+                String contentStr = event.optString("content", "");
+                
+                // LOGIC: If the frame is a "ghost frame" (empty content), ignore and move to valid Audi/Bajaj data
+                if (contentStr.isEmpty() || !contentStr.startsWith("{")) {
+                    continue; 
+                }
 
-                if (kind == 30006) {
-                    if ("category".equals(content.optString("type"))) {
-                        catTier.add(event);
-                    } else if ("field".equals(content.optString("type"))) {
-                        fieldTier.add(event);
+                try {
+                    JSONObject content = new JSONObject(contentStr);
+                    int kind = event.getInt("kind");
+
+                    if (kind == 30006) {
+                        if ("category".equals(content.optString("type"))) {
+                            catTier.add(event);
+                        } else if ("field".equals(content.optString("type"))) {
+                            fieldTier.add(event);
+                        }
+                    } else if (kind == 30007) {
+                        valueTier.add(event);
                     }
-                } else if (kind == 30007) {
-                    valueTier.add(event);
+                } catch (Exception e) {
+                    // Skip individual malformed items within the loop
+                    Log.w(TAG, "Skipping malformed frame at index " + i);
+                    continue;
                 }
             }
 
             Log.d(TAG, "Queue Prepared: Tier1=" + catTier.size() + ", Tier2=" + fieldTier.size() + ", Tier3=" + valueTier.size());
+            
+            // Check if we actually found any valid items to restore
+            if (catTier.isEmpty() && fieldTier.isEmpty() && valueTier.isEmpty()) {
+                sendForensicLog("SYSTEM: No valid metadata frames found in archive.");
+                return false;
+            }
+
             sendForensicLog("SUCCESS: Archive sorted into " + (catTier.size() + fieldTier.size() + valueTier.size()) + " restoration frames.");
             return true;
 
         } catch (Exception e) {
-            // REPAIR UPDATE: Provide detailed length and snippet of the failing data for the user
+            // Provide detailed length and snippet of the failing data for the user
             int dataLen = (archiveJson != null) ? archiveJson.length() : 0;
             String snippet = (archiveJson != null && dataLen > 50) ? archiveJson.substring(0, 50) : archiveJson;
-            
+
             Log.e(TAG, "Queue preparation failed: " + e.getMessage());
             sendForensicLog("ERROR: Archive sorting failed - " + e.getMessage() + " (Len: " + dataLen + ", Snippet: " + snippet + ")");
             return false;
