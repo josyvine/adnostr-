@@ -641,4 +641,4 @@ public class MarketplaceSchemaManager {
             Log.e(TAG, "Schema Signing Error: " + e.getMessage());
         }
     }
-}
+} 
