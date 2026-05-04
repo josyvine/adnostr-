@@ -781,4 +781,4 @@ public class AdNostrDatabaseHelper {
             prefs.edit().clear().commit();
         });
     }
-}
+} 
