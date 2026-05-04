@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  * UPDATED: Implements Cascading Deletion to wipe Fields and Value Pools (Brands) when a Category is deleted.
  * 
  * CROWDSOURCED DATA FIX:
- * - Increased CountDownLatch to 15 seconds to prevent data "vanishing" on slow relays.
+ * - Increased CountDownLatch to 20 seconds to prevent data "vanishing" on slow relays.
  * - Implemented Schema Caching: Loads data from local memory first, then updates from network.
  * 
  * COLLECTIVE MEMORY UPDATE:
@@ -74,9 +74,10 @@ public class MarketplaceSchemaManager {
     /**
      * Fetches all crowdsourced categories, fields, and historical values from the network.
      * NEW: Also fetches Kind 5 events to identify and purge deleted entries.
-     * FIXED: Now utilizes Local Cache first and has an extended 15-second network window.
+     * FIXED: Now utilizes Local Cache first and has an extended 20-second network window.
      * UPDATED LOGIC: Internally merges the Forensic Archive to fix empty UI dropdowns.
      * OPTIMIZATION: Uses a Fingerprint Set to ensure 1,375 redundant items don't crash the WebView.
+     * INTEGRITY FIX: Filters Kind 30007 (Values) if their parent Kind 30006 (Field) doesn't exist.
      */
     public static void fetchGlobalSchema(Context context, SchemaFetchCallback callback) {
         new Thread(() -> {
@@ -95,7 +96,11 @@ public class MarketplaceSchemaManager {
             }
 
             Set<String> relays = db.getRelayPool();
-            // INCREASED TIMEOUT: From 5 to 15 seconds to ensure deep relay search success
+            
+            // =========================================================================
+            // STABILITY FIX: INCREASED TIMEOUT
+            // Increased from 15 to 20 seconds to ensure heavy metadata merges finish.
+            // =========================================================================
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             // Temporary storage for events coming off the wire
@@ -177,15 +182,15 @@ public class MarketplaceSchemaManager {
                             @Override public void onClose(int c, String r, boolean m) { latch.countDown(); }
                             @Override public void onError(Exception ex) { latch.countDown(); }
                         };
-                        client.setConnectionLostTimeout(15); // Extended timeout for slow relays
+                        client.setConnectionLostTimeout(20); // Sync with await timeout
                         client.connect();
                     } catch (Exception e) {
                         latch.countDown();
                     }
                 }
 
-                // Wait up to 15 seconds for network consensus
-                latch.await(15, TimeUnit.SECONDS);
+                // Wait up to 20 seconds for network consensus
+                latch.await(20, TimeUnit.SECONDS);
 
                 // =========================================================================
                 // THE FILTER ENGINE: PERMANENT PURGE & ARCHIVE MERGE LOGIC (REWRITE)
@@ -193,6 +198,9 @@ public class MarketplaceSchemaManager {
                 
                 // DE-DUPLICATION TRACKER
                 Set<String> contentFingerprints = new HashSet<>();
+                
+                // INTEGRITY TRACKER: Identifies which technical fields exist to anchor values
+                Set<String> validFieldAnchors = new HashSet<>();
 
                 // INSTANT DROPDOWN FIX: Load the Hard-Locked Archive
                 String archiveJson = db.getForensicArchive();
@@ -200,9 +208,6 @@ public class MarketplaceSchemaManager {
 
                 // 1. Process Categories (Archive + Network)
                 JSONArray filteredCategories = new JSONArray();
-                
-                // Lambda-style helper to check unique fingerprint
-                // For Categories: "cat:[subName]"
                 
                 // Phase A: Add from Network
                 for (JSONObject cat : categoryEvents) {
@@ -233,22 +238,28 @@ public class MarketplaceSchemaManager {
                 // For Fields: "field:[category]:[label]"
                 for (JSONObject field : fieldEvents) {
                     String eid = field.optString("_event_id");
-                    String finger = "field:" + field.optString("category").toLowerCase() + ":" + field.optString("label").toLowerCase();
+                    String catName = field.optString("category").toLowerCase();
+                    String labelName = field.optString("label").toLowerCase();
+                    String finger = "field:" + catName + ":" + labelName;
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredFields.put(field);
                         contentFingerprints.add(finger);
+                        validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
                     JSONObject arcEvent = archiveArray.getJSONObject(i);
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
-                    String finger = "field:" + content.optString("category").toLowerCase() + ":" + content.optString("label").toLowerCase();
+                    String catName = content.optString("category").toLowerCase();
+                    String labelName = content.optString("label").toLowerCase();
+                    String finger = "field:" + catName + ":" + labelName;
                     if (arcEvent.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
                         if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                             content.put("_event_id", eid); 
                             filteredFields.put(content);
                             contentFingerprints.add(finger);
+                            validFieldAnchors.add(catName + ":" + labelName); // Anchor for Tier 3
                         }
                     }
                 }
@@ -258,10 +269,18 @@ public class MarketplaceSchemaManager {
                 // For Values: "val:[category]:[specsString]"
                 for (JSONObject val : valueEvents) {
                     String eid = val.optString("_event_id");
-                    String finger = "val:" + val.optString("category").toLowerCase() + ":" + val.optJSONObject("specs").toString();
+                    String cat = val.optString("category").toLowerCase();
+                    JSONObject specs = val.optJSONObject("specs");
+                    String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
+                    
+                    String finger = "val:" + cat + ":" + (specs != null ? specs.toString() : "null");
+                    
+                    // INTEGRITY GATE: Filter values if their parent Field anchor doesn't exist
                     if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
-                        filteredValues.put(val);
-                        contentFingerprints.add(finger);
+                        if (validFieldAnchors.contains(cat + ":" + specsKey) || specsKey.equals("unknown")) {
+                            filteredValues.put(val);
+                            contentFingerprints.add(finger);
+                        }
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
@@ -269,11 +288,17 @@ public class MarketplaceSchemaManager {
                     JSONObject content = new JSONObject(arcEvent.getString("content"));
                     String eid = arcEvent.getString("id");
                     if (arcEvent.getInt("kind") == 30007) {
-                        String finger = "val:" + content.optString("category").toLowerCase() + ":" + content.optJSONObject("specs").toString();
+                        String cat = content.optString("category").toLowerCase();
+                        JSONObject specs = content.optJSONObject("specs");
+                        String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
+                        
+                        String finger = "val:" + cat + ":" + (specs != null ? specs.toString() : "null");
                         if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
-                            content.put("_event_id", eid); 
-                            filteredValues.put(content);
-                            contentFingerprints.add(finger);
+                            if (validFieldAnchors.contains(cat + ":" + specsKey) || specsKey.equals("unknown")) {
+                                content.put("_event_id", eid); 
+                                filteredValues.put(content);
+                                contentFingerprints.add(finger);
+                            }
                         }
                     }
                 }
