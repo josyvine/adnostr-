@@ -462,7 +462,8 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             );
             report.showSafe(getSupportFragmentManager(), "HEAL_LOG");
 
-            SequentialBroadcastQueue.TechnicalLogListener healerListener = msg -> {
+            // UPDATED: Use MarketplaceSchemaManager.TechnicalLogListener to fix type mismatch
+            MarketplaceSchemaManager.TechnicalLogListener healerListener = msg -> {
                 runOnUiThread(() -> {
                     healerLogs.append(msg).append("\n");
                     report.updateTechnicalLogs("Healing in Progress...", healerLogs.toString());
