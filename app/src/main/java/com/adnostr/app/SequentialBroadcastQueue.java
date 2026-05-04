@@ -9,7 +9,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * NEW: THE HIERARCHICAL RE-PUBLISH QUEUE
@@ -26,6 +28,7 @@ import java.util.List;
  * - Forensic Feedback: Detailed trace logging added to monitor tiered indexing.
  * - REPAIR UPDATE: Implemented TechnicalLogListener to feed the forensic console.
  * - TIER 2 RECOVERY: Fixed logic in prepareArchive to ensure Technical Fields are never skipped.
+ * - SPAM PREVENTION: Implemented internal deduplication filter to clean bloated archives.
  */
 public class SequentialBroadcastQueue {
 
@@ -79,7 +82,7 @@ public class SequentialBroadcastQueue {
      * Logic: Accepts the full forensic archive and sorts it into dependency tiers.
      * REPAIR UPDATE: Implemented Defensive Parsing to skip ghost frames without crashing the queue.
      * FIXED: Explicitly identifies Tier 2 (Fields) to prevent dropdown dropout.
-     * IMPROVEMENT: Added strict content trimming to ensure JSON detection doesn't fail on white-spaces.
+     * DEDUPLICATION: Internal set ensures only unique content frames are broadcasted to prevent relay spam blocks.
      */
     public boolean prepareArchive(String archiveJson) {
         // CRITICAL FIX: Check for empty strings to prevent "End of input at character 0"
@@ -94,13 +97,16 @@ public class SequentialBroadcastQueue {
             fieldTier.clear();
             valueTier.clear();
 
+            // Internal set for session deduplication (Prevents re-signing 158 identical categories)
+            Set<String> contentFingerprints = new HashSet<>();
+
             for (int i = 0; i < archive.length(); i++) {
                 JSONObject event = archive.getJSONObject(i);
-                
+
                 // REPAIR UPDATE: Verify content field before parsing
                 String contentStr = event.optString("content", "").trim();
-                
-                // LOGIC: If the frame is a "ghost frame" (empty content), ignore and move to valid Audi/Bajaj data
+
+                // LOGIC: If the frame is a "ghost frame" (empty content), ignore and move to next valid item
                 if (contentStr.isEmpty() || !contentStr.startsWith("{")) {
                     continue; 
                 }
@@ -110,37 +116,53 @@ public class SequentialBroadcastQueue {
                     int kind = event.getInt("kind");
 
                     if (kind == 30006) {
-                        String metadataType = content.optString("type", "").trim().toLowerCase();
-                        if ("category".equals(metadataType)) {
-                            catTier.add(event);
-                        } else if ("field".equals(metadataType)) {
-                            // TIER 2 RECOVERY: Ensure tech specs (Brand, Model, Year anchors) are correctly added.
-                            // This resolves the "Field=0" failure seen in previous forensic logs.
-                            fieldTier.add(event);
+                        String type = content.optString("type", "").trim().toLowerCase();
+                        String sub = content.optString("sub", "").trim().toLowerCase();
+                        String cat = content.optString("category", "").trim().toLowerCase();
+                        String label = content.optString("label", "").trim().toLowerCase();
+
+                        if ("category".equals(type)) {
+                            // Deduplicate based on sub-category name
+                            if (contentFingerprints.add("cat:" + sub)) {
+                                catTier.add(event);
+                            }
+                        } else if ("field".equals(type)) {
+                            // Deduplicate based on Category + Label (e.g. Cars:Brand)
+                            // FIXED: Explicitly added to fieldTier to fix "Field=0" error
+                            if (contentFingerprints.add("field:" + cat + ":" + label)) {
+                                fieldTier.add(event);
+                            }
                         }
                     } else if (kind == 30007) {
-                        // TIER 3: Bulk Values (e.g. Pulsar, Discover, 2024)
-                        valueTier.add(event);
+                        // TIER 3: Bulk Values (e.g. Bajaj, 2024, etc.)
+                        String cat = content.optString("category", "").trim().toLowerCase();
+                        JSONObject specs = content.optJSONObject("specs");
+                        String specsStr = (specs != null) ? specs.toString() : "";
+
+                        // Deduplicate value pools
+                        if (contentFingerprints.add("val:" + cat + ":" + specsStr)) {
+                            valueTier.add(event);
+                        }
                     }
                 } catch (Exception e) {
-                    // Skip individual malformed items within the loop to keep the queue moving
+                    // Skip individual malformed items within the loop
                     Log.w(TAG, "Skipping malformed frame at index " + i);
                     continue;
                 }
             }
 
             Log.d(TAG, "Queue Prepared: Tier1=" + catTier.size() + ", Tier2=" + fieldTier.size() + ", Tier3=" + valueTier.size());
-            
+
             // Forensic feedback for the Admin Console
             sendForensicLog("TIER_MAP: Cat=" + catTier.size() + " | Field=" + fieldTier.size() + " | Value=" + valueTier.size());
 
-            // Check if we actually found any valid items to restore
+            // Check if we actually found any valid items to restore after deduplication
             if (catTier.isEmpty() && fieldTier.isEmpty() && valueTier.isEmpty()) {
-                sendForensicLog("SYSTEM: No valid metadata frames found in archive.");
+                sendForensicLog("SYSTEM: No valid unique metadata frames found in archive.");
                 return false;
             }
 
-            sendForensicLog("SUCCESS: Archive sorted into " + (catTier.size() + fieldTier.size() + valueTier.size()) + " restoration frames.");
+            sendForensicLog("CLEANED: Archive optimized into " + (catTier.size() + fieldTier.size() + valueTier.size()) + " unique restoration frames.");
             return true;
 
         } catch (Exception e) {
@@ -197,19 +219,19 @@ public class SequentialBroadcastQueue {
         // Broadcast items in this tier with a short delay between each item
         for (int i = 0; i < targetList.size(); i++) {
             final JSONObject originalEvent = targetList.get(i);
-            final int index = i;
             final boolean isLastInTier = (i == targetList.size() - 1);
+            final int nextTierToRun = nextTier;
 
             // Delay each item by 500ms to prevent relay rate-limiting (spam detection)
             queueHandler.postDelayed(() -> {
                 reSignAndSend(originalEvent);
 
                 // If this was the last item in the tier, wait 3 seconds and start next tier.
-                // The 3-second delay is critical for relays to index the Category/Field before Values arrive.
-                if (isLastInTier && nextTier != -1) {
-                    sendForensicLog("ORDER: Tier " + tier + " complete. Transitioning to Tier " + nextTier + " in 3s...");
-                    queueHandler.postDelayed(() -> processTier(nextTier), 3000);
-                } else if (isLastInTier && nextTier == -1) {
+                // This gap is critical for relays to index parent items before children arrive.
+                if (isLastInTier && nextTierToRun != -1) {
+                    sendForensicLog("ORDER: Tier " + tier + " complete. Waiting 3s for network indexing...");
+                    queueHandler.postDelayed(() -> processTier(nextTierToRun), 3000);
+                } else if (isLastInTier && nextTierToRun == -1) {
                     sendForensicLog("\n=== HEALING SEQUENCE COMPLETE ===");
                 }
             }, i * 500L);
@@ -219,7 +241,6 @@ public class SequentialBroadcastQueue {
     /**
      * Logic: Generates a fresh BIP-340 signature with the CURRENT timestamp.
      * This is critical to force relays to overwrite their old pruned indexes.
-     * DROPDOWN FIX: Ensures context metadata is explicitly logged during re-signing.
      */
     private void reSignAndSend(JSONObject oldEvent) {
         try {
@@ -228,17 +249,17 @@ public class SequentialBroadcastQueue {
             String contentStr = oldEvent.getString("content");
             JSONObject content = new JSONObject(contentStr);
 
-            // DROPDOWN DROPOUT TRACE: Identify which category is being healed
-            String contextLabel = content.optString("category", content.optString("sub", "Unknown"));
+            // Identifies which metadata target is being healed
+            String contextLabel = content.optString("category", content.optString("sub", content.optString("label", "Unknown")));
             Log.i(TAG, "HEAL_TRACE: Re-signing Kind " + kind + " for target '" + contextLabel + "'");
             sendForensicLog("HEAL: Re-signing " + kind + " for '" + contextLabel + "'");
 
             newEvent.put("kind", kind);
             newEvent.put("pubkey", db.getPublicKey());
-            
+
             // =========================================================================
             // REFRESH NETWORK PERSISTENCE: OVERWRITE TIMESTAMP
-            // Overwriting with current time prevents relays from pruning the data as "stale."
+            // Resetting created_at resets the pruning clock on relays.
             // =========================================================================
             newEvent.put("created_at", System.currentTimeMillis() / 1000); 
 
@@ -250,7 +271,7 @@ public class SequentialBroadcastQueue {
             JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), newEvent);
             if (signed != null) {
                 wsManager.broadcastEvent(signed.toString());
-                Log.d(TAG, "Sequentially broadcasted archived item: " + signed.optString("id") + " (Context: " + contextLabel + ")");
+                Log.d(TAG, "Healed: " + signed.optString("id") + " (" + contextLabel + ")");
                 sendForensicLog("CRYPTO: BIP-340 Schnorr Proof OK. Broadcasted.");
             } else {
                 sendForensicLog("CRYPTO: FAILED to sign archived item.");
