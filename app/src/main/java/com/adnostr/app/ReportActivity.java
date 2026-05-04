@@ -1,6 +1,8 @@
 package com.adnostr.app;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -37,6 +39,11 @@ import java.util.UUID;
  * - Immutable Aggregation: Now loads data from the Hard-Locked Forensic Archive on startup.
  * - Network Healing: Integrated Refresh icon to trigger the Hourly Sequential Re-Publisher manually.
  * - REPAIR UPDATE: Replaced Toast with Full-Screen Forensic Console (RelayReportDialog).
+ * 
+ * PERFORMANCE UPDATE (ANTI-HANG):
+ * - UI Debouncing: Implemented a Handler-based batch update system to prevent redrawing the UI 
+ *   hundreds of times per second during heavy relay traffic.
+ * - Async Loading: Archive processing moved to background to prevent startup freezes.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -45,11 +52,16 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     private AdNostrDatabaseHelper db;
     private WebSocketClientManager wsManager;
 
-    private final List<JSONObject> fullMasterList = new ArrayList<>();
-    private final List<JSONObject> displayList = new ArrayList<>();
+    private final List<JSONObject> fullMasterList = Collections.synchronizedList(new ArrayList<>());
+    private final List<JSONObject> displayList = Collections.synchronizedList(new ArrayList<>());
     private ReportAdapter adapter;
 
     private String currentFilter = "ALL";
+
+    // PERFORMANCE ENGINE: Prevents UI Thread congestion
+    private final Handler uiUpdateHandler = new Handler(Looper.getMainLooper());
+    private boolean isUpdatePending = false;
+    private final Runnable uiRefreshRunnable = this::applyFilterAndNotify;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,9 +90,9 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
         // =========================================================================
         // VOLATILITY FIX: AGGREGATE PERMANENT ARCHIVE
-        // Before scanning the network, load every crowdsourced item we have saved locally.
+        // PERFORMANCE FIX: Process in background to avoid freezing the Activity start
         // =========================================================================
-        loadArchiveToConsole();
+        new Thread(this::loadArchiveToConsole).start();
 
         // 2. Initiate Global Discovery Scan
         fetchGlobalContributions();
@@ -102,24 +114,35 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     /**
      * VOLATILITY FIX: Pulls data from the Hard-Locked archive so the console is 
      * never empty, even if the network was just wiped.
+     * PERFORMANCE FIX: Runs on background thread to keep UI responsive.
      */
     private void loadArchiveToConsole() {
         try {
             String archiveJson = db.getForensicArchive();
             JSONArray archiveArray = new JSONArray(archiveJson);
 
-            for (int i = 0; i < archiveArray.length(); i++) {
-                JSONObject event = archiveArray.getJSONObject(i);
-                String id = event.getString("id");
+            synchronized (fullMasterList) {
+                for (int i = 0; i < archiveArray.length(); i++) {
+                    JSONObject event = archiveArray.getJSONObject(i);
+                    String id = event.getString("id");
 
-                // Skip if dismissed locally or wiped globally
-                if (db.isReportDismissed(id) || db.isSchemaWiped(id)) continue;
+                    // Skip if dismissed locally or wiped globally
+                    if (db.isReportDismissed(id) || db.isSchemaWiped(id)) continue;
 
-                fullMasterList.add(event);
+                    // De-duplication check for initial load
+                    boolean exists = false;
+                    for (JSONObject item : fullMasterList) {
+                        if (item.getString("id").equals(id)) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) fullMasterList.add(event);
+                }
             }
 
             Log.i(TAG, "Console populated with " + fullMasterList.size() + " archive entries.");
-            applyFilter();
+            requestBatchUpdate();
 
         } catch (Exception e) {
             Log.e(TAG, "Archive Load Error: " + e.getMessage());
@@ -169,7 +192,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             else if (filterText.contains("TECH SPECS")) currentFilter = "FIELD";
             else if (filterText.contains("BRANDS")) currentFilter = "VALUE";
 
-            applyFilter();
+            requestBatchUpdate();
         });
     }
 
@@ -198,13 +221,15 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     /**
      * Interface: Called by WebSocketClientManager when Kind 30006/30007 arrives.
      * FIXED: Now checks for local dismissal to prevent Bajaj cards from returning.
+     * PERFORMANCE FIX: Now debounces updates using requestBatchUpdate().
      */
     @Override
     public void onSchemaEventReceived(String url, JSONObject event) {
-        runOnUiThread(() -> {
-            try {
-                String eventId = event.getString("id");
+        try {
+            String eventId = event.getString("id");
 
+            // PERFORMANCE: Use synchronized block to prevent concurrent modification hangs
+            synchronized (fullMasterList) {
                 // Prevent duplicate entries in the forensic list
                 for (JSONObject existing : fullMasterList) {
                     if (existing.getString("id").equals(eventId)) return;
@@ -213,51 +238,77 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 // Check blocklist before adding
                 if (db.isSchemaWiped(eventId)) return;
 
-                // =========================================================================
                 // LOCAL PERSISTENCE CHECK (NEW)
-                // If the Admin has marked this card as read, do not display it.
-                // =========================================================================
-                if (db.isReportDismissed(eventId)) {
-                    return;
-                }
+                if (db.isReportDismissed(eventId)) return;
 
                 fullMasterList.add(event);
-
+                
                 // VOLATILITY FIX: Lock any newly discovered network metadata to the archive
                 db.saveToForensicArchive(event.toString());
+            }
 
-                // Sort Descending (Newest at top)
-                Collections.sort(fullMasterList, (a, b) -> 
-                    Long.compare(b.optLong("created_at"), a.optLong("created_at")));
+            // TRIGGER BATCH UPDATE: Instead of immediate sort/refresh
+            requestBatchUpdate();
 
-                applyFilter();
-                binding.pbForensicLoading.setVisibility(View.GONE);
-                binding.llEmptyForensic.setVisibility(fullMasterList.isEmpty() ? View.VISIBLE : View.GONE);
+        } catch (Exception ignored) {}
+    }
 
-            } catch (Exception ignored) {}
-        });
+    /**
+     * PERFORMANCE ENGINE: Debounces UI updates. 
+     * Ensures redrawing only happens at most 3 times per second.
+     */
+    private void requestBatchUpdate() {
+        if (!isUpdatePending) {
+            isUpdatePending = true;
+            uiUpdateHandler.postDelayed(uiRefreshRunnable, 300);
+        }
+    }
+
+    /**
+     * PERFORMANCE ENGINE: Executed on UI Thread via requestBatchUpdate delay.
+     */
+    private void applyFilterAndNotify() {
+        isUpdatePending = false;
+        applyFilter();
+        
+        if (binding != null) {
+            binding.pbForensicLoading.setVisibility(View.GONE);
+            binding.llEmptyForensic.setVisibility(displayList.isEmpty() ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void applyFilter() {
-        displayList.clear();
-        for (JSONObject event : fullMasterList) {
-            try {
-                String contentStr = event.getString("content");
-                JSONObject content = new JSONObject(contentStr);
-                int kind = event.getInt("kind");
+        synchronized (displayList) {
+            displayList.clear();
+            synchronized (fullMasterList) {
+                // PERFORMANCE FIX: Sort the data in place once before filtering
+                Collections.sort(fullMasterList, (a, b) -> 
+                    Long.compare(b.optLong("created_at"), a.optLong("created_at")));
 
-                if (currentFilter.equals("ALL")) {
-                    displayList.add(event);
-                } else if (currentFilter.equals("CATEGORY")) {
-                    if (kind == 30006 && "category".equals(content.optString("type"))) displayList.add(event);
-                } else if (currentFilter.equals("FIELD")) {
-                    if (kind == 30006 && "field".equals(content.optString("type"))) displayList.add(event);
-                } else if (currentFilter.equals("VALUE")) {
-                    if (kind == 30007) displayList.add(event);
+                for (JSONObject event : fullMasterList) {
+                    try {
+                        String contentStr = event.getString("content");
+                        JSONObject content = new JSONObject(contentStr);
+                        int kind = event.getInt("kind");
+
+                        if (currentFilter.equals("ALL")) {
+                            displayList.add(event);
+                        } else if (currentFilter.equals("CATEGORY")) {
+                            if (kind == 30006 && "category".equals(content.optString("type"))) displayList.add(event);
+                        } else if (currentFilter.equals("FIELD")) {
+                            if (kind == 30006 && "field".equals(content.optString("type"))) displayList.add(event);
+                        } else if (currentFilter.equals("VALUE")) {
+                            if (kind == 30007) displayList.add(event);
+                        }
+                    } catch (Exception ignored) {}
                 }
-            } catch (Exception ignored) {}
+            }
         }
-        adapter.notifyDataSetChanged();
+        
+        // Notify the adapter that the list is updated
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
     }
 
     /**
@@ -274,7 +325,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             broadcastWipe(idList, null);
 
             fullMasterList.remove(event);
-            applyFilter();
+            requestBatchUpdate();
             Toast.makeText(this, "Item Purged.", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Log.e(TAG, "Wipe failed: " + e.getMessage());
@@ -288,27 +339,29 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         List<String> idsToWipe = new ArrayList<>();
         List<JSONObject> itemsToRemove = new ArrayList<>();
 
-        for (JSONObject event : fullMasterList) {
-            try {
-                String contentStr = event.getString("content");
-                JSONObject content = new JSONObject(contentStr);
+        synchronized (fullMasterList) {
+            for (JSONObject event : fullMasterList) {
+                try {
+                    String contentStr = event.getString("content");
+                    JSONObject content = new JSONObject(contentStr);
 
-                boolean isTarget = categoryName.equals(content.optString("sub")) || 
-                                  categoryName.equals(content.optString("category"));
+                    boolean isTarget = categoryName.equals(content.optString("sub")) || 
+                                      categoryName.equals(content.optString("category"));
 
-                if (isTarget) {
-                    String eid = event.getString("id");
-                    idsToWipe.add(eid);
-                    itemsToRemove.add(event);
-                    db.addWipedSchemaId(eid);
-                }
-            } catch (Exception ignored) {}
+                    if (isTarget) {
+                        String eid = event.getString("id");
+                        idsToWipe.add(eid);
+                        itemsToRemove.add(event);
+                        db.addWipedSchemaId(eid);
+                    }
+                } catch (Exception ignored) {}
+            }
+            fullMasterList.removeAll(itemsToRemove);
         }
 
         if (!idsToWipe.isEmpty()) {
             broadcastWipe(idsToWipe, categoryName);
-            fullMasterList.removeAll(itemsToRemove);
-            applyFilter();
+            requestBatchUpdate();
             Toast.makeText(this, "Category Tree Wiped Successfully.", Toast.LENGTH_LONG).show();
         }
     }
@@ -323,7 +376,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             String id = event.getString("id");
             db.addDismissedReportId(id);
             fullMasterList.remove(event);
-            applyFilter();
+            requestBatchUpdate();
             Toast.makeText(this, "Card Dismissed (Local Only).", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Log.e(TAG, "Dismiss failed: " + e.getMessage());
@@ -404,6 +457,9 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         // ADMIN SUPREMACY: Reset notification state on exit
         db.saveReportLastSeen();
         wsManager.removeSchemaListener(this);
+        
+        // PERFORMANCE: Clean up pending UI updates to prevent memory leaks
+        uiUpdateHandler.removeCallbacks(uiRefreshRunnable);
         super.onDestroy();
     }
 }
