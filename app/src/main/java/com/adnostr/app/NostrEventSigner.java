@@ -27,7 +27,7 @@ public class NostrEventSigner {
 
     private static final String TAG = "AdNostr_Signer";
 
-    // Public fields for technical console diagnostics
+    // Public fields for technical console diagnostics (Used by ReportActivity)
     public static String lastK = "N/A";
     public static String lastE = "N/A";
     public static String lastParity = "N/A"; 
@@ -61,6 +61,7 @@ public class NostrEventSigner {
     /**
      * NEW: Specialized signer for the Collective Auto-Healing logic.
      * Logic: Force-overwrites the 'created_at' field with current time to reset relay pruning.
+     * This ensures the archive data is treated as "Fresh Content" by the network.
      */
     public static JSONObject signHealedEvent(String privateKeyHex, JSONObject event) {
         try {
