@@ -46,6 +46,10 @@ import java.util.UUID;
  * - Async Loading: Archive processing moved to background to prevent startup freezes.
  * - Background Processing: Leverages the updated WebSocketClientManager background 
  *   dispatch to perform archival and de-duplication off the Main Thread.
+ * 
+ * TECH SPECS TAB REPAIR:
+ * - applyFilter now correctly groups Technical Fields (Anchors) and Value Pools (Data).
+ * - Fixed hierarchy breakdown where Bajaj models were missing from the Tech Specs view.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -79,7 +83,11 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         db = AdNostrDatabaseHelper.getInstance(this);
         wsManager = WebSocketClientManager.getInstance();
 
-        // Security Check: Unauthorized access shutdown
+        // =========================================================================
+        // ADMIN SUPREMACY: MODERATION SECURITY GATE
+        // Only the authorized Admin identity is permitted to access the Global 
+        // Deletion and Moderation Console. Regular Advertisers are blocked.
+        // =========================================================================
         if (!db.isAdmin()) {
             Toast.makeText(this, "ACCESS DENIED: Administrative Privileges Required.", Toast.LENGTH_LONG).show();
             finish();
@@ -100,6 +108,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
         fetchGlobalContributions();
 
         // AUTO-CLICK LOGIC: Automatically trigger a network heal when Admin enters
+        // This ensures the relays are refreshed with the local archive truth.
         MarketplaceSchemaManager.executeSequentialHealing(this, null);
     }
 
@@ -114,7 +123,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * VOLATILITY FIX: Pulls data from the Hard-Locked archive so the console is 
-     * never empty, even if the network was just wiped.
+     * never empty, even if the network was just wiped or the app was reinstalled.
      * PERFORMANCE FIX: Runs on background thread to keep UI responsive.
      */
     private void loadArchiveToConsole() {
@@ -180,7 +189,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * Logic: Horizontal Chip Ribbon for real-time feed filtering.
-     * UPDATED: Integrated technical mapping for Bajaj / Tech Specs tab.
+     * UPDATED: Fixed technical mapping for Bajaj / Tech Specs tab.
      */
     private void setupFilterRibbon() {
         binding.chipGroupFilters.setOnCheckedStateChangeListener((group, checkedIds) -> {
@@ -223,7 +232,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * Interface: Called by WebSocketClientManager when Kind 30006/30007 arrives.
-     * FIXED: Now checks for local dismissal to prevent Bajaj cards from returning.
+     * FIXED: Now checks for local dismissal to prevent cards from returning.
      * PERFORMANCE FIX: Now debounces updates using requestBatchUpdate().
      */
     @Override
@@ -245,7 +254,10 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
                 fullMasterList.add(event);
 
-                // VOLATILITY FIX: Lock newly discovered network metadata to the archive
+                // =========================================================================
+                // DISTRIBUTED MEMORY FIX: UNIVERSAL LOCK
+                // We lock newly discovered metadata to the archive immediately.
+                // =========================================================================
                 db.saveToForensicArchive(event.toString());
             }
 
@@ -281,8 +293,8 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * CORE LOGIC: Tab Filtering.
-     * UPDATED: The "TECH SPECS" filter now specifically includes both Fields and Value Pools.
-     * This fixes the "Empty Tech Specs Tab" issue for Bajaj models.
+     * UPDATED: The "TECH SPECS" filter now specifically includes both Technical Fields 
+     * and Value Pools (Bajaj brands/models). This fixes the hierarchy breakdown.
      */
     private void applyFilter() {
         synchronized (displayList) {
@@ -302,7 +314,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                             displayList.add(event);
                         } 
                         else if (currentFilter.equals("CATEGORY")) {
-                            // Only Category definitions
+                            // Only Category definitions (Bikes, Cars)
                             if (kind == 30006 && "category".equals(content.optString("type"))) displayList.add(event);
                         } 
                         else if (currentFilter.equals("TECH_SPECS")) {
@@ -388,7 +400,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * NEW: Executes the local "Mark as Read" logic.
-     * Removes card from UI and saves the ID so it doesn't return.
+     * Removes card from UI and saves the ID so it doesn't return locally.
      */
     private void executeLocalDismiss(JSONObject event) {
         try {
@@ -429,6 +441,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
+        // Refresh icon to manually trigger the tiered publisher
         MenuItem refreshItem = menu.add(Menu.NONE, 1001, Menu.NONE, "Heal Network");
         refreshItem.setIcon(android.R.drawable.stat_notify_sync);
         refreshItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
@@ -464,6 +477,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     @Override
     protected void onDestroy() {
+        // Reset forensic counter state on exit
         db.saveReportLastSeen();
         wsManager.removeSchemaListener(this);
         uiUpdateHandler.removeCallbacks(uiRefreshRunnable);
