@@ -275,7 +275,7 @@ public class MarketplaceSchemaManager {
                 // =========================================================================
                 // STEP 2: RE-CACHE & AUTO-HEAL (COLLECTIVE MEMORY UPDATE)
                 // =========================================================================
-                
+
                 // Detection: Did the network return nothing but we have something saved?
                 boolean networkEmpty = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
                 boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
