@@ -43,11 +43,12 @@ import java.util.concurrent.TimeUnit;
  * 
  * ADMIN SUPREMACY UPDATE:
  * - Background Guard: Sniffs for Kind 30006 and 30007 while the app is closed.
- * - Alert System: Triggers High-Priority System Notifications for new crowdsourced metadata.
+ * - Alert System: Triggers High-Priority System Notifications for new crowdsourced metadata (ADMIN ONLY).
  * 
- * VOLATILITY FIX: 
+ * VOLATILITY & DISTRIBUTED MEMORY FIX: 
  * - Forensic Archiving: Every crowdsourced frame (30006/30007) is now passed to the 
- *   Immutable Forensic Archive in the database helper to prevent data vanishing.
+ *   Immutable Forensic Archive for ALL Advertiser devices, not just Admin.
+ * - This ensures every device acts as a decentralized memory node for the database.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -97,9 +98,11 @@ public class NostrListenerWorker extends Worker {
         // 2. Fetch User Interests (Hashtags)
         Set<String> interests = db.getInterests();
         
-        // ADMIN SUPREMACY: Admin must sync schema even if interest list is empty
-        if (interests.isEmpty() && !db.isAdmin()) {
-            Log.d(TAG, "No interests selected. Skipping sync.");
+        // DISTRIBUTED MEMORY FIX: Every Advertiser must sync schema even if interests are empty
+        boolean isAdvertiser = RoleSelectionActivity.ROLE_ADVERTISER.equals(db.getUserRole());
+
+        if (interests.isEmpty() && !db.isAdmin() && !isAdvertiser) {
+            Log.d(TAG, "No interests selected and not in Advertiser mode. Skipping sync.");
             return Result.success();
         }
 
@@ -114,7 +117,7 @@ public class NostrListenerWorker extends Worker {
             // --- FILTER 1: STANDARD AD & DELETION SNIFFER ---
             JSONObject adFilter = new JSONObject();
             adFilter.put("kinds", new JSONArray().put(30001).put(5));
-            
+
             if (!interests.isEmpty()) {
                 JSONArray tags = new JSONArray();
                 for (String tag : interests) {
@@ -124,14 +127,17 @@ public class NostrListenerWorker extends Worker {
             }
             reqArray.put(adFilter);
 
-            // --- FILTER 2: ADMIN SCHEMA GUARD (ADMIN ONLY) ---
-            if (db.isAdmin()) {
+            // =========================================================================
+            // DISTRIBUTED MEMORY FIX: UNIVERSAL SCHEMA SNIFFER
+            // Removed isAdmin() check. Now Advertiser B also requests schema frames.
+            // =========================================================================
+            if (db.isAdmin() || isAdvertiser) {
                 JSONObject adminFilter = new JSONObject();
                 adminFilter.put("kinds", new JSONArray().put(30006).put(30007));
-                // Only pull global events since the last time the report was opened
-                adminFilter.put("since", db.getReportLastSeen());
+                // Pull global events since the last 24 hours to rebuild local archive if empty
+                adminFilter.put("since", (System.currentTimeMillis() / 1000) - 86400);
                 reqArray.put(adminFilter);
-                Log.d(TAG, "Admin Supremacy: Background Schema Sniffer Active.");
+                Log.d(TAG, "Distributed Sniffer: Background Database building active for this Advertiser.");
             }
 
             String reqMessage = reqArray.toString();
@@ -189,7 +195,7 @@ public class NostrListenerWorker extends Worker {
     /**
      * Parses the relay packet and triggers a notification if it's a valid ad,
      * or processes deletions if it's a Kind 5 wipe.
-     * ADMIN SUPREMACY: Processes 30006/30007 for forensic alerts.
+     * DISTRIBUTED MEMORY: Processes 30006/30007 for ALL Advertiser devices.
      */
     private void processRelayEvent(String rawMessage) {
         try {
@@ -252,18 +258,24 @@ public class NostrListenerWorker extends Worker {
             }
 
             // =================================================================
-            // HANDLE KIND 30006 & 30007: ADMIN FORENSIC ALERTS
+            // HANDLE KIND 30006 & 30007: DISTRIBUTED FORENSIC ARCHIVING
             // =================================================================
-            if (db.isAdmin() && (kind == 30006 || kind == 30007)) {
-                
-                // VOLATILITY FIX: Hard-lock this crowdsourced metadata into the 
-                // Immutable Forensic Archive immediately as it comes off the wire.
+            if (kind == 30006 || kind == 30007) {
+
+                // =========================================================================
+                // DISTRIBUTED MEMORY FIX: UNIVERSAL LOCK
+                // We now hard-lock metadata for ALL advertisers. Even if Advertiser B
+                // isn't Admin, they will remember your car brands locally.
+                // =========================================================================
                 db.saveToForensicArchive(event.toString());
 
-                long createdAt = event.optLong("created_at", 0);
-                if (createdAt > db.getReportLastSeen()) {
-                    String type = (kind == 30006) ? "New Schema Contribution" : "New Value Pool Seeding";
-                    showAdminSchemaNotification(type, "Click to review crowdsourced data forensic trace.");
+                // ADMIN SUPREMACY: Only trigger the high-priority system alert for the Admin device
+                if (db.isAdmin()) {
+                    long createdAt = event.optLong("created_at", 0);
+                    if (createdAt > db.getReportLastSeen()) {
+                        String type = (kind == 30006) ? "New Schema Contribution" : "New Value Pool Seeding";
+                        showAdminSchemaNotification(type, "Click to review crowdsourced data forensic trace.");
+                    }
                 }
                 return;
             }
@@ -364,7 +376,7 @@ public class NostrListenerWorker extends Worker {
                     final String finalSender = senderPubkey;
                     final String finalDecrypted = decryptedJson;
                     final String finalTitle = content.optString("title", "Local Deal Found");
-                    
+
                     // =========================================================================
                     // GLITCH FIX: Handle HTML and JSON Arrays for Clean Notification Text
                     // =========================================================================
@@ -372,7 +384,7 @@ public class NostrListenerWorker extends Worker {
                     try {
                         Object descObj = content.opt("desc");
                         String rawDesc = "";
-                        
+
                         if (descObj instanceof JSONArray) {
                             JSONArray descArr = (JSONArray) descObj;
                             if (descArr.length() > 0) {
@@ -381,7 +393,7 @@ public class NostrListenerWorker extends Worker {
                         } else if (descObj instanceof String) {
                             rawDesc = (String) descObj;
                         }
-                        
+
                         if (!rawDesc.isEmpty()) {
                             // Strip HTML tags for standard Android Lock Screen Display
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
