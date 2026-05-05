@@ -26,6 +26,9 @@ import java.util.List;
  * ADMIN SUPREMACY UPDATE:
  * - Forensic Access: Unlocks the "Report" icon in the Command Center for Admin identity.
  * - Command Type: Added CMD_REPORT (12) to the grid hierarchy.
+ * 
+ * 4-TIER HIERARCHY UPDATE:
+ * - Memory Archive: Added CMD_ARCHIVE (13) for Advertiser B to anchor the network.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -55,6 +58,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     // ADMIN SUPREMACY: Report Identifier
     public static final int CMD_REPORT = 12;
 
+    // 4-TIER UPDATE: Archive Identifier for Advertiser B
+    public static final int CMD_ARCHIVE = 13;
+
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
 
@@ -67,7 +73,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
     /**
      * Constructor filters the icon list based on the User's Role and Admin Status.
-     * UPDATED: Points to new professional R.drawable assets instead of system drawables.
+     * UPDATED: Implements conditional logic for Admin Moderator Console vs B Archive.
      */
     public SettingsIconAdapter(String userRole, boolean isAdmin, OnSettingClickListener listener) {
         this.listener = listener;
@@ -96,7 +102,6 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
             items.add(new SettingItem(CMD_CLOUDFLARE, "Storage", R.drawable.ic_cmd_storage));
 
             // 5. MY HASHTAGS REGISTRY (Strict: Advertiser Only)
-            // Added as part of the Hybrid Hashtag Registry enhancement
             items.add(new SettingItem(CMD_MY_HASHTAGS, "Registry", R.drawable.ic_cmd_registry));
         }
 
@@ -104,16 +109,18 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         items.add(new SettingItem(CMD_HISTORY, "History", R.drawable.ic_cmd_history));
 
         // 7. NEW: Identity Backup (Available to Everyone)
-        // Uses the professional cloud-save icon
         items.add(new SettingItem(CMD_BACKUP, "Backup", R.drawable.ic_cmd_backup));
 
         // 8. CONSOLE MANAGEMENT (Available to Everyone)
-        // Allows tuning visibility and debug verbosity
         items.add(new SettingItem(CMD_CONSOLE_TUNE, "Console", R.drawable.tune_24px));
 
-        // 9. ADMIN SUPREMACY: Report Icon (Strict: Admin Only)
+        // 9. THE TRUTH ANCHOR LOGIC
         if (isAdmin) {
+            // Admin receives full Moderator privileges
             items.add(new SettingItem(CMD_REPORT, "Report", R.drawable.ic_nav_report));
+        } else if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
+            // Advertiser B receives a read-only Memory Archive to anchor the network
+            items.add(new SettingItem(CMD_ARCHIVE, "Archive", R.drawable.ic_nav_report));
         }
 
         // 10. System Reset (Everyone)
