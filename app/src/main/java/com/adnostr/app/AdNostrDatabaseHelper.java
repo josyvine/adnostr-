@@ -185,6 +185,7 @@ public class AdNostrDatabaseHelper {
      * DUPLICATE GATEKEEPER: Now parses content to ensure unique metadata entries.
      * 
      * PERFORMANCE FIX: Wrapping the blocking .commit() call in diskExecutor to prevent Main Thread hang.
+     * JSON CRASH FIX: Added validation to ensure content is a valid JSONObject string before parsing.
      */
     public synchronized void saveToForensicArchive(String eventJson) {
         try {
@@ -196,6 +197,12 @@ public class AdNostrDatabaseHelper {
             // GATEKEEPER 1: Prevent "End of input" crashes by rejecting empty content frames
             if (contentStr.isEmpty()) {
                 android.util.Log.w("AdNostr_Archive", "REJECTED: Attempted to save empty content frame to archive.");
+                return;
+            }
+
+            // JSON CRASH FIX: Check if content is actually a JSON structure before deep parsing
+            if (!contentStr.trim().startsWith("{")) {
+                android.util.Log.w("AdNostr_Archive", "REJECTED: Content is a raw string, not a JSONObject.");
                 return;
             }
 
@@ -221,28 +228,32 @@ public class AdNostrDatabaseHelper {
 
                     // Match Content logic for Schema Persistence
                     if (existingEvent.optInt("kind") == kind) {
-                        JSONObject existingContent = new JSONObject(existingEvent.getString("content"));
+                        String existingContentStr = existingEvent.getString("content");
+                        if (!existingContentStr.trim().startsWith("{")) continue;
 
-                        // CASE A: Duplicate Category (Kind 30006, type: category)
+                        JSONObject existingContent = new JSONObject(existingContentStr);
+
+                        // CASE A: Duplicate Sub-Category (TIER 2)
                         if (kind == 30006 && "category".equals(newType)) {
                             if (existingContent.optString("sub", "").trim().toLowerCase().equals(newSub)) {
-                                return; // Block duplicate "Electric Vehicles"
+                                return; // Block duplicate "Bikes"
                             }
                         }
-                        // CASE B: Duplicate Technical Field (Kind 30006, type: field)
+                        // CASE B: Duplicate Technical Field (TIER 3)
                         else if (kind == 30006 && "field".equals(newType)) {
+                            // Deduplicate based on CATEGORY + FIELD_NAME
                             if (existingContent.optString("category", "").trim().toLowerCase().equals(newCat) && 
                                 existingContent.optString("label", "").trim().toLowerCase().equals(newLabel)) {
-                                return; // Block duplicate "Brand" for "Cars"
+                                return; // Block duplicate "Brand" anchor for "Bikes"
                             }
                         }
-                        // CASE C: Duplicate Brand/Value Pool (Kind 30007)
+                        // CASE C: Duplicate Value Pool / Brand Pool (TIER 4)
                         else if (kind == 30007) {
                             if (existingContent.optString("category", "").trim().toLowerCase().equals(newCat)) {
                                 JSONObject existingSpecs = existingContent.optJSONObject("specs");
-                                JSONObject newSpecs = newContent.optJSONObject("specs");
+                                JSONObject nextSpecs = newContent.optJSONObject("specs");
                                 // Deep compare specs to ensure we aren't re-saving the same list of Bajaj models
-                                if (existingSpecs != null && newSpecs != null && existingSpecs.toString().equals(newSpecs.toString())) {
+                                if (existingSpecs != null && nextSpecs != null && existingSpecs.toString().equals(nextSpecs.toString())) {
                                     return;
                                 }
                             }
