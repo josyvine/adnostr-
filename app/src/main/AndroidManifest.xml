@@ -161,9 +161,16 @@
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
         <!-- ========================================================================= -->
-        <!-- NEW: CROWDSOURCED DEEP-DIVE (FORENSIC DETAIL)                            -->
-        <!-- FIXED: Added declaration to prevent ActivityNotFoundException crash.      -->
+        <!-- 4-TIER HIERARCHY: MEMORY ARCHIVE (THE TRUTH ANCHOR)                       -->
+        <!-- FIXED: Added declaration to resolve ActivityNotFoundException crash.      -->
         <!-- ========================================================================= -->
+        <activity
+            android:name=".ArchiveActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
+        <!-- NEW: CROWDSOURCED DEEP-DIVE (FORENSIC DETAIL) -->
         <activity
             android:name=".ForensicDetailActivity"
             android:exported="false"
