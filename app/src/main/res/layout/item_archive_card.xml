@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cvArchiveContainer"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="6dp"
+    app:cardBackgroundColor="#1A1A1A"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
+    app:strokeColor="#333333"
+    app:strokeWidth="2dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp">
+
+        <!-- PRIMARY BRANDING ICON: IC_NAV_REPORT -->
+        <ImageView
+            android:id="@+id/ivArchiveIcon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="4dp"
+            android:src="@drawable/ic_nav_report"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="#FF6A00" />
+
+        <!-- TRUTH DATA: TITLE (Category/Field Name) -->
+        <TextView
+            android:id="@+id/tvArchiveTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="Bajaj Auto Limited"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ivArchiveIcon"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- TRUTH DATA: SUBTITLE (Hierarchy Context) -->
+        <TextView
+            android:id="@+id/tvArchiveSubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Anchor Category: Bikes"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="@id/tvArchiveTitle"
+            app:layout_constraintTop_toBottomOf="@id/tvArchiveTitle" />
+
+        <!-- HORIZONTAL DIVIDER -->
+        <View
+            android:id="@+id/archiveDivider"
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_marginTop="12dp"
+            android:background="#333333"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ivArchiveIcon" />
+
+        <!-- METADATA FOOTER: AUTHOR TRACE -->
+        <TextView
+            android:id="@+id/tvAuthorTrace"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:drawablePadding="6dp"
+            android:text="Origin: npub1...760662"
+            android:textColor="#666666"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            app:layout_constraintEnd_toStartOf="@+id/tvTimestampTrace"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintHorizontal_chainStyle="spread_inside"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/archiveDivider" />
+
+        <!-- METADATA FOOTER: TIMESTAMP TRACE (STABILIZED) -->
+        <TextView
+            android:id="@+id/tvTimestampTrace"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2 hours ago [Hard-Locked]"
+            android:textColor="#4CAF50"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="@id/tvAuthorTrace"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/tvAuthorTrace" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>
