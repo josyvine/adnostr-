@@ -31,6 +31,12 @@ import java.util.UUID;
  * - Feed: Strictly chronological (Newest first).
  * - Governance: Triggers cascading wipes and surgical Kind 5 deletions.
  * 
+ * 4-TIER HIERARCHY OVERHAUL:
+ * - TIER 1: Main Categories (e.g. Cars & Vehicles)
+ * - TIER 2: Sub Categories (e.g. Bikes)
+ * - TECH SPECS: Technical Fields/Anchors (e.g. Brand, Model)
+ * - VALUES: Data Pools (e.g. Bajaj, Pulsar, 2024)
+ * 
  * CROWDSOURCED DATA FIX:
  * - Local Hide: Integrated Dismissal logic to clear cards locally without network wipes.
  * - Persistence: Blocks dismissed IDs from re-entering the feed during active sessions.
@@ -46,10 +52,6 @@ import java.util.UUID;
  * - Async Loading: Archive processing moved to background to prevent startup freezes.
  * - Background Processing: Leverages the updated WebSocketClientManager background 
  *   dispatch to perform archival and de-duplication off the Main Thread.
- * 
- * TECH SPECS TAB REPAIR:
- * - applyFilter now correctly groups Technical Fields (Anchors) and Value Pools (Data).
- * - Fixed hierarchy breakdown where Bajaj models were missing from the Tech Specs view.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -122,8 +124,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     }
 
     /**
-     * VOLATILITY FIX: Pulls data from the Hard-Locked archive so the console is 
-     * never empty, even if the network was just wiped or the app was reinstalled.
+     * VOLATILITY FIX: Pulls data from the Hard-Locked archive.
      * PERFORMANCE FIX: Runs on background thread to keep UI responsive.
      */
     private void loadArchiveToConsole() {
@@ -189,7 +190,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * Logic: Horizontal Chip Ribbon for real-time feed filtering.
-     * UPDATED: Fixed technical mapping for Bajaj / Tech Specs tab.
+     * UPDATED: Implemented TIER 1, TIER 2, TECH SPECS, and VALUES tabs.
      */
     private void setupFilterRibbon() {
         binding.chipGroupFilters.setOnCheckedStateChangeListener((group, checkedIds) -> {
@@ -198,11 +199,12 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             Chip chip = findViewById(checkedIds.get(0));
             String filterText = chip.getText().toString().toUpperCase();
 
-            // Broaden filter mapping to match UI buttons
+            // 4-TIER UI MAPPING
             if (filterText.contains("ALL")) currentFilter = "ALL";
-            else if (filterText.contains("CATEGORIES")) currentFilter = "CATEGORY";
+            else if (filterText.contains("TIER 1")) currentFilter = "TIER_1";
+            else if (filterText.contains("TIER 2")) currentFilter = "TIER_2";
             else if (filterText.contains("TECH SPECS")) currentFilter = "TECH_SPECS";
-            else if (filterText.contains("BRANDS")) currentFilter = "VALUE";
+            else if (filterText.contains("VALUES")) currentFilter = "VALUES";
 
             requestBatchUpdate();
         });
@@ -232,7 +234,6 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * Interface: Called by WebSocketClientManager when Kind 30006/30007 arrives.
-     * FIXED: Now checks for local dismissal to prevent cards from returning.
      * PERFORMANCE FIX: Now debounces updates using requestBatchUpdate().
      */
     @Override
@@ -254,10 +255,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
                 fullMasterList.add(event);
 
-                // =========================================================================
-                // DISTRIBUTED MEMORY FIX: UNIVERSAL LOCK
-                // We lock newly discovered metadata to the archive immediately.
-                // =========================================================================
+                // Universal Distributed Lock
                 db.saveToForensicArchive(event.toString());
             }
 
@@ -293,8 +291,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * CORE LOGIC: Tab Filtering.
-     * UPDATED: The "TECH SPECS" filter now specifically includes both Technical Fields 
-     * and Value Pools (Bajaj brands/models). This fixes the hierarchy breakdown.
+     * UPDATED: Implements surgical routing for the 4-Tier Hierarchy.
      */
     private void applyFilter() {
         synchronized (displayList) {
@@ -307,31 +304,37 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
                 for (JSONObject event : fullMasterList) {
                     try {
                         String contentStr = event.getString("content");
+                        if (!contentStr.trim().startsWith("{")) continue; // JSON Crash safety
+
                         JSONObject content = new JSONObject(contentStr);
                         int kind = event.getInt("kind");
 
                         if (currentFilter.equals("ALL")) {
                             displayList.add(event);
                         } 
-                        else if (currentFilter.equals("CATEGORY")) {
-                            // Only Category definitions (Bikes, Cars)
-                            if (kind == 30006 && "category".equals(content.optString("type"))) displayList.add(event);
-                        } 
-                        else if (currentFilter.equals("TECH_SPECS")) {
-                            // =========================================================================
-                            // TECH SPECS TAB REPAIR:
-                            // Aggregates Technical Fields (Brand/Model) and Value Pools (Bajaj Models).
-                            // =========================================================================
-                            boolean isField = (kind == 30006 && "field".equals(content.optString("type")));
-                            boolean isValuePool = (kind == 30007);
-                            
-                            if (isField || isValuePool) {
+                        else if (currentFilter.equals("TIER_1")) {
+                            // TIER 1: Main Category frames
+                            if (kind == 30006 && "category".equals(content.optString("type")) && content.has("main")) {
                                 displayList.add(event);
                             }
                         } 
-                        else if (currentFilter.equals("VALUE")) {
-                            // Just the raw value pools
-                            if (kind == 30007) displayList.add(event);
+                        else if (currentFilter.equals("TIER_2")) {
+                            // TIER 2: Sub Category frames
+                            if (kind == 30006 && "category".equals(content.optString("type")) && content.has("sub")) {
+                                displayList.add(event);
+                            }
+                        }
+                        else if (currentFilter.equals("TECH_SPECS")) {
+                            // TIER 3: Field Anchors (Brand, Model, Year)
+                            if (kind == 30006 && "field".equals(content.optString("type"))) {
+                                displayList.add(event);
+                            }
+                        } 
+                        else if (currentFilter.equals("VALUES")) {
+                            // TIER 4: Raw Value Data Pools (Bajaj, Pulsar)
+                            if (kind == 30007) {
+                                displayList.add(event);
+                            }
                         }
                     } catch (Exception ignored) {}
                 }
@@ -462,7 +465,6 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             );
             report.showSafe(getSupportFragmentManager(), "HEAL_LOG");
 
-            // UPDATED: Use MarketplaceSchemaManager.TechnicalLogListener to fix type mismatch
             MarketplaceSchemaManager.TechnicalLogListener healerListener = msg -> {
                 runOnUiThread(() -> {
                     healerLogs.append(msg).append("\n");
