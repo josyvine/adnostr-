@@ -433,7 +433,7 @@
 <div class="modal-overlay" id="modalBulkValues">
     <div class="modal-content">
         <div class="modal-header">
-            Bulk Seed Field Values <i class="fa-solid fa-xmark" style="cursor:pointer;" onclick="closeBulkValuesModal()"></i>
+            Bulk Seed Field Values <i class="fa-solid fa-xmark" style="pointer:cursor;" onclick="closeBulkValuesModal()"></i>
         </div>
         <div class="modal-body">
             <!-- NEW: Context Status Label -->
@@ -669,13 +669,26 @@
     // =======================================================================
 
     /**
-     * NEW: Manual Retrieval Function
-     * Triggered by the "Retrieve" buttons to pull live from forensic memory.
+     * UPDATED: DUAL JOB RETRIEVAL BRIDGE
+     * Routes to retrieveCategorySchema() (Job 1) or ejectTechSpecValues() (Job 2).
      */
     function triggerManualRetrieval(type) {
         logToAndroid(`ACTION: Manual Retrieval initiated for ${type}.`);
-        if (window.AndroidBridge && window.AndroidBridge.retrieveArchiveData) {
-            window.AndroidBridge.retrieveArchiveData();
+        if (window.AndroidBridge) {
+            if (type === 'Category') {
+                // JOB 1: Discovery Scan for Structural anchors (T1, T2, T3)
+                if (window.AndroidBridge.retrieveCategorySchema) {
+                    window.AndroidBridge.retrieveCategorySchema();
+                } else if (window.AndroidBridge.retrieveArchiveData) {
+                    window.AndroidBridge.retrieveArchiveData();
+                }
+            } else if (type === 'Specs') {
+                // JOB 2: Targeted Ejection for Data Pools (T4)
+                const selectedSub = document.getElementById('cat').value;
+                if (window.AndroidBridge.ejectTechSpecValues) {
+                    window.AndroidBridge.ejectTechSpecValues(selectedSub);
+                }
+            }
         }
     }
 
@@ -695,38 +708,26 @@
         document.getElementById('newSubCat').value = '';
     }
 
-    /**
-     * SMART GROUPING ENGINE (SEARCH-FIRST REWRITE)
-     * Scans for existing Main Categories using case-insensitive normalization.
-     */
     function addCategoryToDOM(mainCat, subCat) {
         const catSelect = document.getElementById('cat');
-        
-        // Prevent duplicate options (Normalized Check)
         let optionExists = Array.from(catSelect.options).some(opt => opt.value.trim().toLowerCase() === subCat.trim().toLowerCase());
         if (optionExists) return;
 
-        // Normalization: Find optgroup regardless of typos/casing
         const mainNorm = mainCat.trim().toLowerCase();
         let optGroup = Array.from(catSelect.getElementsByTagName('optgroup')).find(og => og.label.trim().toLowerCase() === mainNorm);
         
-        // If not found, create a specialized Crowdsourced container
         if (!optGroup) {
             optGroup = document.createElement('optgroup');
             optGroup.label = "Crowdsourced: " + mainCat;
             catSelect.appendChild(optGroup);
         }
 
-        // Append the sub-category
         const newOption = document.createElement('option');
         newOption.value = subCat;
         newOption.text = subCat; 
         optGroup.appendChild(newOption);
     }
 
-    /**
-     * ENHANCEMENT 1: Bulk Add Sub-Categories
-     */
     function saveNewCategory() {
         const mainCat = document.getElementById('newMainCat').value.trim();
         const subCatRaw = document.getElementById('newSubCat').value.trim();
@@ -771,9 +772,6 @@
         renderSpecs(); 
     }
 
-    /**
-     * UPDATED: FIXED regex to support bulk addition via commas or new lines.
-     */
     function saveNewField() {
         const fieldInput = document.getElementById('newFieldName').value.trim();
         if (!fieldInput) {
@@ -783,7 +781,6 @@
 
         const currentCat = lastSelectedCat;
         if (!CATEGORY_SCHEMA[currentCat]) CATEGORY_SCHEMA[currentCat] = [];
-        
         const names = fieldInput.split(/[,\n]/).map(n => n.trim()).filter(n => n !== "");
 
         names.forEach(fieldName => {
@@ -808,10 +805,6 @@
         closeFieldModal();
     }
 
-    /**
-     * PERMANENT DELETION logic. 
-     * ADMIN SUPREMACY: Trash icon visibility handled via CSS .admin-only
-     */
     function removeField(fieldId, fieldLabel) {
         const currentCat = lastSelectedCat;
         if (confirm(`Permanently delete '${fieldLabel}' from this category on the network?`)) {
@@ -828,22 +821,15 @@
         }
     }
 
-    /**
-     * FEATURE FIX: Deletes the entire Sub-Category permanently.
-     * ADMIN SUPREMACY: Unlocked via injectAdminStatus logic.
-     */
     function removeCategory() {
         const catSelect = document.getElementById('cat');
         const catName = lastSelectedCat;
-        
         if (!catName) return;
 
         if (confirm(`Permanently delete the entire '${catName}' category and all its technical fields from the network?`)) {
-            
             if (window.AndroidBridge && window.AndroidBridge.deleteCategory) {
                 window.AndroidBridge.deleteCategory(catName);
             }
-
             delete CATEGORY_SCHEMA[catName];
 
             const option = Array.from(catSelect.options).find(opt => opt.value === catName);
@@ -858,14 +844,10 @@
             catSelect.selectedIndex = 0;
             lastSelectedCat = catSelect.value;
             handleCategoryChange();
-
             logToAndroid(`Deleted full category: ${catName}`);
         }
     }
 
-    /**
-     * ENHANCEMENT 2: Bulk Add Field Values Logic
-     */
     function openBulkValuesModal() {
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         if(fields.length === 0) {
@@ -918,8 +900,6 @@
         }
         
         const values = valuesRaw.split(',').map(v => v.trim()).filter(v => v !== '');
-        
-        // NORMALIZATION: ID must be consistent
         let dlId = `dl_${lastSelectedCat.toLowerCase()}_${fieldId.toLowerCase()}`;
         if (activeBulkContext.value) {
             dlId = `dl_${lastSelectedCat.toLowerCase()}_${fieldId.toLowerCase()}_${activeBulkContext.fieldId.toLowerCase()}_${activeBulkContext.value.toLowerCase()}`;
@@ -942,35 +922,20 @@
         });
 
         if (window.AndroidBridge && window.AndroidBridge.publishBulkSpecValues) {
-            window.AndroidBridge.publishBulkSpecValues(
-                lastSelectedCat, 
-                fieldId, 
-                valuesRaw, 
-                activeBulkContext.fieldId || "", 
-                activeBulkContext.value || ""
-            );
+            window.AndroidBridge.publishBulkSpecValues(lastSelectedCat, fieldId, valuesRaw, activeBulkContext.fieldId || "", activeBulkContext.value || "");
             logToAndroid(`Broadcasted contextual bulk values for '${fieldId}'.`);
         }
         
         closeBulkValuesModal();
     }
 
-    /**
-     * CROWDSOURCED DATA FIX (NORMALIZED SYNC):
-     * Merges local cache with network data.
-     * UPDATED: Strict Normalization. Trimmmed and case-insensitive check ensures 
-     * archived brands map to the correct dropdown list regardless of source casing.
-     */
     function injectGlobalSchema(jsonString) {
         try {
             const schema = JSON.parse(jsonString);
             const catSelect = document.getElementById('cat');
-
-            // 1. SMART DOM REFRESH
             const customGroup = document.getElementById('og_custom');
             const hiddenItems = schema.hidden_hardcoded || [];
             
-            // 2. PERSISTENCE OVERRIDE
             if (hiddenItems.length > 0) {
                 hiddenItems.forEach(name => {
                     const option = Array.from(catSelect.options).find(opt => opt.value.trim().toLowerCase() === name.trim().toLowerCase());
@@ -986,7 +951,6 @@
                 });
             }
 
-            // 3. MERGE Crowdsourced Categories (Normalized)
             if (schema.categories && schema.categories.length > 0) {
                 schema.categories.forEach(c => {
                     const normalizedSub = c.sub.trim();
@@ -997,10 +961,8 @@
                 });
             }
 
-            // 4. MERGE Crowdsourced Fields (Normalized)
             if (schema.fields && schema.fields.length > 0) {
                 schema.fields.forEach(f => {
-                    // Find actual DOM value to handle casing inconsistencies between archive and hardcode
                     const normalizedCat = f.category.trim().toLowerCase();
                     let targetKey = f.category.trim();
                     const existingOpt = Array.from(catSelect.options).find(o => o.value.toLowerCase() === normalizedCat);
@@ -1019,22 +981,16 @@
                 });
             }
 
-            // 5. STABILIZE Historical Auto-Complete Datalists (Case-Insensitive Mapping)
-            // REPAIR: Aggressive case-insensitive matching for datalist ID generation.
             if (schema.values && schema.values.length > 0) {
                 const dlContainer = document.getElementById('datalistContainer');
-                
                 schema.values.forEach(v => {
                     if (v.category && v.specs) {
                         const normalizedV = v.category.trim().toLowerCase();
-                        let targetCategory = normalizedV; // Use normalized base for IDs
-                        
+                        let targetCategory = normalizedV;
                         const context = v.context || {}; 
 
                         for (const [fieldId, val] of Object.entries(v.specs)) {
-                            // Map to the correct HTML datalist ID (Normalized Lowercase)
                             let dlId = `dl_${targetCategory}_${fieldId.toLowerCase()}`;
-                            
                             if (context.field && context.value) {
                                 dlId += `_${context.field.toLowerCase()}_${context.value.trim().toLowerCase()}`;
                             }
@@ -1069,15 +1025,10 @@
         }
     }
 
-    // =======================================================================
-    // RENDERING LOGIC
-    // =======================================================================
-
     function renderSpecs() {
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         const container = document.getElementById('specsContainer');
         container.innerHTML = '';
-
         document.getElementById('specsSection').style.display = 'block';
 
         let html = '';
@@ -1101,14 +1052,9 @@
                 <i class="fa-solid fa-seedling"></i> Bulk Add Values
             </button>
         </div>`;
-
         container.innerHTML = html;
     }
 
-    /**
-     * UPDATED: Normalization Fix
-     * Ensures pointer is always lowercase to match generated datalist IDs.
-     */
     function updateDatalistPointer(el, fieldId) {
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         const catNorm = lastSelectedCat.toLowerCase();
