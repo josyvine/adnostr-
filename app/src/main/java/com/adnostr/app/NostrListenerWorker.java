@@ -49,6 +49,10 @@ import java.util.concurrent.TimeUnit;
  * - Forensic Archiving: Every crowdsourced frame (30006/30007) is now passed to the 
  *   Immutable Forensic Archive for ALL Advertiser devices, not just Admin.
  * - This ensures every device acts as a decentralized memory node for the database.
+ * 
+ * 4-TIER HIERARCHY REPAIR:
+ * - Distributed Sniffer: Advertiser B now requests schema frames in background to build the anchor.
+ * - JSON Safety: Validates JSONObject structure to prevent background worker crashes.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -97,7 +101,7 @@ public class NostrListenerWorker extends Worker {
 
         // 2. Fetch User Interests (Hashtags)
         Set<String> interests = db.getInterests();
-        
+
         // DISTRIBUTED MEMORY FIX: Every Advertiser must sync schema even if interests are empty
         boolean isAdvertiser = RoleSelectionActivity.ROLE_ADVERTISER.equals(db.getUserRole());
 
@@ -129,14 +133,14 @@ public class NostrListenerWorker extends Worker {
 
             // =========================================================================
             // DISTRIBUTED MEMORY FIX: UNIVERSAL SCHEMA SNIFFER
-            // Removed isAdmin() check. Now Advertiser B also requests schema frames.
+            // Advertiser B also requests schema frames to act as a Truth Anchor.
             // =========================================================================
             if (db.isAdmin() || isAdvertiser) {
-                JSONObject adminFilter = new JSONObject();
-                adminFilter.put("kinds", new JSONArray().put(30006).put(30007));
+                JSONObject schemaFilter = new JSONObject();
+                schemaFilter.put("kinds", new JSONArray().put(30006).put(30007));
                 // Pull global events since the last 24 hours to rebuild local archive if empty
-                adminFilter.put("since", (System.currentTimeMillis() / 1000) - 86400);
-                reqArray.put(adminFilter);
+                schemaFilter.put("since", (System.currentTimeMillis() / 1000) - 86400);
+                reqArray.put(schemaFilter);
                 Log.d(TAG, "Distributed Sniffer: Background Database building active for this Advertiser.");
             }
 
@@ -211,7 +215,6 @@ public class NostrListenerWorker extends Worker {
             String senderPubkey = event.optString("pubkey", "");
 
             // --- PHANTOM AD PREVENTION: BLOCKLIST CHECK ---
-            // If the ID is in our permanent wiped list, ignore it immediately.
             if (db.isAdWiped(eventId)) {
                 Log.d(TAG, "Dropping Phantom Ad: " + eventId + " is on the blocklist.");
                 return;
@@ -229,14 +232,11 @@ public class NostrListenerWorker extends Worker {
                             String tagName = tagPair.getString(0);
                             String tagValue = tagPair.getString(1);
 
-                            // CASE 1: TARGETING AN EVENT ID (Ads or Crowdsourced Schema)
+                            // CASE 1: TARGETING AN EVENT ID
                             if ("e".equals(tagName)) {
-                                // Block for Ads
                                 db.addWipedAdId(tagValue);
-                                // Block for Schema Persistence
                                 db.addWipedSchemaId(tagValue);
 
-                                // Wipe from local ad history if it exists there
                                 Set<String> localHistory = db.getUserHistory();
                                 for (String savedItem : localHistory) {
                                     if (savedItem.contains("\"id\":\"" + tagValue + "\"")) {
@@ -246,7 +246,7 @@ public class NostrListenerWorker extends Worker {
                                     }
                                 }
                             } 
-                            // CASE 2: TARGETING A HARDCODED NAME (Global built-in category deletion)
+                            // CASE 2: TARGETING A HARDCODED NAME
                             else if ("hardcoded_name".equals(tagName)) {
                                 db.addHiddenHardcodedName(tagValue);
                                 Log.i(TAG, "Hidden hardcoded category in background: " + tagValue);
@@ -254,27 +254,27 @@ public class NostrListenerWorker extends Worker {
                         }
                     }
                 }
-                return; // Finished processing Kind 5, exit method
+                return; 
             }
 
             // =================================================================
             // HANDLE KIND 30006 & 30007: DISTRIBUTED FORENSIC ARCHIVING
             // =================================================================
             if (kind == 30006 || kind == 30007) {
+                String contentStr = event.optString("content", "");
+                
+                // JSON CRASH FIX: Ensure we only archive valid structure objects
+                if (contentStr.trim().startsWith("{")) {
+                    // UNIVERSAL LOCK: Every Advertiser device remembers the database
+                    db.saveToForensicArchive(event.toString());
 
-                // =========================================================================
-                // DISTRIBUTED MEMORY FIX: UNIVERSAL LOCK
-                // We now hard-lock metadata for ALL advertisers. Even if Advertiser B
-                // isn't Admin, they will remember your car brands locally.
-                // =========================================================================
-                db.saveToForensicArchive(event.toString());
-
-                // ADMIN SUPREMACY: Only trigger the high-priority system alert for the Admin device
-                if (db.isAdmin()) {
-                    long createdAt = event.optLong("created_at", 0);
-                    if (createdAt > db.getReportLastSeen()) {
-                        String type = (kind == 30006) ? "New Schema Contribution" : "New Value Pool Seeding";
-                        showAdminSchemaNotification(type, "Click to review crowdsourced data forensic trace.");
+                    // ADMIN SUPREMACY: Only trigger the high-priority system alert for Admin
+                    if (db.isAdmin()) {
+                        long createdAt = event.optLong("created_at", 0);
+                        if (createdAt > db.getReportLastSeen()) {
+                            String type = (kind == 30006) ? "New Schema Contribution" : "New Value Pool Seeding";
+                            showAdminSchemaNotification(type, "Click to review crowdsourced data forensic trace.");
+                        }
                     }
                 }
                 return;
@@ -284,24 +284,19 @@ public class NostrListenerWorker extends Worker {
             // HANDLE KIND 30001: INCOMING ADS
             // =================================================================
             if (kind == 30001) {
-                // FIXED: DUPLICATE CHECK - Prevent Notification Spam
                 Set<String> history = db.getUserHistory();
                 for (String savedItem : history) {
-                    // Check if the exact event ID is already in our database
                     if (savedItem.contains("\"id\":\"" + eventId + "\"")) {
                         Log.d(TAG, "Ad " + eventId + " already exists in history. Dropping duplicate.");
-                        return; // Halt processing, do not show notification!
+                        return; 
                     }
                 }
 
-                // CRITICAL FIX: Peek at the content string before attempting to parse as Ad JSON
-                // This prevents background crashes when receiving empty User Interest List events.
                 String contentStr = event.optString("content", "");
                 if (contentStr.isEmpty()) {
-                    return; // Silently ignore events that contain no Ad payload
+                    return; 
                 }
 
-                // STRICT PROTOCOL FILTERING: Verify the 'd' tag to ensure it's a real Ad Broadcast
                 boolean isAdNostrBroadcast = false;
                 String adTag = "";
                 JSONArray tags = event.optJSONArray("tags");
@@ -316,7 +311,7 @@ public class NostrListenerWorker extends Worker {
                                 if (tagValue.startsWith("adnostr_ad_")) {
                                     isAdNostrBroadcast = true;
                                 } else if ("adnostr_interests".equals(tagValue)) {
-                                    return; // STRICT FIX: Ignore user interest lists to prevent crash
+                                    return; 
                                 }
                             }
                             if ("t".equals(tagName)) {
@@ -326,27 +321,19 @@ public class NostrListenerWorker extends Worker {
                     }
                 }
 
-                // If it's not a verified Ad, discard it
                 if (!isAdNostrBroadcast) {
                     return;
                 }
 
-                // =========================================================================
-                // FEATURE 2: MASTER APP-LEVEL DECRYPTION
-                // Verify if the payload is wrapped in our Master Protocol Key
-                // =========================================================================
                 String decryptedJson;
                 try {
                     decryptedJson = EncryptionUtils.decryptPayload(contentStr);
                 } catch (Exception e) {
-                    // Decryption failed: Event is not AdNostr protocol or malformed.
                     return;
                 }
 
                 JSONObject content = new JSONObject(decryptedJson);
 
-                // --- PHANTOM AD PREVENTION: CONTENT INTEGRITY CHECK ---
-                // Notifications must never fire for ads with empty image arrays or missing titles.
                 if (!content.has("title") || content.optString("title").isEmpty()) {
                     Log.d(TAG, "Integrity fail: Missing title. Dropping ad.");
                     return;
@@ -367,19 +354,12 @@ public class NostrListenerWorker extends Worker {
                     if (((String) imageObj).isEmpty()) return;
                 }
 
-                // =========================================================================
-                // FEATURE 1: USER-SIDE TRUST FILTER (OWNERSHIP CHECK)
-                // If tag is owned, verify that Sender Pubkey matches Tag Owner Pubkey
-                // =========================================================================
                 if (!adTag.isEmpty()) {
                     final String finalId = eventId;
                     final String finalSender = senderPubkey;
                     final String finalDecrypted = decryptedJson;
                     final String finalTitle = content.optString("title", "Local Deal Found");
 
-                    // =========================================================================
-                    // GLITCH FIX: Handle HTML and JSON Arrays for Clean Notification Text
-                    // =========================================================================
                     String cleanDesc = "A new ad matches your interests.";
                     try {
                         Object descObj = content.opt("desc");
@@ -388,27 +368,24 @@ public class NostrListenerWorker extends Worker {
                         if (descObj instanceof JSONArray) {
                             JSONArray descArr = (JSONArray) descObj;
                             if (descArr.length() > 0) {
-                                rawDesc = descArr.getString(0); // Take the first text chunk
+                                rawDesc = descArr.getString(0); 
                             }
                         } else if (descObj instanceof String) {
                             rawDesc = (String) descObj;
                         }
 
                         if (!rawDesc.isEmpty()) {
-                            // Strip HTML tags for standard Android Lock Screen Display
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                                 cleanDesc = android.text.Html.fromHtml(rawDesc, android.text.Html.FROM_HTML_MODE_LEGACY).toString();
                             } else {
                                 cleanDesc = android.text.Html.fromHtml(rawDesc).toString();
                             }
-                            // Clean up any weird spacing caused by stripped tags
                             cleanDesc = cleanDesc.trim().replaceAll("\\s+", " ");
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Failed to parse description for notification: " + e.getMessage());
                     }
                     final String finalDesc = cleanDesc;
-                    // =========================================================================
 
                     final JSONObject finalOriginalEvent = event;
                     final String finalAdTag = adTag;
@@ -416,13 +393,10 @@ public class NostrListenerWorker extends Worker {
                     HashtagRegistryManager.checkOwnershipSync(context, adTag, senderPubkey, new HashtagRegistryManager.OwnershipCallback() {
                         @Override
                         public void onResult(int status, String ownerPubkey) {
-                            // CASE 3: OWNED BY ANOTHER (Spam Detection)
                             if (status == HashtagRegistryManager.STATUS_TAKEN) {
                                 Log.w(TAG, "TRUST FILTER: Dropped spoofed ad for #" + finalAdTag + " from " + finalSender);
                                 return;
                             }
-
-                            // CASE 1 & 2: Tag is PUBLIC or OWNED BY SENDER
                             saveAndNotifyVerifiedAd(finalId, finalSender, finalDecrypted, finalTitle, finalDesc, finalOriginalEvent, rawMessage);
                         }
                     });
@@ -431,7 +405,6 @@ public class NostrListenerWorker extends Worker {
 
         } catch (Exception e) {
             Log.e(TAG, "Error parsing incoming ad relay packet: " + e.getMessage());
-            // FIXED: We now record the exact JSON parsing error so you can debug the payload format.
             logBackgroundError("JSON Parse Error: " + e.getMessage() + "\nPayload: " + rawMessage);
         }
     }
@@ -441,7 +414,6 @@ public class NostrListenerWorker extends Worker {
      */
     private void saveAndNotifyVerifiedAd(String id, String sender, String decryptedContent, String title, String desc, JSONObject originalEvent, String rawOriginal) {
         try {
-            // Re-package the message with decrypted content for local viewing
             JSONObject localStoreEvent = new JSONObject(originalEvent.toString());
             localStoreEvent.put("content", decryptedContent);
 
@@ -450,10 +422,7 @@ public class NostrListenerWorker extends Worker {
             localMsg.put("");
             localMsg.put(localStoreEvent);
 
-            // NEW: Save the verified, non-duplicate, decrypted Ad to local history
             db.saveToUserHistory(localMsg.toString());
-
-            // Launch system notification
             showAdNotification(title, desc, localMsg.toString());
             Log.i(TAG, "Ad Successfully Verified and Notified: " + id);
         } catch (Exception e) {
@@ -492,7 +461,6 @@ public class NostrListenerWorker extends Worker {
      * ADMIN SUPREMACY: Triggers a high-priority alert for schema events.
      */
     private void showAdminSchemaNotification(String title, String message) {
-        // Tapping this notification launches the Forensic Report Activity
         Intent intent = new Intent(context, ReportActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
