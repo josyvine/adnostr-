@@ -57,6 +57,10 @@ import java.util.UUID;
  * DISTRIBUTED MEMORY FIX (DAY ZERO):
  * - Retrieve Bridge: Now shows a Detailed Gathering Console Overlay for ALL advertisers (Admin and B).
  * - Archiving: Every advertiser device now sniffs and saves database frames to their local archive.
+ * 
+ * 4-TIER RETRIEVAL UPDATE:
+ * - Job 1 (retrieveCategorySchema): Discovery scan for T1, T2, and T3 anchors.
+ * - Job 2 (ejectTechSpecValues): Targeted ejection of T4 values for a specific sub-category.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -68,7 +72,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
     private ValueCallback<Uri[]> uploadMessage;
     private ActivityResultLauncher<Intent> filePickerLauncher;
-    
+
     // Forensic log accumulator
     private final StringBuilder technicalConsole = new StringBuilder();
 
@@ -113,7 +117,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
         // INITIATE GLOBAL SCHEMA FETCH (Background Thread)
         // Initial load pulls from Cache/Forensic Archive immediately
-        MarketplaceSchemaManager.fetchGlobalSchema(this, schemaJson -> {
+        MarketplaceSchemaManager.fetchGlobalSchema(this, null, schemaJson -> {
             fetchedGlobalSchemaJson = schemaJson;
             logTechnicalEvent("SCHEMA: Global JSON downloaded from forensic archive. Length: " + schemaJson.length());
             injectSchemaIfReady();
@@ -125,15 +129,13 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
     /**
      * UI AUTO-REFRESH: Implementation of SchemaEventListener.
-     * Logic: If a re-published tier (Bajaj/Audi) is detected on the wire, 
-     * re-trigger the schema merge and inject it into the WebView instantly.
      * REPAIR UPDATE: Triggers immediate fetch of merged forensic archive data.
      */
     @Override
     public void onSchemaEventReceived(String url, JSONObject event) {
         runOnUiThread(() -> {
             // Re-fetch with the newly arrived metadata merged from the Hard-Locked Archive
-            MarketplaceSchemaManager.fetchGlobalSchema(this, schemaJson -> {
+            MarketplaceSchemaManager.fetchGlobalSchema(this, null, schemaJson -> {
                 fetchedGlobalSchemaJson = schemaJson;
                 // Zero-Refresh Injection: Repopulate dropdowns in real-time
                 injectSchemaIfReady();
@@ -143,8 +145,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
     }
 
     /**
-     * Injects the heavy schema into the HTML safely using Base64
-     * to prevent crashes from complex user-generated strings.
+     * Injects the heavy schema into the HTML safely using Base64.
      */
     private void injectSchemaIfReady() {
         if (isWebViewReady && !fetchedGlobalSchemaJson.equals("{}")) {
@@ -153,7 +154,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                     // Normalize the JSON string to ensure no illegal characters break the bridge
                     String sanitizedJson = fetchedGlobalSchemaJson;
                     String base64Encoded = Base64.encodeToString(sanitizedJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-                    
+
                     // The decodeURIComponent(escape(window.atob(...))) sequence handles multi-byte UTF-8 (emojis/special chars)
                     String jsCommand = "injectGlobalSchema(decodeURIComponent(escape(window.atob('" + base64Encoded + "'))))";
                     binding.wvProductCreator.evaluateJavascript(jsCommand, null);
@@ -222,7 +223,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 super.onPageFinished(view, url);
                 isWebViewReady = true;
                 logTechnicalEvent("WEBVIEW: Dashboard DOM Loaded.");
-                
+
                 // ADMIN SUPREMACY: Inject status to toggle UI management tools
                 boolean isAdmin = db.isAdmin();
                 binding.wvProductCreator.evaluateJavascript("if(window.injectAdminStatus) injectAdminStatus(" + isAdmin + ");", null);
@@ -249,17 +250,12 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
     }
 
     public class WebAppInterface {
-        /**
-         * UPDATED: Bridge listener for HTML logs. 
-         * Logic: Respects Console visibility and Professional mode filtering.
-         */
+
         @JavascriptInterface
         public void logTechnicalEvent(String msg) {
-            // ENHANCEMENT: Master Switch check
             if (!db.isConsoleLogEnabled()) return;
 
             String filteredMsg = msg;
-            // ENHANCEMENT: Professional Summaries
             if (!db.isDebugModeActive()) {
                 if (msg.contains("SCHEMA:")) filteredMsg = "Marketplace schema synchronized.";
                 else if (msg.contains("R2_TRACE:")) filteredMsg = "Cloud storage link active.";
@@ -274,46 +270,76 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
         /**
          * =========================================================================
-         * RETRIEVAL ENGINE: THE "RETRIEVE" ICON BRIDGE (REPAIRED)
-         * Triggered by any Advertiser (including Admin) to pull crowdsourced 
-         * metadata from their local Forensic Console archive.
-         * 
-         * Logic: Instead of launching an activity, it pops up the RelayReportDialog 
-         * overlay and shows very detailed "GATHERING" logs of the archive extract.
+         * JOB 1: THE DISCOVERY BRIDGE
+         * Triggered by the "Retrieve" icon on the Category area.
+         * Scans for T1 (Main), T2 (Sub), and T3 (Fields).
          * =========================================================================
          */
         @JavascriptInterface
-        public void retrieveArchiveData() {
+        public void retrieveCategorySchema() {
             runOnUiThread(() -> {
                 final StringBuilder gatheringLogs = new StringBuilder();
-                gatheringLogs.append("=== INITIATING DATA RETRIEVAL SEQUENCE ===\n");
-                gatheringLogs.append("SOURCE: Local Immutable Forensic Archive\n\n");
+                gatheringLogs.append("=== INITIATING CATEGORY DISCOVERY SEQUENCE ===\n");
+                gatheringLogs.append("SCOPE: Tiers 1, 2, and 3 (Structural Anchors)\n\n");
 
-                // Launch the technical console overlay directly over the dashboard
                 RelayReportDialog reportDialog = RelayReportDialog.newInstance(
-                        "DATA GATHERING CONSOLE", 
-                        "Gathering crowdsourced memory...", 
+                        "DISCOVERY CONSOLE", 
+                        "Gathering structural anchors...", 
                         gatheringLogs.toString()
                 );
                 reportDialog.showSafe(getSupportFragmentManager(), "GATHER_LOG");
 
-                // Execute the deep sync pull from the local archive
-                MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, schemaJson -> {
+                MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, null, schemaJson -> {
                     fetchedGlobalSchemaJson = schemaJson;
                     injectSchemaIfReady();
-                    
-                    gatheringLogs.append("\n[SUCCESS] Archive extraction complete. Injection successful.");
-                    reportDialog.updateTechnicalLogs("GATHERING COMPLETE", gatheringLogs.toString());
-                    
+                    gatheringLogs.append("\n[SUCCESS] Discovery complete. Sub-categories detected.");
+                    reportDialog.updateTechnicalLogs("DISCOVERY COMPLETE", gatheringLogs.toString());
                 }, message -> {
-                    // Pipe every gathering step (Found Bajaj, Found Model, etc.) to the console overlay
                     gatheringLogs.append(message).append("\n");
-                    reportDialog.updateTechnicalLogs("GATHERING: Extracting data frames...", gatheringLogs.toString());
+                    reportDialog.updateTechnicalLogs("DISCOVERY: Gathering structural frames...", gatheringLogs.toString());
                 });
             });
         }
 
-        // CROWDSOURCED SCHEMA: Native triggers from HTML Modals
+        /**
+         * =========================================================================
+         * JOB 2: THE EJECTION BRIDGE
+         * Triggered by the "Retrieve" icon on the Technical Specs area.
+         * Target: Ejects T4 Values (Bajaj/Models) for a specific Sub-Category.
+         * =========================================================================
+         */
+        @JavascriptInterface
+        public void ejectTechSpecValues(String selectedSub) {
+            runOnUiThread(() -> {
+                final StringBuilder ejectionLogs = new StringBuilder();
+                ejectionLogs.append("=== INITIATING VALUE EJECTION SEQUENCE ===\n");
+                ejectionLogs.append("TARGET: Tier 4 Data Pools for [" + selectedSub + "]\n\n");
+
+                RelayReportDialog reportDialog = RelayReportDialog.newInstance(
+                        "EJECTION CONSOLE", 
+                        "Pulling data pools from archive...", 
+                        ejectionLogs.toString()
+                );
+                reportDialog.showSafe(getSupportFragmentManager(), "EJECT_LOG");
+
+                MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, selectedSub, schemaJson -> {
+                    fetchedGlobalSchemaJson = schemaJson;
+                    injectSchemaIfReady();
+                    ejectionLogs.append("\n[SUCCESS] Ejection complete. Spec values injected.");
+                    reportDialog.updateTechnicalLogs("EJECTION SUCCESSFUL", ejectionLogs.toString());
+                }, message -> {
+                    ejectionLogs.append(message).append("\n");
+                    reportDialog.updateTechnicalLogs("EJECTION: Extracting specific values...", ejectionLogs.toString());
+                });
+            });
+        }
+
+        @JavascriptInterface
+        public void retrieveArchiveData() {
+            // Legacy wrapper calling Job 1 by default
+            retrieveCategorySchema();
+        }
+
         @JavascriptInterface
         public void publishNewCategory(String mainCat, String subCat) {
             MarketplaceSchemaManager.broadcastNewCategory(CreateProductActivity.this, mainCat, subCat);
@@ -324,36 +350,19 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             MarketplaceSchemaManager.broadcastNewField(CreateProductActivity.this, category, fieldName);
         }
 
-        /**
-         * UPDATED: Deletes a technical field permanently.
-         * Logic: Informs Database to block the ID and triggers global Kind 5 broadcast.
-         */
         @JavascriptInterface
         public void deleteField(String category, String fieldName) {
             logTechnicalEvent("ACTION: Permanent Deletion request for field '" + fieldName + "' in " + category);
-            // Persistence: MarketplaceSchemaManager handles the local ID block and network broadcast
             MarketplaceSchemaManager.broadcastFieldDeletion(CreateProductActivity.this, category, fieldName);
         }
 
-        /**
-         * UPDATED: Deletes an entire sub-category permanently.
-         * Logic: Blocks the hardcoded name locally and triggers global Kind 5 broadcast.
-         */
         @JavascriptInterface
         public void deleteCategory(String categoryName) {
             logTechnicalEvent("ACTION: Permanent Category Deletion request for '" + categoryName + "'");
-            
-            // PERMANENCE FIX: Immediately mark the name as hidden in the local database
             db.addHiddenHardcodedName(categoryName);
-            
-            // GLOBAL FIX: Trigger the network broadcast to wipe for everyone else
             MarketplaceSchemaManager.broadcastCategoryDeletion(CreateProductActivity.this, categoryName);
         }
 
-        /**
-         * UPDATED: Native Bridge for Bulk Field Values Seeding
-         * Supports context parameters for hierarchical data relationships.
-         */
         @JavascriptInterface
         public void publishBulkSpecValues(String category, String fieldId, String commaSeparatedValues, String contextField, String contextValue) {
             MarketplaceSchemaManager.broadcastBulkValues(CreateProductActivity.this, category, fieldId, commaSeparatedValues, contextField, contextValue);
@@ -375,14 +384,9 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         }
     }
 
-    /**
-     * Logic: Starts the final broadcast phase.
-     * UPDATED: Checks Console visibility before launching the RelayReportDialog.
-     */
     private void handleIncomingProduct(String rawJson) {
         logTechnicalEvent("PUBLISH: Form data received. Size: " + rawJson.length());
-        
-        // ENHANCEMENT: Only show the popup if console is enabled
+
         if (db.isConsoleLogEnabled()) {
             RelayReportDialog report = RelayReportDialog.newInstance("MARKETPLACE PUBLISH", "Uploading metadata...", technicalConsole.toString());
             report.showSafe(getSupportFragmentManager(), "MARKET_LOG");
@@ -391,10 +395,8 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 JSONObject productData = new JSONObject(rawJson);
                 String title = productData.getString("title");
                 String price = productData.getString("price");
-                // EXTRACT CATEGORY FOR THE STOREFRONT UI
                 String category = productData.optString("category", "Uncategorized");
 
-                // CROWDSOURCED SCHEMA: Push typed values to network auto-complete pool
                 JSONObject specs = productData.optJSONObject("specs");
                 if (specs != null && specs.length() > 0) {
                     MarketplaceSchemaManager.broadcastSpecValues(this, category, specs);
@@ -427,14 +429,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 logTechnicalEvent("PARSE_ERROR: " + e.getMessage());
             }
         } else {
-            // Logic for Background Publish (No UI Console)
             executeSilentPublish(rawJson);
         }
     }
 
-    /**
-     * ENHANCEMENT: Handles the publish sequence without a UI popup if console is disabled.
-     */
     private void executeSilentPublish(String rawJson) {
         try {
             JSONObject productData = new JSONObject(rawJson);
@@ -459,7 +457,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             JSONObject pointerContent = new JSONObject();
             pointerContent.put("title", title);
             pointerContent.put("price", price);
-            pointerContent.put("category", category); // ADD CATEGORY TO POINTER
+            pointerContent.put("category", category); 
             pointerContent.put("json_url", cloudflareUrl);
 
             JSONObject event = new JSONObject();
@@ -473,7 +471,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             dTag.put("d");
             dTag.put("adnostr_listing_" + UUID.randomUUID().toString().substring(0, 8));
             tags.put(dTag);
-            
+
             JSONArray tTag = new JSONArray();
             tTag.put("t");
             tTag.put("marketplace_product");
@@ -492,11 +490,6 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         }
     }
 
-    /**
-     * COLLECTIVE MEMORY BRIDGE: Automatic Healing Logic
-     * Triggered by MarketplaceSchemaManager when network amnesia is detected.
-     * Re-signs and re-broadcasts the entire local schema anchor to refresh relay indexes.
-     */
     public static void triggerAutomaticHealing(Context context) {
         new Thread(() -> {
             Log.w(TAG, "HEALER: Commencing background network restoration...");
@@ -509,17 +502,15 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             try {
                 JSONObject schema = new JSONObject(anchorJson);
 
-                // 1. Heal Categories (Kind 30006)
                 JSONArray categories = schema.optJSONArray("categories");
                 if (categories != null) {
                     for (int i = 0; i < categories.length(); i++) {
                         JSONObject cat = categories.getJSONObject(i);
-                        cat.remove("_event_id"); // Strip internal database tag
+                        cat.remove("_event_id"); 
                         executeSilentHealBroadcast(context, wsManager, 30006, cat);
                     }
                 }
 
-                // 2. Heal Fields (Kind 30006)
                 JSONArray fields = schema.optJSONArray("fields");
                 if (fields != null) {
                     for (int i = 0; i < fields.length(); i++) {
@@ -529,7 +520,6 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                     }
                 }
 
-                // 3. Heal Value Pools / Brands (Kind 30007)
                 JSONArray values = schema.optJSONArray("values");
                 if (values != null) {
                     for (int i = 0; i < values.length(); i++) {
@@ -547,16 +537,12 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         }).start();
     }
 
-    /**
-     * Internal logic for re-signing and bumping events for the auto-heal loop.
-     */
     private static void executeSilentHealBroadcast(Context context, WebSocketClientManager ws, int kind, JSONObject content) {
         try {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
             JSONObject event = new JSONObject();
             event.put("kind", kind);
             event.put("pubkey", db.getPublicKey());
-            // BUMP: Reset relay pruning clock with fresh timestamp
             event.put("created_at", System.currentTimeMillis() / 1000);
             event.put("content", content.toString());
 
@@ -571,16 +557,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         } catch (Exception ignored) {}
     }
 
-    /**
-     * UPDATED: Internal log helper. 
-     * Logic: Respects Console visibility and Professional mode filtering.
-     */
     private void logTechnicalEvent(String msg) {
-        // ENHANCEMENT: Master Switch check
         if (!db.isConsoleLogEnabled()) return;
 
         String filteredMsg = msg;
-        // ENHANCEMENT: Professional Summaries
         if (!db.isDebugModeActive()) {
             if (msg.contains("SCHEMA:")) filteredMsg = "Metadata definition synced.";
             else if (msg.contains("PICKER:")) filteredMsg = "Local media selected.";
@@ -594,7 +574,6 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
     @Override
     protected void onDestroy() {
-        // UI AUTO-REFRESH: Remove the listener to prevent memory leaks
         if (wsManager != null) {
             wsManager.removeSchemaListener(this);
         }
