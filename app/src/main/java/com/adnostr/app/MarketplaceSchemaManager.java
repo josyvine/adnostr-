@@ -59,10 +59,6 @@ import java.util.concurrent.TimeUnit;
  *   are strictly offloaded to background threads.
  * - Non-Blocking Database Interaction: Leveraging background disk writes to prevent stalls 
  *   during high-frequency relay sync.
- * 
- * 4-TIER HIERARCHY REPAIR:
- * - Targeted Ejection: Supports Job 2 retrieval via targetSubCategory filter.
- * - Crash Defense: Validates JSONObject strings before conversion.
  */
 public class MarketplaceSchemaManager {
 
@@ -88,18 +84,19 @@ public class MarketplaceSchemaManager {
 
     /**
      * Fetches all crowdsourced categories, fields, and historical values from the network.
-     * UPDATED: Added targetSubCategory for Targeted Ejection (Job 2).
-     * FIXED: JSON crash resolved via startWith("{") validation.
+     * UPDATED: Added targetSubCategory to support Job 1 (Discovery) and Job 2 (Ejection).
+     * FIXED: Added validation to prevent java.lang.String to JSONObject conversion crashes.
      */
     public static void fetchGlobalSchema(Context context, String targetSubCategory, SchemaFetchCallback callback, TechnicalLogListener logListener) {
         new Thread(() -> {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
 
-            String logMode = (targetSubCategory == null || targetSubCategory.isEmpty()) ? "DISCOVERY" : "EJECTION";
-            if (logListener != null) logListener.onLogGenerated("=== INITIATING " + logMode + " SEQUENCE ===");
+            String logContext = (targetSubCategory == null || targetSubCategory.isEmpty()) ? "DISCOVERY" : "EJECTION [" + targetSubCategory + "]";
+            if (logListener != null) logListener.onLogGenerated("INITIATING DATA " + logContext + " SEQUENCE...");
 
             // =========================================================================
             // STEP 1: PERSISTENCE FIRST (LOCAL MEMORY LOAD)
+            // Immediately return cached data so the UI is never empty.
             // =========================================================================
             String cachedSchema = db.getSchemaCache();
             if (cachedSchema != null && !cachedSchema.equals("{}")) {
@@ -110,6 +107,11 @@ public class MarketplaceSchemaManager {
             }
 
             Set<String> relays = db.getRelayPool();
+            
+            // =========================================================================
+            // STABILITY FIX: INCREASED TIMEOUT
+            // 20 seconds ensures Bajaj models/years arrive even on high-latency relays.
+            // =========================================================================
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             final List<JSONObject> categoryEvents = Collections.synchronizedList(new ArrayList<>());
@@ -146,6 +148,7 @@ public class MarketplaceSchemaManager {
                                         int kind = event.getInt("kind");
                                         String eventId = event.getString("id");
 
+                                        // DISTRIBUTED MEMORY
                                         db.saveToForensicArchive(event.toString());
 
                                         if (kind == 5) {
@@ -165,7 +168,7 @@ public class MarketplaceSchemaManager {
                                         } 
                                         else {
                                             String contentStr = event.optString("content", "");
-                                            // FIXED: PREVENT JSON CRASH ON RAW STRINGS
+                                            // FIXED: JSON conversion crash validation
                                             if (contentStr.trim().startsWith("{")) {
                                                 JSONObject content = new JSONObject(contentStr);
                                                 content.put("_event_id", eventId); 
@@ -197,12 +200,12 @@ public class MarketplaceSchemaManager {
 
                 latch.await(20, TimeUnit.SECONDS);
 
-                if (logListener != null) logListener.onLogGenerated("MERGING: Synchronizing 4-tier archive...");
+                if (logListener != null) logListener.onLogGenerated("MERGING: Synchronizing 4-tier archive with network results...");
 
                 // =========================================================================
-                // THE FILTER ENGINE: UNIVERSAL MEMORY MERGE (4-TIER REPAIR)
+                // THE FILTER ENGINE: UNIVERSAL MEMORY MERGE
                 // =========================================================================
-                Set<String> fingerprints = new HashSet<>();
+                Set<String> contentFingerprints = new HashSet<>();
                 Set<String> validFieldAnchors = new HashSet<>();
 
                 String archiveJson = db.getForensicArchive();
@@ -210,18 +213,24 @@ public class MarketplaceSchemaManager {
 
                 JSONArray filteredCategories = new JSONArray();
 
-                // Process TIER 2 (Sub-Categories)
+                // Process Categories (Archive + Network)
                 for (JSONObject cat : categoryEvents) {
+                    String eid = cat.optString("_event_id");
                     String sub = cat.optString("sub", "");
                     String finger = "cat:" + sub.trim().toLowerCase();
-                    if (!deletedEventIds.contains(cat.optString("_event_id")) && !db.isSchemaWiped(cat.optString("_event_id")) && fingerprints.add(finger)) {
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredCategories.put(cat);
+                        contentFingerprints.add(finger);
                         if (logListener != null) logListener.onLogGenerated("EXTRACTED: Sub-Category -> " + sub);
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
                     try {
-                        JSONObject arcEvent = archiveArray.getJSONObject(i);
+                        // FIXED: String conversion check
+                        Object item = archiveArray.get(i);
+                        if (!(item instanceof JSONObject)) continue;
+                        
+                        JSONObject arcEvent = (JSONObject) item;
                         String arcContentRaw = arcEvent.optString("content", "");
                         if (!arcContentRaw.trim().startsWith("{")) continue;
 
@@ -230,30 +239,37 @@ public class MarketplaceSchemaManager {
                         String sub = content.optString("sub", "");
                         String finger = "cat:" + sub.trim().toLowerCase();
                         if (arcEvent.getInt("kind") == 30006 && "category".equals(content.optString("type"))) {
-                            if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && fingerprints.add(finger)) {
+                            if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                                 content.put("_event_id", eid); 
                                 filteredCategories.put(content); 
-                                if (logListener != null) logListener.onLogGenerated("ARCHIVE: Sub-Category -> " + sub);
+                                contentFingerprints.add(finger);
+                                if (logListener != null) logListener.onLogGenerated("EXTRACTED ARCHIVE: Category -> " + sub);
                             }
                         }
                     } catch (Exception ignored) {}
                 }
 
-                // Process TIER 3 (Technical Field Anchors)
+                // Process Fields (Archive + Network) - TIER 3 REPAIR
                 JSONArray filteredFields = new JSONArray();
                 for (JSONObject field : fieldEvents) {
+                    String eid = field.optString("_event_id");
                     String catName = field.optString("category", "").toLowerCase();
                     String labelName = field.optString("label", "").toLowerCase();
                     String finger = "field:" + catName + ":" + labelName;
-                    if (!deletedEventIds.contains(field.optString("_event_id")) && !db.isSchemaWiped(field.optString("_event_id")) && fingerprints.add(finger)) {
+
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredFields.put(field);
+                        contentFingerprints.add(finger);
                         validFieldAnchors.add(catName + ":" + labelName); 
-                        if (logListener != null) logListener.onLogGenerated("EXTRACTED: Spec Anchor '" + labelName + "' for " + catName);
+                        if (logListener != null) logListener.onLogGenerated("EXTRACTED: Field Anchor '" + labelName + "' for " + catName);
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
                     try {
-                        JSONObject arcEvent = archiveArray.getJSONObject(i);
+                        Object item = archiveArray.get(i);
+                        if (!(item instanceof JSONObject)) continue;
+
+                        JSONObject arcEvent = (JSONObject) item;
                         String arcContentRaw = arcEvent.optString("content", "");
                         if (!arcContentRaw.trim().startsWith("{")) continue;
 
@@ -264,46 +280,62 @@ public class MarketplaceSchemaManager {
                         String finger = "field:" + catName + ":" + labelName;
 
                         if (arcEvent.getInt("kind") == 30006 && "field".equals(content.optString("type"))) {
-                            if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && fingerprints.add(finger)) {
+                            if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                                 content.put("_event_id", eid); 
                                 filteredFields.put(content);
+                                contentFingerprints.add(finger);
                                 validFieldAnchors.add(catName + ":" + labelName); 
-                                if (logListener != null) logListener.onLogGenerated("ARCHIVE: Spec Anchor '" + labelName + "' for " + catName);
+                                if (logListener != null) logListener.onLogGenerated("EXTRACTED ARCHIVE: Field Anchor '" + labelName + "' for " + catName);
                             }
                         }
                     } catch (Exception ignored) {}
                 }
 
-                // Process TIER 4 (Value Pools) - TARGETED EJECTION LOGIC
+                // Process Value Pools (Bajaj Models/Years) - TIER 4 EJECTION
                 JSONArray filteredValues = new JSONArray();
                 for (JSONObject val : valueEvents) {
-                    String cat = val.optString("category", "");
-                    // targeted ejection check
-                    if (targetSubCategory != null && !targetSubCategory.equalsIgnoreCase(cat)) continue;
+                    String cat = val.optString("category", "").toLowerCase();
+                    
+                    // JOB 2: Targeted Ejection Check
+                    if (targetSubCategory != null && !targetSubCategory.isEmpty() && !targetSubCategory.equalsIgnoreCase(cat)) continue;
 
-                    String finger = "val:" + cat.toLowerCase() + ":" + val.optJSONObject("specs");
-                    if (!deletedEventIds.contains(val.optString("_event_id")) && !db.isSchemaWiped(val.optString("_event_id")) && fingerprints.add(finger)) {
+                    String eid = val.optString("_event_id");
+                    JSONObject specs = val.optJSONObject("specs");
+                    String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
+                    String finger = "val:" + cat + ":" + (specs != null ? specs.toString() : "null");
+
+                    if (!deletedEventIds.contains(eid) && !db.isSchemaWiped(eid) && !contentFingerprints.contains(finger)) {
                         filteredValues.put(val);
-                        if (logListener != null) logListener.onLogGenerated("EJECTING: Data Pool for " + cat);
+                        contentFingerprints.add(finger);
+                        if (logListener != null) logListener.onLogGenerated("EJECTING: Data Pool for Brand '" + specsKey + "' in " + cat);
                     }
                 }
                 for (int i = 0; i < archiveArray.length(); i++) {
                     try {
-                        JSONObject arcEvent = archiveArray.getJSONObject(i);
+                        Object item = archiveArray.get(i);
+                        if (!(item instanceof JSONObject)) continue;
+
+                        JSONObject arcEvent = (JSONObject) item;
                         if (arcEvent.getInt("kind") == 30007) {
                             String arcContentRaw = arcEvent.optString("content", "");
                             if (!arcContentRaw.trim().startsWith("{")) continue;
 
                             JSONObject content = new JSONObject(arcContentRaw);
-                            String cat = content.optString("category", "");
-                            if (targetSubCategory != null && !targetSubCategory.equalsIgnoreCase(cat)) continue;
+                            String cat = content.optString("category", "").toLowerCase();
+
+                            // JOB 2: Targeted Ejection Check
+                            if (targetSubCategory != null && !targetSubCategory.isEmpty() && !targetSubCategory.equalsIgnoreCase(cat)) continue;
 
                             String eid = arcEvent.getString("id");
-                            String finger = "val:" + cat.toLowerCase() + ":" + content.optJSONObject("specs");
-                            if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && fingerprints.add(finger)) {
+                            JSONObject specs = content.optJSONObject("specs");
+                            String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
+                            String finger = "val:" + cat + ":" + (specs != null ? specs.toString() : "null");
+                            
+                            if (!db.isSchemaWiped(eid) && !deletedEventIds.contains(eid) && !contentFingerprints.contains(finger)) {
                                 content.put("_event_id", eid); 
                                 filteredValues.put(content);
-                                if (logListener != null) logListener.onLogGenerated("ARCHIVE EJECTION: Data Pool for " + cat);
+                                contentFingerprints.add(finger);
+                                if (logListener != null) logListener.onLogGenerated("ARCHIVE EJECTION: Pool for '" + specsKey + "' in " + cat);
                             }
                         }
                     } catch (Exception ignored) {}
@@ -313,10 +345,25 @@ public class MarketplaceSchemaManager {
                 globalSchema.put("categories", filteredCategories);
                 globalSchema.put("fields", filteredFields);
                 globalSchema.put("values", filteredValues);
-                globalSchema.put("hidden_hardcoded", new JSONArray(db.getHiddenHardcodedNames()));
 
-                db.saveSchemaCache(globalSchema.toString());
-                if (logListener != null) logListener.onLogGenerated("SUCCESS: Database gathered and injected.");
+                Set<String> allHidden = db.getHiddenHardcodedNames();
+                allHidden.addAll(hiddenHardcodedNames);
+                globalSchema.put("hidden_hardcoded", new JSONArray(allHidden));
+
+                // =========================================================================
+                // STEP 2: RE-CACHE & AUTO-HEAL
+                // =========================================================================
+                boolean networkEmpty = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
+                boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
+
+                if (networkEmpty && anchorValid) {
+                    if (logListener != null) logListener.onLogGenerated("WARNING: Network amnesia detected. Ejecting local archive...");
+                    executeSequentialHealing(context, logListener);
+                } else {
+                    db.saveSchemaCache(globalSchema.toString());
+                }
+
+                if (logListener != null) logListener.onLogGenerated("SUCCESS: Database fully gathered and injected.");
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (callback != null) callback.onSchemaFetched(globalSchema.toString());
@@ -324,13 +371,15 @@ public class MarketplaceSchemaManager {
 
             } catch (Exception e) {
                 if (logListener != null) logListener.onLogGenerated("CRITICAL ERROR: " + e.getMessage());
-                new Handler(Looper.getMainLooper()).post(() -> { if (callback != null) callback.onSchemaFetched("{}"); });
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (callback != null) callback.onSchemaFetched("{}");
+                });
             }
         }).start();
     }
 
     /**
-     * Logic: Broadcasts the immutable archive in a tiered hierarchy.
+     * VOLATILITY FIX: THE SEQUENTIAL HEALING ENGINE
      */
     public static void executeSequentialHealing(Context context, TechnicalLogListener listener) {
         new Thread(() -> {
@@ -339,6 +388,7 @@ public class MarketplaceSchemaManager {
             if (listener != null) queue.setTechnicalLogListener(listener);
 
             String archiveJson = db.getForensicArchive();
+
             if (archiveJson == null || archiveJson.trim().isEmpty() || archiveJson.equals("[]")) {
                 if (listener != null) listener.onLogGenerated("SYSTEM: Archive is empty. No data to heal.");
                 return;
@@ -384,18 +434,23 @@ public class MarketplaceSchemaManager {
     }
 
     /**
-     * GLOBAL DELETE: Scans for the original event and issues a Kind 5 Deletion.
+     * GLOBAL DELETE
      */
     public static void broadcastFieldDeletion(Context context, String category, String fieldLabel) {
         new Thread(() -> {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
             Set<String> relays = db.getRelayPool();
+            String myPubKey = db.getPublicKey();
             final List<String> eventIdsToDelete = Collections.synchronizedList(new ArrayList<>());
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             try {
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006));
+                if (!db.isAdmin()) {
+                    filter.put("authors", new JSONArray().put(myPubKey));
+                }
+
                 String subId = "find-field-" + UUID.randomUUID().toString().substring(0, 4);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
@@ -428,23 +483,30 @@ public class MarketplaceSchemaManager {
                 if (!eventIdsToDelete.isEmpty()) {
                     issueKind5(context, eventIdsToDelete, null);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                Log.e(TAG, "Deletion Broadcast Failed: " + e.getMessage());
+            }
         }).start();
     }
 
     /**
-     * CASCADING GLOBAL CATEGORY DELETE: Wipes Category, associated Fields, and associated Value Pools (Brands).
+     * CASCADING GLOBAL CATEGORY DELETE
      */
     public static void broadcastCategoryDeletion(Context context, String categoryName) {
         new Thread(() -> {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
             Set<String> relays = db.getRelayPool();
+            String myPubKey = db.getPublicKey();
             final List<String> eventIdsToDelete = Collections.synchronizedList(new ArrayList<>());
             final CountDownLatch latch = new CountDownLatch(relays.size());
 
             try {
                 JSONObject filter = new JSONObject();
                 filter.put("kinds", new JSONArray().put(30006).put(30007));
+                if (!db.isAdmin()) {
+                    filter.put("authors", new JSONArray().put(myPubKey));
+                }
+
                 String subId = "del-cascade-" + UUID.randomUUID().toString().substring(0, 4);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
 
@@ -474,7 +536,9 @@ public class MarketplaceSchemaManager {
 
                 latch.await(6, TimeUnit.SECONDS);
                 issueKind5(context, eventIdsToDelete, categoryName);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                Log.e(TAG, "Category cascading wipe failure: " + e.getMessage());
+            }
         }).start();
     }
 
@@ -502,7 +566,9 @@ public class MarketplaceSchemaManager {
             if (signed != null) {
                 NostrPublisher.publishToPool(db.getRelayPool(), signed, null);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Kind 5 issuance failed: " + e.getMessage());
+        }
     }
 
     public static void broadcastSpecValues(Context context, String category, JSONObject specs) {
