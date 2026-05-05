@@ -29,27 +29,34 @@ import java.util.Set;
  * - REPAIR UPDATE: Implemented TechnicalLogListener to feed the forensic console.
  * - TIER 2 RECOVERY: Fixed logic in prepareArchive to ensure Technical Fields are never skipped.
  * - SPAM PREVENTION: Implemented internal deduplication filter to clean bloated archives.
+ * 
+ * 4-TIER HIERARCHY UPDATE:
+ * - Tier 1: Main Category
+ * - Tier 2: Sub Category
+ * - Tier 3: Tech Spec Fields (The Anchors)
+ * - Tier 4: Value Pools (Bajaj/Models/Years)
  */
 public class SequentialBroadcastQueue {
 
     private static final String TAG = "AdNostr_Queue";
 
-    // TIER DEFINITIONS
-    private static final int TIER_CATEGORY = 1;
-    private static final int TIER_FIELD = 2;
-    private static final int TIER_VALUE_POOL = 3;
+    // 4-TIER DEFINITIONS
+    private static final int TIER_1_MAIN = 1;
+    private static final int TIER_2_SUB = 2;
+    private static final int TIER_3_FIELD = 3;
+    private static final int TIER_4_VALUE = 4;
 
     private final Context context;
     private final AdNostrDatabaseHelper db;
     private final WebSocketClientManager wsManager;
     private final Handler queueHandler;
 
-    // Internal lists for tiered sorting
-    private final List<JSONObject> catTier = new ArrayList<>();
-    private final List<JSONObject> fieldTier = new ArrayList<>();
-    private final List<JSONObject> valueTier = new ArrayList<>();
+    // Internal lists for 4-tier sorting
+    private final List<JSONObject> tier1Main = new ArrayList<>();
+    private final List<JSONObject> tier2Sub = new ArrayList<>();
+    private final List<JSONObject> tier3Field = new ArrayList<>();
+    private final List<JSONObject> tier4Value = new ArrayList<>();
 
-    // Updated to use the unified listener from MarketplaceSchemaManager
     private MarketplaceSchemaManager.TechnicalLogListener logListener;
 
     /**
@@ -77,13 +84,12 @@ public class SequentialBroadcastQueue {
     }
 
     /**
-     * Logic: Accepts the full forensic archive and sorts it into dependency tiers.
-     * REPAIR UPDATE: Implemented Defensive Parsing to skip ghost frames without crashing the queue.
-     * FIXED: Explicitly identifies Tier 2 (Fields) to prevent dropdown dropout.
-     * DEDUPLICATION: Internal set ensures only unique content frames are broadcasted to prevent relay spam blocks.
+     * Logic: Accepts the full forensic archive and sorts it into 4 dependency tiers.
+     * REPAIR UPDATE: Implemented Defensive Parsing to skip ghost frames.
+     * 4-TIER FIX: Correctly maps Main, Sub, Fields, and Values.
      */
     public boolean prepareArchive(String archiveJson) {
-        // CRITICAL FIX: Check for empty strings to prevent "End of input at character 0"
+        // CRITICAL FIX: Check for empty strings
         if (archiveJson == null || archiveJson.trim().isEmpty()) {
             sendForensicLog("SYSTEM: Archive input is empty. Skipping preparation.");
             return false;
@@ -91,101 +97,97 @@ public class SequentialBroadcastQueue {
 
         try {
             JSONArray archive = new JSONArray(archiveJson);
-            catTier.clear();
-            fieldTier.clear();
-            valueTier.clear();
+            tier1Main.clear();
+            tier2Sub.clear();
+            tier3Field.clear();
+            tier4Value.clear();
 
-            // Internal set for session deduplication (Prevents re-signing redundant categories)
+            // Internal set for session deduplication
             Set<String> contentFingerprints = new HashSet<>();
 
             for (int i = 0; i < archive.length(); i++) {
-                JSONObject event = archive.getJSONObject(i);
-
-                // REPAIR UPDATE: Verify content field before parsing
-                String contentStr = event.optString("content", "").trim();
-
-                // LOGIC: If the frame is a "ghost frame" (empty content), ignore and move to next valid item
-                if (contentStr.isEmpty() || !contentStr.startsWith("{")) {
-                    continue; 
-                }
-
                 try {
+                    Object item = archive.get(i);
+                    if (!(item instanceof JSONObject)) continue;
+                    JSONObject event = (JSONObject) item;
+
+                    String contentStr = event.optString("content", "").trim();
+                    if (contentStr.isEmpty() || !contentStr.startsWith("{")) {
+                        continue; 
+                    }
+
                     JSONObject content = new JSONObject(contentStr);
                     int kind = event.getInt("kind");
 
                     if (kind == 30006) {
                         String metadataType = content.optString("type", "").trim().toLowerCase();
-                        String sub = content.optString("sub", "").trim().toLowerCase();
-                        String cat = content.optString("category", "").trim().toLowerCase();
-                        String label = content.optString("label", "").trim().toLowerCase();
+                        String mainCat = content.optString("main", "").trim().toLowerCase();
+                        String subCat = content.optString("sub", "").trim().toLowerCase();
+                        String parentCat = content.optString("category", "").trim().toLowerCase();
+                        String fieldLabel = content.optString("label", "").trim().toLowerCase();
 
-                        // =========================================================================
-                        // HIERARCHY REPAIR: TIER 1 vs TIER 2
-                        // Separates Category (Bikes) from Fields (Brand/Model)
-                        // =========================================================================
-                        if ("category".equals(metadataType)) {
-                            // Deduplicate based on sub-category name (e.g. Bikes)
-                            if (contentFingerprints.add("cat:" + sub)) {
-                                catTier.add(event);
+                        // TIER 1: Main Category Logic
+                        if ("category".equals(metadataType) && !mainCat.isEmpty()) {
+                            if (contentFingerprints.add("tier1:" + mainCat)) {
+                                tier1Main.add(event);
                             }
-                        } else if ("field".equals(metadataType) || content.has("label")) {
-                            // TIER 2 RECOVERY: Captured Technical Field anchors (The Brand/Model/Year boxes)
-                            // Deduplicate based on Category + Label (e.g. Bikes:Brand)
-                            if (contentFingerprints.add("field:" + cat + ":" + label)) {
-                                fieldTier.add(event);
+                        }
+
+                        // TIER 2: Sub Category Logic
+                        if ("category".equals(metadataType) && !subCat.isEmpty()) {
+                            if (contentFingerprints.add("tier2:" + subCat)) {
+                                tier2Sub.add(event);
+                            }
+                        }
+
+                        // TIER 3: Tech Spec Fields Logic (The Anchors)
+                        if ("field".equals(metadataType) && !fieldLabel.isEmpty()) {
+                            // Anchor is unique per Sub-Category
+                            if (contentFingerprints.add("tier3:" + parentCat + ":" + fieldLabel)) {
+                                tier3Field.add(event);
                             }
                         }
                     } else if (kind == 30007) {
-                        // =========================================================================
-                        // TIER 3: VALUE POOLS (Bajaj, Pulsar, Discover, 2024, etc.)
-                        // =========================================================================
+                        // TIER 4: Value Pools (Bajaj, Pulsar, etc.)
                         String cat = content.optString("category", "").trim().toLowerCase();
                         JSONObject specs = content.optJSONObject("specs");
                         String specsStr = (specs != null) ? specs.toString() : "";
 
-                        // Deduplicate value pools to stop relay spamming
-                        if (contentFingerprints.add("val:" + cat + ":" + specsStr)) {
-                            valueTier.add(event);
+                        if (contentFingerprints.add("tier4:" + cat + ":" + specsStr)) {
+                            tier4Value.add(event);
                         }
                     }
                 } catch (Exception e) {
-                    // Skip individual malformed items within the loop
                     Log.w(TAG, "Skipping malformed frame at index " + i);
                     continue;
                 }
             }
 
-            Log.d(TAG, "Queue Prepared: Tier1=" + catTier.size() + ", Tier2=" + fieldTier.size() + ", Tier3=" + valueTier.size());
+            Log.d(TAG, "4-Tier Queue Prepared: T1=" + tier1Main.size() + ", T2=" + tier2Sub.size() + ", T3=" + tier3Field.size() + ", T4=" + tier4Value.size());
 
             // Forensic feedback for the Admin Console
-            sendForensicLog("TIER_MAP: Cat=" + catTier.size() + " | Field=" + fieldTier.size() + " | Value=" + valueTier.size());
+            sendForensicLog("4-TIER MAP: Main=" + tier1Main.size() + " | Sub=" + tier2Sub.size() + " | Fields=" + tier3Field.size() + " | Values=" + tier4Value.size());
 
-            // Check if we actually found any valid items to restore after deduplication
-            if (catTier.isEmpty() && fieldTier.isEmpty() && valueTier.isEmpty()) {
-                sendForensicLog("SYSTEM: No valid unique metadata frames found in archive.");
+            if (tier1Main.isEmpty() && tier2Sub.isEmpty() && tier3Field.isEmpty() && tier4Value.isEmpty()) {
+                sendForensicLog("SYSTEM: No valid unique metadata found.");
                 return false;
             }
 
-            sendForensicLog("CLEANED: Archive optimized into " + (catTier.size() + fieldTier.size() + valueTier.size()) + " unique restoration frames.");
             return true;
 
         } catch (Exception e) {
-            // Provide detailed length and snippet of the failing data for the user
-            int dataLen = (archiveJson != null) ? archiveJson.length() : 0;
-            String snippet = (archiveJson != null && dataLen > 50) ? archiveJson.substring(0, 50) : archiveJson;
-
             Log.e(TAG, "Queue preparation failed: " + e.getMessage());
-            sendForensicLog("ERROR: Archive sorting failed - " + e.getMessage() + " (Len: " + dataLen + ", Snippet: " + snippet + ")");
+            sendForensicLog("ERROR: Archive sorting failed - " + e.getMessage());
             return false;
         }
     }
 
     /**
-     * Logic: Starts the cascading re-broadcast with timing delays.
+     * Logic: Starts the cascading re-broadcast with 3-second timing delays.
      */
     public void startBroadcast() {
-        sendForensicLog("ORDER: Executing Hierarchical Publish sequence...");
-        processTier(TIER_CATEGORY);
+        sendForensicLog("ORDER: Executing 4-Tier Hierarchical Publish...");
+        processTier(TIER_1_MAIN);
     }
 
     private void processTier(int tier) {
@@ -193,16 +195,20 @@ public class SequentialBroadcastQueue {
         int nextTier;
 
         switch (tier) {
-            case TIER_CATEGORY:
-                targetList = catTier;
-                nextTier = TIER_FIELD;
+            case TIER_1_MAIN:
+                targetList = tier1Main;
+                nextTier = TIER_2_SUB;
                 break;
-            case TIER_FIELD:
-                targetList = fieldTier;
-                nextTier = TIER_VALUE_POOL;
+            case TIER_2_SUB:
+                targetList = tier2Sub;
+                nextTier = TIER_3_FIELD;
                 break;
-            case TIER_VALUE_POOL:
-                targetList = valueTier;
+            case TIER_3_FIELD:
+                targetList = tier3Field;
+                nextTier = TIER_4_VALUE;
+                break;
+            case TIER_4_VALUE:
+                targetList = tier4Value;
                 nextTier = -1; // End of chain
                 break;
             default:
@@ -211,7 +217,7 @@ public class SequentialBroadcastQueue {
 
         if (targetList.isEmpty()) {
             if (nextTier != -1) {
-                sendForensicLog("ORDER: Tier " + tier + " is empty. Skipping to next.");
+                sendForensicLog("ORDER: Tier " + tier + " empty. Skipping to next.");
                 processTier(nextTier);
             }
             return;
@@ -220,23 +226,21 @@ public class SequentialBroadcastQueue {
         Log.i(TAG, "Processing Tier " + tier + ": Sending " + targetList.size() + " items.");
         sendForensicLog("ORDER: Commencing Tier " + tier + " (" + targetList.size() + " items)");
 
-        // Broadcast items in this tier with a short delay between each item
         for (int i = 0; i < targetList.size(); i++) {
             final JSONObject originalEvent = targetList.get(i);
             final boolean isLastInTier = (i == targetList.size() - 1);
             final int nextTierToRun = nextTier;
 
-            // Delay each item by 500ms to prevent relay rate-limiting (spam detection)
+            // Delay each item broadcast slightly to prevent relay rejection
             queueHandler.postDelayed(() -> {
                 reSignAndSend(originalEvent);
 
-                // If this was the last item in the tier, wait 3 seconds and start next tier.
-                // This gap is critical for relays to index parent items before children arrive.
+                // HIERARCHY FIX: Force 3-second delay between Tiers
                 if (isLastInTier && nextTierToRun != -1) {
                     sendForensicLog("ORDER: Tier " + tier + " complete. Waiting 3s for network indexing...");
                     queueHandler.postDelayed(() -> processTier(nextTierToRun), 3000);
                 } else if (isLastInTier && nextTierToRun == -1) {
-                    sendForensicLog("\n=== HEALING SEQUENCE COMPLETE ===");
+                    sendForensicLog("\n=== 4-TIER HEALING SEQUENCE COMPLETE ===");
                 }
             }, i * 500L);
         }
@@ -244,7 +248,6 @@ public class SequentialBroadcastQueue {
 
     /**
      * Logic: Generates a fresh BIP-340 signature with the CURRENT timestamp.
-     * This is critical to force relays to overwrite their old pruned indexes.
      */
     private void reSignAndSend(JSONObject oldEvent) {
         try {
@@ -253,31 +256,19 @@ public class SequentialBroadcastQueue {
             String contentStr = oldEvent.getString("content");
             JSONObject content = new JSONObject(contentStr);
 
-            // Identifies which metadata target is being healed for the console log
-            String contextLabel = content.optString("category", content.optString("sub", content.optString("label", "Unknown")));
-            Log.i(TAG, "HEAL_TRACE: Re-signing Kind " + kind + " for target '" + contextLabel + "'");
-            sendForensicLog("HEAL: Re-signing " + kind + " for '" + contextLabel + "'");
+            String label = content.optString("main", content.optString("sub", content.optString("label", content.optString("category", "Unknown"))));
+            sendForensicLog("HEAL: Re-signing " + kind + " for '" + label + "'");
 
             newEvent.put("kind", kind);
             newEvent.put("pubkey", db.getPublicKey());
-
-            // =========================================================================
-            // REFRESH NETWORK PERSISTENCE: OVERWRITE TIMESTAMP
-            // This method uses current time to trick relays into resetting the pruning clock.
-            // =========================================================================
             newEvent.put("created_at", System.currentTimeMillis() / 1000); 
-
             newEvent.put("content", contentStr);
-
-            // TAG INTEGRITY: Carry over all indexing tags (t-tags, d-tags) for correct filtering
             newEvent.put("tags", oldEvent.getJSONArray("tags"));
 
-            // IMPORTANT: Uses the re-signing logic that updates the Event ID and Signature
             JSONObject signed = NostrEventSigner.signHealedEvent(db.getPrivateKey(), newEvent);
             if (signed != null) {
                 wsManager.broadcastEvent(signed.toString());
-                Log.d(TAG, "Healed: " + signed.optString("id") + " (" + contextLabel + ")");
-                sendForensicLog("CRYPTO: BIP-340 Schnorr Proof OK. Broadcasted.");
+                sendForensicLog("CRYPTO: BIP-340 Proof OK. Broadcasted.");
             } else {
                 sendForensicLog("CRYPTO: FAILED to sign archived item.");
             }
