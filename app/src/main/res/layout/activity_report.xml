@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -7,17 +8,17 @@
     android:background="#000000"
     tools:context=".ReportActivity">
 
-    <!-- TOP TOOLBAR -->
+    <!-- TOP TOOLBAR: ADMIN FORENSIC CONSOLE -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbarReport"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="#121212"
-        app:titleTextColor="@android:color/white"
+        app:layout_constraintTop_toTopOf="parent"
         app:navigationIcon="?attr/homeAsUpIndicator"
         app:navigationIconTint="@android:color/white"
-        app:layout_constraintTop_toTopOf="parent"
-        app:title="Forensic Console" />
+        app:title="Forensic Console"
+        app:titleTextColor="@android:color/white" />
 
     <!-- LIVE SCAN PROGRESS BAR -->
     <ProgressBar
@@ -26,30 +27,30 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:indeterminate="true"
-        android:visibility="gone"
         android:progressTint="#FF6A00"
+        android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/toolbarReport" />
 
-    <!-- FILTER RIBBON (HORIZONTAL SCROLL) -->
+    <!-- 4-TIER FILTER RIBBON (HORIZONTAL SCROLL) -->
     <HorizontalScrollView
         android:id="@+id/svFilterRibbon"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="#121212"
         android:paddingStart="12dp"
-        android:paddingEnd="12dp"
         android:paddingTop="8dp"
+        android:paddingEnd="12dp"
         android:paddingBottom="8dp"
         android:scrollbars="none"
-        android:background="#121212"
         app:layout_constraintTop_toBottomOf="@id/pbForensicLoading">
 
         <com.google.android.material.chip.ChipGroup
             android:id="@+id/chipGroupFilters"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:singleSelection="true"
+            app:checkedChip="@id/chipAll"
             app:selectionRequired="true"
-            app:checkedChip="@id/chipAll">
+            app:singleSelection="true">
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/chipAll"
@@ -57,17 +58,26 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="[ ALL ]"
-                app:chipBackgroundColor="@color/hfs_border_grey"
-                android:textColor="@android:color/white" />
+                android:textColor="@android:color/white"
+                app:chipBackgroundColor="@color/hfs_border_grey" />
 
             <com.google.android.material.chip.Chip
-                android:id="@+id/chipCategories"
+                android:id="@+id/chipTier1"
                 style="@style/Widget.MaterialComponents.Chip.Choice"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="[ CATEGORIES ]"
-                app:chipBackgroundColor="@color/hfs_border_grey"
-                android:textColor="@android:color/white" />
+                android:text="[ TIER 1 ]"
+                android:textColor="@android:color/white"
+                app:chipBackgroundColor="@color/hfs_border_grey" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipTier2"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="[ TIER 2 ]"
+                android:textColor="@android:color/white"
+                app:chipBackgroundColor="@color/hfs_border_grey" />
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/chipSpecs"
@@ -75,22 +85,22 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="[ TECH SPECS ]"
-                app:chipBackgroundColor="@color/hfs_border_grey"
-                android:textColor="@android:color/white" />
+                android:textColor="@android:color/white"
+                app:chipBackgroundColor="@color/hfs_border_grey" />
 
             <com.google.android.material.chip.Chip
-                android:id="@+id/chipBrands"
+                android:id="@+id/chipValues"
                 style="@style/Widget.MaterialComponents.Chip.Choice"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="[ BRANDS/VALUES ]"
-                app:chipBackgroundColor="@color/hfs_border_grey"
-                android:textColor="@android:color/white" />
+                android:text="[ VALUES ]"
+                android:textColor="@android:color/white"
+                app:chipBackgroundColor="@color/hfs_border_grey" />
 
         </com.google.android.material.chip.ChipGroup>
     </HorizontalScrollView>
 
-    <!-- FORENSIC FEED -->
+    <!-- FORENSIC FEED: CHRONOLOGICAL RECYCLER -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvForensicFeed"
         android:layout_width="match_parent"
