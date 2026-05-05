@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app_compat="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    tools:context=".ArchiveActivity">
+
+    <!-- TOP TOOLBAR: ARCHIVE NAVIGATION -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarArchive"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#000000"
+        app_compat:layout_constraintTop_toTopOf="parent">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbarArchive"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="#000000"
+            app_compat:title="Local Memory Archive"
+            app_compat:titleTextColor="#FFFFFF"
+            app_compat:navigationIcon="?attr/homeAsUpIndicator"
+            app_compat:navigationIconTint="#FFFFFF" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- 4-TIER FILTER RIBBON -->
+    <HorizontalScrollView
+        android:id="@+id/nsvArchiveFilters"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#121212"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:scrollbars="none"
+        app_compat:layout_constraintTop_toBottomOf="@id/appBarArchive">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupArchiveFilters"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            app_compat:singleLine="true"
+            app_compat:singleSelection="true"
+            app_compat:selectionRequired="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipArchiveAll"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ALL"
+                android:textColor="#FFFFFF"
+                app_compat:chipBackgroundColor="#333333"
+                app_compat:checked="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipArchiveT1"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TIER 1"
+                android:textColor="#FFFFFF"
+                app_compat:chipBackgroundColor="#333333" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipArchiveT2"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TIER 2"
+                android:textColor="#FFFFFF"
+                app_compat:chipBackgroundColor="#333333" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipArchiveTech"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TECH SPECS"
+                android:textColor="#FFFFFF"
+                app_compat:chipBackgroundColor="#333333" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipArchiveValues"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="VALUES"
+                android:textColor="#FFFFFF"
+                app_compat:chipBackgroundColor="#333333" />
+
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+
+    <!-- LOADING STATE INDICATOR -->
+    <ProgressBar
+        android:id="@+id/pbArchiveLoading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:indeterminateTint="#FF6A00"
+        app_compat:layout_constraintBottom_toBottomOf="parent"
+        app_compat:layout_constraintEnd_toEndOf="parent"
+        app_compat:layout_constraintStart_toStartOf="parent"
+        app_compat:layout_constraintTop_toBottomOf="@id/nsvArchiveFilters" />
+
+    <!-- MAIN ARCHIVE RECYCLERVIEW -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvArchiveFeed"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:padding="8dp"
+        android:clipToPadding="false"
+        app_compat:layout_constraintBottom_toBottomOf="parent"
+        app_compat:layout_constraintTop_toBottomOf="@id/nsvArchiveFilters" />
+
+    <!-- EMPTY STATE VIEW -->
+    <LinearLayout
+        android:id="@+id/llEmptyArchive"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app_compat:layout_constraintBottom_toBottomOf="parent"
+        app_compat:layout_constraintEnd_toEndOf="parent"
+        app_compat:layout_constraintStart_toStartOf="parent"
+        app_compat:layout_constraintTop_toBottomOf="@id/nsvArchiveFilters">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:src="@drawable/ic_nav_report"
+            app_compat:tint="#333333" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Memory Anchor Empty"
+            android:textColor="#666666"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:paddingStart="40dp"
+            android:paddingEnd="40dp"
+            android:text="Active schema discovery will populate this local forensic archive automatically."
+            android:textColor="#444444"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
