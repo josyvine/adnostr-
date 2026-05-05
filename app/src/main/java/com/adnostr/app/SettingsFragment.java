@@ -43,6 +43,9 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * 
  * ADMIN SUPREMACY FIX:
  * - Constructor Update: Passes isAdmin status to the icon adapter to unlock the Forensic Report icon.
+ * 
+ * 4-TIER HIERARCHY UPDATE:
+ * - Memory Archive: Routes non-admin advertisers to the read-only ArchiveActivity.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -118,7 +121,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // 3-Column professionally spaced grid
         binding.rvSettingsIcons.setLayoutManager(new GridLayoutManager(requireContext(), 3));
-        
+
         // ADMIN SUPREMACY FIX: Added db.isAdmin() as the 2nd parameter
         adapter = new SettingsIconAdapter(role, db.isAdmin(), this);
         binding.rvSettingsIcons.setAdapter(adapter);
@@ -127,7 +130,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
     /**
      * INTERFACE: Handles clicks on the square grid icons.
      * Routes each command to its respective original logic portal.
-     * ADMIN SUPREMACY: Added CMD_REPORT case to launch the forensic feed.
+     * 4-TIER REPAIR: Differentiates between CMD_REPORT (Admin) and CMD_ARCHIVE (Advertiser B).
      */
     @Override
     public void onSettingClicked(int commandType) {
@@ -159,17 +162,19 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             case SettingsIconAdapter.CMD_RESET:
                 showResetConfirmation();
                 break;
-            // GLITCH 1 FIX: Handle Personalized Activity Launch
             case SettingsIconAdapter.CMD_PERSONALIZED:
                 startActivity(new Intent(requireContext(), PersonalizedActivity.class));
                 break;
-            // GLITCH 2 FIX: Handle Browse Advertisers Activity Launch
             case SettingsIconAdapter.CMD_BROWSE:
                 startActivity(new Intent(requireContext(), BrowseAdvertisersActivity.class));
                 break;
-            // ADMIN SUPREMACY: Launch Report Activity
+            // ADMIN SUPREMACY: Launch Moderator Forensic Feed
             case SettingsIconAdapter.CMD_REPORT:
                 startActivity(new Intent(requireContext(), ReportActivity.class));
+                break;
+            // 4-TIER UPDATE: Launch Read-Only Memory Archive for Advertiser B
+            case SettingsIconAdapter.CMD_ARCHIVE:
+                startActivity(new Intent(requireContext(), ArchiveActivity.class));
                 break;
         }
     }
