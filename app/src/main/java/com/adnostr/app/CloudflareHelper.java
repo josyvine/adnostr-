@@ -1,13 +1,17 @@
 package com.adnostr.app;
 
 import android.content.Context;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -29,6 +33,11 @@ import okhttp3.Response;
  * ENHANCEMENT: Added JSON file upload/download for Feature 5 (Marketplace).
  * 
  * FIXED: Deletion logic now extracts clean IDs from full URLs to ensure R2 physical wipe success.
+ * 
+ * NEW ENHANCEMENT: 5-LAYER DATABASE ARCHITECT ENGINE
+ * - Added X-AdNostr-Token Handshake for Hierarchical Database Fetching.
+ * - Added Multipart Batch Stream for ASIN_RAW mass uploads.
+ * - Added Administrative Seeding logic (Hierarchy Anchors).
  */
 public class CloudflareHelper {
 
@@ -57,7 +66,7 @@ public class CloudflareHelper {
         // High-performance client with optimized timeouts for direct private connection
         this.client = new OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS) // Increased for Batch Uploads
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build();
         this.mainHandler = new Handler(Looper.getMainLooper());
@@ -284,6 +293,164 @@ public class CloudflareHelper {
     }
 
     // =========================================================================
+    // NEW: 5-LAYER DATABASE ARCHITECT METHODS
+    // =========================================================================
+
+    /**
+     * SECURE FETCH: Retrieves a specific JSON layer using the X-AdNostr-Token handshake.
+     */
+    public void fetchSchemaLayer(Context context, String path, CloudflareCallback callback) {
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+        String baseUrl = db.getDbQueryUrl();
+        String apiToken = db.getDbApiToken();
+
+        if (baseUrl.isEmpty()) {
+            postFailure(callback, new Exception("Database URL not configured."));
+            return;
+        }
+
+        String fullUrl = baseUrl.endsWith("/") ? baseUrl + path : baseUrl + "/" + path;
+
+        Request request = new Request.Builder()
+                .url(fullUrl)
+                .get()
+                .addHeader("X-AdNostr-Token", apiToken)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) { postFailure(callback, e); }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "[]";
+                if (response.isSuccessful()) {
+                    postSuccess(callback, body, path);
+                } else {
+                    postFailure(callback, new Exception("Fetch Rejected: " + response.code()));
+                }
+            }
+        });
+    }
+
+    /**
+     * BATCH UPLOAD: Streams multiple JSON files to R2 via MultipartBody.
+     * Implements X-Admin-Sig (BIP-340) and X-Target-Path headers.
+     */
+    public void uploadBatchToR2(Context context, List<Uri> uris, String path, String signature, CloudflareCallback callback) {
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+        String baseUrl = db.getDbQueryUrl();
+        String apiToken = db.getDbApiToken();
+
+        postLog(callback, "=== STARTING BATCH MULTIPART STREAM ===\n");
+        postLog(callback, "TARGET: " + path + "\n");
+
+        MultipartBody.Builder builder = new MultipartBody.Builder().setType(MultipartBody.FORM);
+
+        try {
+            for (Uri uri : uris) {
+                String fileName = getFileNameFromUri(context, uri);
+                byte[] fileData = readBytesFromUri(context, uri);
+                if (fileData != null) {
+                    builder.addFormDataPart("files", fileName, 
+                            RequestBody.create(fileData, MediaType.parse("application/json")));
+                }
+            }
+
+            Request request = new Request.Builder()
+                    .url(baseUrl + "/v1/batch")
+                    .post(builder.build())
+                    .addHeader("X-AdNostr-Token", apiToken)
+                    .addHeader("X-Admin-Sig", signature)
+                    .addHeader("X-Target-Path", path)
+                    .build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) { postFailure(callback, e); }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String res = response.body() != null ? response.body().string() : "";
+                    if (response.isSuccessful()) {
+                        postLog(callback, "WORKER: Batch processing successful. ASIN_RAW stripped.\n");
+                        postSuccess(callback, res, "BATCH_OK");
+                    } else {
+                        postFailure(callback, new Exception("Batch Failed: " + response.code() + " " + res));
+                    }
+                }
+            });
+
+        } catch (Exception e) {
+            postFailure(callback, e);
+        }
+    }
+
+    /**
+     * BOOTSTRAP SEEDING: Broadcasts a Single-Point anchor to create a new Category/Brand index.
+     */
+    public void broadcastHierarchyAnchor(Context context, String tier, String name, String path, String signature, CloudflareCallback callback) {
+        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+        
+        postLog(callback, "SEEDING: " + tier.toUpperCase() + " [" + name + "]\n");
+
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("tier", tier);
+            payload.put("name", name);
+            payload.put("path", path);
+
+            RequestBody body = RequestBody.create(payload.toString(), MediaType.parse("application/json"));
+
+            Request request = new Request.Builder()
+                    .url(db.getDbQueryUrl() + "/v1/seed")
+                    .post(body)
+                    .addHeader("X-AdNostr-Token", db.getDbApiToken())
+                    .addHeader("X-Admin-Sig", signature)
+                    .build();
+
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) { postFailure(callback, e); }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        postLog(callback, "SEED SUCCESS: Index anchor created on R2.\n");
+                        postSuccess(callback, name, tier);
+                    } else {
+                        postFailure(callback, new Exception("Seed Rejected: " + response.code()));
+                    }
+                }
+            });
+        } catch (Exception e) {
+            postFailure(callback, e);
+        }
+    }
+
+    // =========================================================================
+    // IO UTILITIES
+    // =========================================================================
+
+    private byte[] readBytesFromUri(Context context, Uri uri) {
+        try (InputStream is = context.getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[4096];
+            int len;
+            while ((len = is.read(buf)) != -1) bos.write(buf, 0, len);
+            return bos.toByteArray();
+        } catch (Exception e) { return null; }
+    }
+
+    private String getFileNameFromUri(Context context, Uri uri) {
+        String path = uri.getPath();
+        if (path != null && path.contains("/")) {
+            return path.substring(path.lastIndexOf("/") + 1);
+        }
+        return "file_" + System.currentTimeMillis() + ".json";
+    }
+
+    // =========================================================================
     // UI THREAD POSTING HELPERS (Keeps logic clean)
     // =========================================================================
 
@@ -291,8 +458,8 @@ public class CloudflareHelper {
         if (cb != null) mainHandler.post(() -> cb.onStatusUpdate(log));
     }
 
-    private void postSuccess(CloudflareCallback cb, String url, String fileId) {
-        if (cb != null) mainHandler.post(() -> cb.onSuccess(url, fileId));
+    private void postSuccess(CloudflareCallback cb, String url, String extra) {
+        if (cb != null) mainHandler.post(() -> cb.onSuccess(url, extra));
     }
 
     private void postFailure(CloudflareCallback cb, Exception e) {
