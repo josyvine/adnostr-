@@ -52,6 +52,10 @@ import java.util.concurrent.Executors;
  * 
  * PERFORMANCE FIX (ANTI-HANG):
  * - Disk Executor: Offloads blocking .commit() calls to a single-threaded background executor to prevent UI thread fsync hangs.
+ *
+ * ENHANCEMENT: 5-LAYER DATABASE QUERY API (NEW)
+ * - Separated Media API from Database Architect API.
+ * - Added persistence for Gold Standard vs Crowdsourced toggle state.
  */
 public class AdNostrDatabaseHelper {
 
@@ -82,9 +86,18 @@ public class AdNostrDatabaseHelper {
     private static final String KEY_USER_INTERESTS = "ad_interest_hashtags"; 
     private static final String KEY_AVAILABLE_HASHTAGS = "available_hashtag_pool";
 
-    // PRIVATE CLOUDFLARE R2 STORAGE
+    // PRIVATE CLOUDFLARE R2 STORAGE (MEDIA API - EXISTING)
     private static final String KEY_CLOUDFLARE_WORKER_URL = "cf_worker_api_url";
     private static final String KEY_CLOUDFLARE_SECRET_TOKEN = "cf_secret_auth_token";
+
+    // NEW: DATABASE QUERY API (5-LAYER JSON SYSTEM)
+    private static final String KEY_DB_QUERY_API_URL = "db_query_api_url";
+    private static final String KEY_DB_API_TOKEN = "db_api_secret_token";
+    
+    // NEW: DATA SOURCE UI PREFERENCE
+    private static final String KEY_PREFERRED_DATA_SOURCE = "preferred_data_source";
+    public static final String SOURCE_NOSTR = "NOSTR";
+    public static final String SOURCE_CLOUDFLARE = "CLOUDFLARE";
 
     // Media Deletion Mapping (Stores Cloudflare File IDs against Nostr Event IDs)
     private static final String KEY_ADVERTISER_DELETION_MAP = "local_deletion_urls_map";
@@ -486,7 +499,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // CLOUDFLARE R2 PRIVATE STORAGE SETTINGS
+    // CLOUDFLARE R2 PRIVATE STORAGE SETTINGS (MEDIA API)
     // =========================================================================
 
     public void saveCloudflareWorkerUrl(String url) {
@@ -503,6 +516,39 @@ public class AdNostrDatabaseHelper {
 
     public String getCloudflareSecretToken() {
         return prefs.getString(KEY_CLOUDFLARE_SECRET_TOKEN, "");
+    }
+
+    // =========================================================================
+    // NEW: DATABASE QUERY API (5-LAYER JSON ARCHITECT API)
+    // =========================================================================
+
+    public void saveDbQueryUrl(String url) {
+        prefs.edit().putString(KEY_DB_QUERY_API_URL, url).apply();
+    }
+
+    public String getDbQueryUrl() {
+        return prefs.getString(KEY_DB_QUERY_API_URL, "");
+    }
+
+    public void saveDbApiToken(String token) {
+        prefs.edit().putString(KEY_DB_API_TOKEN, token).apply();
+    }
+
+    public String getDbApiToken() {
+        return prefs.getString(KEY_DB_API_TOKEN, "");
+    }
+
+    // =========================================================================
+    // NEW: DATA SOURCE PREFERENCE
+    // =========================================================================
+
+    public void setDataSourcePreference(String source) {
+        prefs.edit().putString(KEY_PREFERRED_DATA_SOURCE, source).apply();
+    }
+
+    public String getDataSourcePreference() {
+        // PER INSTRUCTION: DEFAULT MUST BE CLOUDFLARE ON STARTUP
+        return prefs.getString(KEY_PREFERRED_DATA_SOURCE, SOURCE_CLOUDFLARE);
     }
 
     public void saveDeletionData(String eventId, String deletionUrl) {
