@@ -48,4 +48,36 @@
     <string name="settings_identity_header">Your Decentralized Identity</string>
     <string name="settings_role_header">Profile Management</string>
     <string name="btn_reset_data">RESET ALL DATA &amp; KEYS</string>
+
+    <!-- ================================================================= -->
+    <!-- NEW: CLOUDFLARE DATABASE ARCHITECT (ADMIN)                      -->
+    <!-- ================================================================= -->
+    <string name="admin_uploader_title">Cloud Database Architect</string>
+    <string name="admin_uploader_sub">Admin Verified: JSON Batch Seeding Engine</string>
+    
+    <!-- Dropdown Labels -->
+    <string name="label_main_category">Main Category</string>
+    <string name="label_sub_category">Sub Category</string>
+    <string name="label_brand_name">Brand Name</string>
+    
+    <!-- Seeding Logic -->
+    <string name="hint_type_new">Type to seed new layer…</string>
+    <string name="msg_seed_success">Index anchor created successfully.</string>
+    <string name="msg_seed_fail">Seed rejected by Worker.</string>
+    
+    <!-- Batch Upload UI -->
+    <string name="btn_select_files">SELECT JSON BATCH</string>
+    <string name="btn_start_upload">START CLOUD ARCHITECT</string>
+    <string name="terminal_header">FORENSIC UPLOAD TERMINAL</string>
+    
+    <!-- Progress & Status -->
+    <string name="status_pending">Pending</string>
+    <string name="status_uploading">Uploading…</string>
+    <string name="status_success">Success</string>
+    <string name="status_failed">Failed</string>
+    
+    <!-- Dual Source Toggle (HTML Bridge) -->
+    <string name="mode_standard">Crowdsourced</string>
+    <string name="mode_gold">Gold Standard</string>
+    <string name="search_hint_specs">Search specs (e.g. 128GB, Dimensity, 5G)</string>
 </resources>
