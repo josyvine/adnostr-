@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="4dp"
+    app:cardBackgroundColor="@color/hfs_background_dark"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <!-- 1. STATUS ICON: Changes based on FileUploadAdapter state -->
+        <ImageView
+            android:id="@+id/ivStatusIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/presence_invisible"
+            app:tint="@color/hfs_text_grey" />
+
+        <!-- 2. FILE DETAILS: Filename and Status Label -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvFileName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="middle"
+                android:singleLine="true"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                tools:text="B0GTRM9NQ7_RAW.json" />
+
+            <TextView
+                android:id="@+id/tvFileStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/status_pending"
+                android:textColor="@color/hfs_text_grey"
+                android:textSize="11sp"
+                android:textStyle="normal" />
+
+        </LinearLayout>
+
+        <!-- 3. INDIVIDUAL PROGRESS: Only visible when state = STATUS_UPLOADING -->
+        <ProgressBar
+            android:id="@+id/pbFileProgress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="8dp"
+            android:indeterminate="true"
+            android:visibility="gone"
+            app:layout_goneMarginEnd="0dp" />
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>
