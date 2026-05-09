@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <!-- THE BACKGROUND COLOR: Matches the AdNostr Card Dark style -->
+    <solid android:color="@color/hfs_card_dark" />
+
+    <!-- THE BORDER: A subtle 1dp stroke to define the chip boundaries -->
+    <stroke
+        android:width="1dp"
+        android:color="@color/hfs_border_grey" />
+
+    <!-- PILL SHAPE: High corner radius for the modern chip aesthetic -->
+    <corners android:radius="40dp" />
+
+</shape>
