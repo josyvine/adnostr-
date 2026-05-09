@@ -46,6 +46,9 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * 
  * 4-TIER HIERARCHY UPDATE:
  * - Memory Archive: Routes non-admin advertisers to the read-only ArchiveActivity.
+ *
+ * NEW ENHANCEMENT: CLOUDFLARE DATABASE ARCHITECT (STEP 2)
+ * - Added routing for CMD_CLOUDFLARE_DB to launch AdminDbUploaderActivity.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -175,6 +178,10 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             // 4-TIER UPDATE: Launch Read-Only Memory Archive for Advertiser B
             case SettingsIconAdapter.CMD_ARCHIVE:
                 startActivity(new Intent(requireContext(), ArchiveActivity.class));
+                break;
+            // NEW: ADMIN DATABASE ARCHITECT (STEP 2)
+            case SettingsIconAdapter.CMD_CLOUDFLARE_DB:
+                startActivity(new Intent(requireContext(), AdminDbUploaderActivity.class));
                 break;
         }
     }
