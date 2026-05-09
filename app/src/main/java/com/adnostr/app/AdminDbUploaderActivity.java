@@ -43,14 +43,14 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     private ActivityAdminDbUploaderBinding binding;
     private AdNostrDatabaseHelper db;
     private CloudflareHelper cloudHelper;
-    
+
     private List<String> mainCategories = new ArrayList<>();
     private List<String> subCategories = new ArrayList<>();
     private List<String> brands = new ArrayList<>();
-    
+
     private List<Uri> selectedFileUris = new ArrayList<>();
     private FileUploadAdapter fileAdapter;
-    
+
     private final StringBuilder forensicLogs = new StringBuilder();
 
     // Launcher for Multi-File Picker (JSON Batch)
@@ -117,7 +117,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 String input = s.toString().trim();
                 boolean exists = false;
-                
+
                 if (tier.equals("tier1")) exists = mainCategories.contains(input);
                 else if (tier.equals("tier2")) exists = subCategories.contains(input);
                 else if (tier.equals("tier3")) exists = brands.contains(input);
@@ -151,7 +151,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
      */
     private void performSeedBroadcast(String tier, String name) {
         logForensic("CRYPTO: Generating BIP-340 Seed Signature for " + name);
-        
+
         String path = generatePathForTier(tier, name);
         String signature = generateAdminSignature(name + "|" + path);
 
@@ -172,10 +172,23 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * FIXED: Relaxed MIME filtering to prevent greyed-out JSON files.
+     * Uses Multi-MIME support for application/json and text/plain.
+     */
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("application/json");
+        // Step 1: Use broad type to satisfy different Android File Manager implementations
+        intent.setType("*/*"); 
+        
+        // Step 2: Add specific MIME types for JSON and Plain Text
+        String[] mimeTypes = {"application/json", "text/plain", "application/octet-stream"};
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+        
+        // Step 3: Ensure only openable files are shown
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        
         filePickerLauncher.launch(intent);
     }
 
@@ -204,7 +217,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         }
 
         logForensic("VALIDATING: Checking ASIN_RAW hierarchy consistency...");
-        
+
         // Internal Validation: First file check
         if (!validateHierarchy(selectedFileUris.get(0))) {
             logForensic("CRITICAL: Selected files do not match chosen Category/Brand. Aborting.");
@@ -245,14 +258,14 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) sb.append(line);
-            
+
             JSONObject json = new JSONObject(sb.toString());
             JSONObject hier = json.optJSONObject("hierarchy");
             if (hier == null) return false;
 
             String m = hier.optString("main_category");
             String s = hier.optString("sub_category");
-            
+
             return m.equalsIgnoreCase(binding.etMainCat.getText().toString()) && 
                    s.equalsIgnoreCase(binding.etSubCat.getText().toString());
 
@@ -285,7 +298,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             event.put("pubkey", db.getPublicKey());
             event.put("kind", 10000); // Admin Auth Kind
             event.put("tags", new JSONArray());
-            
+
             JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), event);
             return signed.getString("sig");
         } catch (Exception e) { return ""; }
