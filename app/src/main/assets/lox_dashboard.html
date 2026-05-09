@@ -19,6 +19,7 @@
         --border: #E5E7EB;
         --danger: #FF3B30;
         --success: #25D366;
+        --cf-gold: #FFD700;
     }
 
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
@@ -48,13 +49,34 @@
     .section h2 span { display: flex; align-items: center; gap: 8px; }
     .section h2 i { color: var(--primary); }
 
-    /* Retrieve Utility Button */
-    .btn-retrieve-mini {
-        font-size: 11px; color: var(--primary); background: rgba(255, 106, 0, 0.1);
-        padding: 5px 10px; border-radius: 20px; cursor: pointer; border: none;
-        font-weight: 700; transition: 0.2s;
+    /* NEW: iOS Style Toggle Switch */
+    .source-container { display: flex; align-items: center; gap: 8px; }
+    .source-label { font-size: 10px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; }
+    .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+    .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--success); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* NEW: Search Bar UI */
+    .search-wrapper { 
+        display: none; 
+        background: #f0f0f0; 
+        border-radius: 10px; 
+        padding: 10px; 
+        margin-bottom: 15px; 
+        align-items: center; 
+        gap: 10px; 
     }
-    .btn-retrieve-mini:active { transform: scale(0.9); background: var(--primary); color: #fff; }
+    .search-wrapper i { color: var(--text-muted); }
+    .search-input { 
+        border: none; 
+        background: transparent; 
+        flex: 1; 
+        font-size: 14px; 
+        outline: none; 
+    }
 
     /* Inputs */
     .form-group { margin-bottom: 15px; position: relative; }
@@ -103,16 +125,6 @@
         background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center;
         font-size: 10px; color: var(--primary); font-weight: 700;
     }
-
-    /* iOS Style Toggle Switch */
-    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
-    .toggle-label { font-size: 15px; font-weight: 500; color: var(--text-main); }
-    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
-    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-    input:checked + .slider { background-color: var(--primary); }
-    input:checked + .slider:before { transform: translateX(20px); }
 
     /* Sticky Bottom Button */
     .bottom-bar {
@@ -182,7 +194,13 @@
     <div class="section">
         <h2>
             <span><i class="fa-solid fa-list"></i> Category</span>
-            <button class="btn-retrieve-mini" onclick="triggerManualRetrieval('Category')"><i class="fa-solid fa-sync"></i> Retrieve</button>
+            <div class="source-container">
+                <span class="source-label" id="lbl_cat_source">Gold Standard</span>
+                <label class="switch">
+                    <input type="checkbox" id="toggle_cat" checked onchange="syncToggles(this)">
+                    <span class="slider"></span>
+                </label>
+            </div>
         </h2>
         <div class="form-group">
             <select id="cat" onchange="handleCategoryChange()">
@@ -241,7 +259,7 @@
         <h2><i class="fa-solid fa-circle-info"></i> Basic Details</h2>
         <div class="form-group">
             <label>Ad Title</label>
-            <input type="text" id="title" placeholder="e.g. iPhone 13 128GB Excellent Condition">
+            <input type="text" id="title" placeholder="e.g. narzo 100 Lite 5G">
         </div>
         <div class="form-group">
             <label>Description</label>
@@ -253,8 +271,21 @@
     <div class="section" id="specsSection">
         <h2>
             <span><i class="fa-solid fa-cogs"></i> Technical Specifications</span>
-            <button class="btn-retrieve-mini" onclick="triggerManualRetrieval('Specs')"><i class="fa-solid fa-sync"></i> Retrieve</button>
+            <div class="source-container">
+                <span class="source-label" id="lbl_spec_source">Gold Standard</span>
+                <label class="switch">
+                    <input type="checkbox" id="toggle_spec" checked onchange="syncToggles(this)">
+                    <span class="slider"></span>
+                </label>
+            </div>
         </h2>
+        
+        <!-- NEW: SMART SEARCH BAR -->
+        <div class="search-wrapper" id="searchBar">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" class="search-input" id="specSearch" placeholder="Search specs (e.g. 128GB, Dimensity, 5G)" onkeyup="filterCloudflareModels()">
+        </div>
+
         <div id="specsContainer"></div>
     </div>
 
@@ -393,7 +424,6 @@
             </div>
             <div class="form-group">
                 <label>Sub Category(s)</label>
-                <!-- ENHANCEMENT 1: Textarea for Bulk Sub-Category Input -->
                 <textarea id="newSubCat" placeholder="e.g. Excavators&#10;Tractors&#10;Cranes" style="min-height: 80px;"></textarea>
                 <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple sub-categories (each on a new line).</p>
             </div>
@@ -414,7 +444,6 @@
         <div class="modal-body">
             <div class="form-group">
                 <label>Field Name(s)</label>
-                <!-- FIX: Accepts bulk entry with commas or new lines -->
                 <textarea id="newFieldName" placeholder="e.g. Max Power, Engine Type, Gearbox" style="min-height: 80px;"></textarea>
                 <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Enter one or multiple fields (each on a new line or comma separated).</p>
             </div>
@@ -436,7 +465,6 @@
             Bulk Seed Field Values <i class="fa-solid fa-xmark" style="pointer:cursor;" onclick="closeBulkValuesModal()"></i>
         </div>
         <div class="modal-body">
-            <!-- NEW: Context Status Label -->
             <p id="bulkContextInfo" style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 10px; display: none;"></p>
             
             <div class="form-group">
@@ -460,20 +488,41 @@
 
 <script>
     let uploadedImageUrls = [];
-    let lastSelectedCat = "Cars"; // Default initial category
-    
-    // NEW: Context Tracking for Bulk Adding
+    let lastSelectedCat = "Cars"; 
     let activeBulkContext = { fieldId: null, value: null };
+    
+    // ENHANCEMENT: DUAL-SOURCE STATE
+    let isCloudflareMode = true; 
+    let layer4Index = []; // Search Brain cache in RAM
 
-    // ADMIN SUPREMACY: Toggle Admin View via Java Bridge
     function injectAdminStatus(isAdmin) {
         if (isAdmin) {
             document.body.classList.add('is-admin');
-            logToAndroid("ADMIN: Supremacy UI features enabled in Dashboard.");
         }
     }
 
-    // BASE CATEGORY SPECIFICATIONS SCHEMA (Will be appended by Network Schema)
+    /**
+     * DUAL-SOURCE SYNC
+     * Link Category and Spec toggles. Update labels. Persist to Java.
+     */
+    function syncToggles(el) {
+        isCloudflareMode = el.checked;
+        document.getElementById('toggle_cat').checked = isCloudflareMode;
+        document.getElementById('toggle_spec').checked = isCloudflareMode;
+        
+        const modeText = isCloudflareMode ? "Gold Standard" : "Crowdsourced";
+        document.getElementById('lbl_cat_source').innerText = modeText;
+        document.getElementById('lbl_spec_source').innerText = modeText;
+        
+        document.getElementById('searchBar').style.display = isCloudflareMode ? 'flex' : 'none';
+
+        if (window.AndroidBridge) {
+            window.AndroidBridge.setDataSource(isCloudflareMode ? "CLOUDFLARE" : "NOSTR");
+        }
+
+        renderSpecs();
+    }
+
     const CATEGORY_SCHEMA = {
         "Cars": [
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Hyundai"},
@@ -563,7 +612,7 @@
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Sony"},
             {id: "model", label: "Model", type: "text", placeholder: "e.g. PS5"},
             {id: "game_type", label: "Game Type", type: "text", placeholder: "e.g. Action"},
-            {id: "accessories", label: "Accessories", type: "text", placeholder: "e.g. 2 Controllers"}
+            {id: "accessories", label: "Accessories", type: "text", placeholder: "2 Controllers"}
         ],
         "Electronics": [
             {id: "product_type", label: "Type", type: "text", placeholder: "e.g. AC"},
@@ -577,7 +626,7 @@
             {id: "material", label: "Material", type: "text", placeholder: "e.g. Teak Wood"},
             {id: "color", label: "Color", type: "text", placeholder: "e.g. Brown"},
             {id: "dimensions", label: "Dimensions", type: "text", placeholder: "e.g. 6x4 ft"},
-            {id: "assembly", label: "Assembly", type: "text", placeholder: "e.g. Required"}
+            {id: "assembly", label: "Assembly", type: "text", placeholder: "Required"}
         ],
         "Fashion": [
             {id: "gender", label: "Gender", type: "text", placeholder: "e.g. Men"},
@@ -592,7 +641,7 @@
             {id: "material", label: "Material", type: "text", placeholder: "e.g. Gold"},
             {id: "purity", label: "Purity", type: "text", placeholder: "e.g. 22K"},
             {id: "weight", label: "Weight", type: "text", placeholder: "e.g. 5g"},
-            {id: "hallmarked", label: "Hallmarked", type: "text", placeholder: "e.g. Yes"}
+            {id: "hallmarked", label: "Hallmarked", type: "text", placeholder: "Yes"}
         ],
         "Jobs": [
             {id: "job_type", label: "Job Type", type: "text", placeholder: "e.g. Full Time"},
@@ -605,14 +654,14 @@
             {id: "service_type", label: "Service Type", type: "text", placeholder: "e.g. Plumbing"},
             {id: "level", label: "Level", type: "text", placeholder: "e.g. Expert"},
             {id: "price_mode", label: "Price Mode", type: "text", placeholder: "e.g. Hourly"},
-            {id: "availability", label: "Availability", type: "text", placeholder: "e.g. 24/7"}
+            {id: "availability", label: "Availability", type: "text", placeholder: "24/7"}
         ],
         "Education": [
             {id: "course_type", label: "Course Type", type: "text", placeholder: "e.g. Coding"},
             {id: "mode", label: "Mode", type: "text", placeholder: "e.g. Online"},
             {id: "duration", label: "Duration", type: "text", placeholder: "e.g. 3 Months"},
             {id: "fees", label: "Fees", type: "text", placeholder: "e.g. 5000"},
-            {id: "batch_size", label: "Batch Size", type: "text", placeholder: "e.g. 10"}
+            {id: "batch_size", label: "Batch Size", type: "text", placeholder: "10"}
         ],
         "Industrial": [
             {id: "equipment_type", label: "Equipment Type", type: "text", placeholder: "e.g. Generator"},
@@ -624,78 +673,190 @@
             {id: "animal_type", label: "Animal Type", type: "text", placeholder: "e.g. Dog"},
             {id: "breed", label: "Breed", type: "text", placeholder: "e.g. Pug"},
             {id: "age", label: "Age", type: "text", placeholder: "e.g. 2 Months"},
-            {id: "gender", label: "Gender", type: "text", placeholder: "e.g. Male"},
-            {id: "vaccinated", label: "Vaccinated", type: "text", placeholder: "e.g. Yes"}
+            {id: "gender", label: "Gender", type: "text", placeholder: "Male"},
+            {id: "vaccinated", label: "Vaccinated", type: "text", placeholder: "Yes"}
         ],
         "Books": [
             {id: "type", label: "Type", type: "text", placeholder: "e.g. Novel"},
             {id: "genre", label: "Genre", type: "text", placeholder: "e.g. Fiction"},
             {id: "author", label: "Author", type: "text", placeholder: "e.g. J.K. Rowling"},
-            {id: "language", label: "Language", type: "text", placeholder: "e.g. English"}
+            {id: "language", label: "Language", type: "text", placeholder: "English"}
         ],
         "Music": [
             {id: "instrument_type", label: "Instrument", type: "text", placeholder: "e.g. Guitar"},
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Yamaha"},
-            {id: "type", label: "Type", type: "text", placeholder: "e.g. Acoustic"}
+            {id: "type", label: "Type", type: "text", placeholder: "Acoustic"}
         ],
         "Art": [
             {id: "item_type", label: "Item Type", type: "text", placeholder: "e.g. Painting"},
             {id: "age", label: "Age", type: "text", placeholder: "e.g. 50 Years"},
-            {id: "authenticity", label: "Authenticity", type: "text", placeholder: "e.g. Certified"},
-            {id: "artist", label: "Artist", type: "text", placeholder: "e.g. Unknown"}
+            {id: "authenticity", label: "Authenticity", type: "text", placeholder: "Certified"},
+            {id: "artist", label: "Artist", type: "text", placeholder: "Unknown"}
         ],
         "Digital": [
             {id: "product_type", label: "Type", type: "text", placeholder: "e.g. Software"},
-            {id: "license_type", label: "License", type: "text", placeholder: "e.g. Lifetime"},
-            {id: "version", label: "Version", type: "text", placeholder: "e.g. Pro 2.0"},
-            {id: "delivery_method", label: "Delivery", type: "text", placeholder: "e.g. Email Key"}
+            {id: "license_type", label: "License", type: "text", placeholder: "Lifetime"},
+            {id: "version", label: "Version", type: "text", placeholder: "Pro 2.0"},
+            {id: "delivery_method", label: "Delivery", type: "text", placeholder: "Email Key"}
         ],
         "Grocery": [
             {id: "category", label: "Category", type: "text", placeholder: "e.g. Spices"},
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Everest"},
-            {id: "weight", label: "Weight", type: "text", placeholder: "e.g. 500g"},
-            {id: "expiry", label: "Expiry", type: "text", placeholder: "e.g. Dec 2025"},
-            {id: "organic", label: "Organic", type: "text", placeholder: "e.g. Yes"}
+            {id: "weight", label: "Weight", type: "text", placeholder: "500g"},
+            {id: "expiry", label: "Expiry", type: "text", placeholder: "Dec 2025"},
+            {id: "organic", label: "Organic", type: "text", placeholder: "Yes"}
         ]
     };
 
-    // Initialize dynamic DOM
     window.onload = function() {
+        // ENHANCEMENT: Default startup to Gold Standard
+        syncToggles(document.getElementById('toggle_cat'));
         renderSpecs();
     };
 
-    // =======================================================================
-    // CROWDSOURCED SCHEMA LOGIC
-    // =======================================================================
-
     /**
-     * UPDATED: DUAL JOB RETRIEVAL BRIDGE
-     * Routes to retrieveCategorySchema() (Job 1) or ejectTechSpecValues() (Job 2).
+     * RETRIEVAL BRIDGE
+     * Mode dependent action logic.
      */
     function triggerManualRetrieval(type) {
-        logToAndroid(`ACTION: Manual Retrieval initiated for ${type}.`);
-        if (window.AndroidBridge) {
-            if (type === 'Category') {
-                // JOB 1: Discovery Scan for Structural anchors (T1, T2, T3)
-                if (window.AndroidBridge.retrieveCategorySchema) {
+        if (!isCloudflareMode) {
+            // LEGACY: Original Crowdsourced logic
+            if (window.AndroidBridge) {
+                if (type === 'Category') {
                     window.AndroidBridge.retrieveCategorySchema();
-                } else if (window.AndroidBridge.retrieveArchiveData) {
-                    window.AndroidBridge.retrieveArchiveData();
-                }
-            } else if (type === 'Specs') {
-                // JOB 2: Targeted Ejection for Data Pools (T4)
-                const selectedSub = document.getElementById('cat').value;
-                if (window.AndroidBridge.ejectTechSpecValues) {
+                } else if (type === 'Specs') {
+                    const selectedSub = document.getElementById('cat').value;
                     window.AndroidBridge.ejectTechSpecValues(selectedSub);
                 }
             }
+        } else {
+            // GOLD STANDARD: Cloudflare Hierarchical Fetch
+            fetchCloudflareCategories();
         }
+    }
+
+    /**
+     * CLOUDFLARE HIERARCHY LOGIC
+     */
+    function fetchCloudflareCategories() {
+        if (window.AndroidBridge) {
+            window.AndroidBridge.performCloudflareQuery("v1/categories.json");
+        }
+    }
+
+    /**
+     * SMART SEARCH FILTER (LAYER 4)
+     * Filters Brand and Model based on typing against Layer 4 RAM cache.
+     */
+    function filterCloudflareModels() {
+        const query = document.getElementById('specSearch').value.toLowerCase();
+        if (!layer4Index || layer4Index.length === 0) return;
+
+        const filtered = layer4Index.filter(item => 
+            item.brand.toLowerCase().includes(query) || 
+            item.model.toLowerCase().includes(query) || 
+            item.tags.toLowerCase().includes(query)
+        );
+
+        updateDropdownsFiltered(JSON.stringify(filtered));
+    }
+
+    /**
+     * Called by Java after Layer 4 search index is downloaded.
+     */
+    function updateDropdownsFiltered(jsonString) {
+        const data = JSON.parse(jsonString);
+        layer4Index = data; // Save to RAM for search
+
+        // Find Brand and Model fields
+        const brandInput = document.getElementById('brand');
+        const modelInput = document.getElementById('model');
+
+        if (brandInput && modelInput) {
+            // Convert Brand input to Select for Cloudflare Mode
+            brandInput.outerHTML = `<select id="brand" onchange="handleBrandSelection()"></select>`;
+            modelInput.outerHTML = `<select id="model" onchange="handleModelSelection()"></select>`;
+            
+            const bSel = document.getElementById('brand');
+            const uniqueBrands = [...new Set(data.map(i => i.brand))];
+            
+            bSel.innerHTML = '<option value="">Select Brand</option>';
+            uniqueBrands.forEach(b => bSel.add(new Option(b, b)));
+        }
+    }
+
+    function handleBrandSelection() {
+        const selectedBrand = document.getElementById('brand').value;
+        const mSel = document.getElementById('model');
+        mSel.innerHTML = '<option value="">Select Model</option>';
+
+        const models = layer4Index.filter(i => i.brand === selectedBrand);
+        models.forEach(m => {
+            const opt = new Option(m.model, m.asin);
+            mSel.add(opt);
+        });
+    }
+
+    function handleModelSelection() {
+        const asin = document.getElementById('model').value;
+        if (!asin) return;
+        
+        const mainCatSlug = slugify(document.getElementById('cat').value);
+        const subCatSlug = slugify(document.getElementById('cat').selectedOptions[0].text);
+        const brandSlug = slugify(document.getElementById('brand').value);
+        
+        const path = `v1/${mainCatSlug}/${subCatSlug}/${brandSlug}/${asin}.json`;
+        
+        if (window.AndroidBridge) {
+            window.AndroidBridge.fetchLayer5Spec(path);
+        }
+    }
+
+    /**
+     * Called by Java after Layer 5 full spec sheet is downloaded.
+     */
+    function applySpecSheet(jsonString) {
+        const fullData = JSON.parse(jsonString);
+        const specs = fullData.specifications;
+
+        // Auto-fill Title and MRP/Price if exists
+        document.getElementById('title').value = `${specs.brand} ${specs.model}`;
+        
+        // Deep recursive search to find all inputs by ID and set value
+        function fillForm(obj) {
+            for (const key in obj) {
+                const el = document.getElementById(key);
+                if (el) {
+                    if (typeof obj[key] === 'object') {
+                        // Handle objects like battery: {capacity: "7000mAh"}
+                        const subVal = Object.values(obj[key])[0];
+                        el.value = subVal;
+                    } else {
+                        el.value = obj[key];
+                    }
+                } else if (typeof obj[key] === 'object') {
+                    fillForm(obj[key]);
+                }
+            }
+        }
+        fillForm(specs);
+    }
+
+    function slugify(text) {
+        return text.toString().toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
     }
 
     function handleCategoryChange() {
         const catSelect = document.getElementById('cat');
         lastSelectedCat = catSelect.value;
         renderSpecs();
+
+        if (isCloudflareMode) {
+            const mainSlug = slugify(catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', ''));
+            const subSlug = slugify(lastSelectedCat);
+            const path = `v1/${mainSlug}/${subSlug}_query_index.json`;
+            if (window.AndroidBridge) window.AndroidBridge.performCloudflareQuery(path);
+        }
     }
 
     function openCategoryModal() {
@@ -759,7 +920,6 @@
         }
         
         closeCategoryModal();
-        logToAndroid(`Broadcasted ${subCats.length} new Categories to global schema.`);
     }
 
     function openFieldModal() {
@@ -796,7 +956,6 @@
 
                 if (window.AndroidBridge && window.AndroidBridge.publishNewField) {
                     window.AndroidBridge.publishNewField(currentCat, fieldName);
-                    logToAndroid(`Broadcasted new Field '${fieldName}' to global schema.`);
                 }
             }
         });
@@ -817,7 +976,6 @@
             }
 
             renderSpecs();
-            logToAndroid(`Requested permanent deletion of field: ${fieldLabel}`);
         }
     }
 
@@ -844,7 +1002,6 @@
             catSelect.selectedIndex = 0;
             lastSelectedCat = catSelect.value;
             handleCategoryChange();
-            logToAndroid(`Deleted full category: ${catName}`);
         }
     }
 
@@ -923,7 +1080,6 @@
 
         if (window.AndroidBridge && window.AndroidBridge.publishBulkSpecValues) {
             window.AndroidBridge.publishBulkSpecValues(lastSelectedCat, fieldId, valuesRaw, activeBulkContext.fieldId || "", activeBulkContext.value || "");
-            logToAndroid(`Broadcasted contextual bulk values for '${fieldId}'.`);
         }
         
         closeBulkValuesModal();
@@ -933,7 +1089,6 @@
         try {
             const schema = JSON.parse(jsonString);
             const catSelect = document.getElementById('cat');
-            const customGroup = document.getElementById('og_custom');
             const hiddenItems = schema.hidden_hardcoded || [];
             
             if (hiddenItems.length > 0) {
