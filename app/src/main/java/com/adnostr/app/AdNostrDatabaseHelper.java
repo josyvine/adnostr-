@@ -54,8 +54,9 @@ import java.util.concurrent.Executors;
  * - Disk Executor: Offloads blocking .commit() calls to a single-threaded background executor to prevent UI thread fsync hangs.
  *
  * ENHANCEMENT: 5-LAYER DATABASE QUERY API (NEW)
- * - Separated Media API from Database Architect API.
- * - Added persistence for Gold Standard vs Crowdsourced toggle state.
+ * - Added hardcoded defaults for Architect API and Secret Token.
+ * - URL: https://adnostr-db-architect.joycvine.workers.dev
+ * - Token: 205000
  */
 public class AdNostrDatabaseHelper {
 
@@ -499,7 +500,7 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
-    // CLOUDFLARE R2 PRIVATE STORAGE SETTINGS (MEDIA API)
+    // CLOUDFLARE R2 PRIVATE STORAGE SETTINGS (MEDIA API - EXISTING)
     // =========================================================================
 
     public void saveCloudflareWorkerUrl(String url) {
@@ -527,7 +528,8 @@ public class AdNostrDatabaseHelper {
     }
 
     public String getDbQueryUrl() {
-        return prefs.getString(KEY_DB_QUERY_API_URL, "");
+        // ENHANCEMENT: HARDCODED DEFAULT FROM CLOUDFLARE
+        return prefs.getString(KEY_DB_QUERY_API_URL, "https://adnostr-db-architect.joycvine.workers.dev");
     }
 
     public void saveDbApiToken(String token) {
@@ -535,7 +537,8 @@ public class AdNostrDatabaseHelper {
     }
 
     public String getDbApiToken() {
-        return prefs.getString(KEY_DB_API_TOKEN, "");
+        // ENHANCEMENT: HARDCODED DEFAULT FROM CLOUDFLARE
+        return prefs.getString(KEY_DB_API_TOKEN, "205000");
     }
 
     // =========================================================================
