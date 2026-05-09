@@ -53,4 +53,22 @@
     <color name="lt_backgroundColor">#FFFFFF</color>
     <color name="lt_textColor">#212121</color>
     <color name="lt_headerTextColor">#000000</color>
+
+    <!-- ================================================================= -->
+    <!-- NEW: ARCHITECT & TOGGLE UI COLORS                               -->
+    <!-- ================================================================= -->
+    
+    <!-- Forensic Terminal Colors -->
+    <color name="terminal_background">#0A0A0A</color>
+    <color name="terminal_text_green">#00FF41</color>
+    <color name="terminal_text_amber">#FFB000</color>
+    
+    <!-- iOS Style Toggle Colors -->
+    <color name="toggle_on_track">#34C759</color>
+    <color name="toggle_off_track">#39393D</color>
+    <color name="toggle_thumb">#FFFFFF</color>
+
+    <!-- Cloud Architect Accents -->
+    <color name="architect_gold">#FFD700</color>
+    <color name="seed_tick_green">#25D366</color>
 </resources>
