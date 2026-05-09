@@ -61,6 +61,12 @@ import java.util.UUID;
  * 4-TIER RETRIEVAL UPDATE:
  * - Job 1 (retrieveCategorySchema): Discovery scan for T1, T2, and T3 anchors.
  * - Job 2 (ejectTechSpecValues): Targeted ejection of T4 values for a specific sub-category.
+ * 
+ * ENHANCEMENT: DUAL-SOURCE TOGGLE & CLOUDFLARE QUERY ENGINE (NEW)
+ * - Implemented setDataSource to persist toggle state.
+ * - Added performCloudflareQuery for Layer 4 Index search.
+ * - Added fetchLayer5Spec for ASIN-based deep specification injection.
+ * - Default State: Forced to Cloudflare on activity startup.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -93,6 +99,9 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
         // UI AUTO-REFRESH: Register this activity to listen for real-time schema updates
         wsManager.addSchemaListener(this);
+
+        // ENHANCEMENT: FORCE STARTUP DEFAULT TO CLOUDFLARE
+        db.setDataSourcePreference(AdNostrDatabaseHelper.SOURCE_CLOUDFLARE);
 
         filePickerLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -266,6 +275,74 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
             technicalConsole.append(filteredMsg).append("\n");
             Log.d(TAG, "Forensic: " + filteredMsg);
+        }
+
+        /**
+         * =========================================================================
+         * NEW: DUAL-SOURCE TOGGLE BRIDGE
+         * Saves the user preference (Nostr vs Cloudflare).
+         * =========================================================================
+         */
+        @JavascriptInterface
+        public void setDataSource(String source) {
+            db.setDataSourcePreference(source);
+            logTechnicalEvent("UI: Data Source set to " + source);
+        }
+
+        /**
+         * =========================================================================
+         * NEW: CLOUDFLARE QUERY BRIDGE (LAYER 4)
+         * Fetches high-density search index for the selected sub-category.
+         * =========================================================================
+         */
+        @JavascriptInterface
+        public void performCloudflareQuery(String path) {
+            runOnUiThread(() -> {
+                logTechnicalEvent("CF: Fetching Search Index (Layer 4) for " + path);
+                cloudHelper.fetchSchemaLayer(CreateProductActivity.this, path, new CloudflareHelper.CloudflareCallback() {
+                    @Override public void onStatusUpdate(String log) { logTechnicalEvent("CF_TRACE: " + log); }
+                    @Override public void onSuccess(String response, String extra) {
+                        runOnUiThread(() -> {
+                            String base64 = Base64.encodeToString(response.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+                            binding.wvProductCreator.evaluateJavascript("updateDropdownsFiltered(decodeURIComponent(escape(window.atob('" + base64 + "'))))", null);
+                        });
+                    }
+                    @Override public void onFailure(Exception e) { logTechnicalEvent("CF_ERROR: " + e.getMessage()); }
+                });
+            });
+        }
+
+        /**
+         * =========================================================================
+         * NEW: CLOUDFLARE SPEC BRIDGE (LAYER 5)
+         * Fetches full pre-filled specification sheet for an ASIN.
+         * =========================================================================
+         */
+        @JavascriptInterface
+        public void fetchLayer5Spec(String asinPath) {
+            runOnUiThread(() -> {
+                logTechnicalEvent("CF: Fetching Spec Sheet (Layer 5) for " + asinPath);
+                cloudHelper.fetchSchemaLayer(CreateProductActivity.this, asinPath, new CloudflareHelper.CloudflareCallback() {
+                    @Override public void onStatusUpdate(String log) { logTechnicalEvent("CF_TRACE: " + log); }
+                    @Override public void onSuccess(String response, String extra) {
+                        runOnUiThread(() -> {
+                            String base64 = Base64.encodeToString(response.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+                            binding.wvProductCreator.evaluateJavascript("applySpecSheet(decodeURIComponent(escape(window.atob('" + base64 + "'))))", null);
+                            
+                            // AUTO-HEAL: Re-sign and re-broadcast Cloudflare Gold Standard data to Nostr
+                            try {
+                                JSONObject specObj = new JSONObject(response);
+                                JSONObject specs = specObj.optJSONObject("specifications");
+                                String cat = specObj.optJSONObject("hierarchy").optString("sub_category");
+                                if (specs != null) {
+                                    MarketplaceSchemaManager.broadcastSpecValues(CreateProductActivity.this, cat, specs);
+                                }
+                            } catch (Exception ignored) {}
+                        });
+                    }
+                    @Override public void onFailure(Exception e) { logTechnicalEvent("CF_ERROR: " + e.getMessage()); }
+                });
+            });
         }
 
         /**
