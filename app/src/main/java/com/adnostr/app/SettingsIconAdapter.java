@@ -29,6 +29,10 @@ import java.util.List;
  * 
  * 4-TIER HIERARCHY UPDATE:
  * - Memory Archive: Added CMD_ARCHIVE (13) for Advertiser B to anchor the network.
+ * 
+ * NEW ENHANCEMENT: CLOUDFLARE DATABASE ARCHITECT (STEP 2)
+ * - Added CMD_CLOUDFLARE_DB (14) for Admin-only JSON Batch Uploading and Seeding.
+ * - Icon strictly guarded by isAdmin security check.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -61,6 +65,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     // 4-TIER UPDATE: Archive Identifier for Advertiser B
     public static final int CMD_ARCHIVE = 13;
 
+    // NEW: CLOUDFLARE DATABASE ARCHITECT IDENTIFIER
+    public static final int CMD_CLOUDFLARE_DB = 14;
+
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
 
@@ -74,6 +81,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     /**
      * Constructor filters the icon list based on the User's Role and Admin Status.
      * UPDATED: Implements conditional logic for Admin Moderator Console vs B Archive.
+     * UPDATED: Injects the Database Architect icon for Admin verified sessions.
      */
     public SettingsIconAdapter(String userRole, boolean isAdmin, OnSettingClickListener listener) {
         this.listener = listener;
@@ -118,6 +126,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         if (isAdmin) {
             // Admin receives full Moderator privileges
             items.add(new SettingItem(CMD_REPORT, "Report", R.drawable.ic_nav_report));
+            
+            // NEW: ADMIN-ONLY DATABASE ARCHITECT ICON
+            items.add(new SettingItem(CMD_CLOUDFLARE_DB, "Architect", R.drawable.database_search_24px));
         } else if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
             // Advertiser B receives a read-only Memory Archive to anchor the network
             items.add(new SettingItem(CMD_ARCHIVE, "Archive", R.drawable.ic_nav_report));
