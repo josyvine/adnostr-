@@ -64,6 +64,10 @@ import java.util.concurrent.TimeUnit;
  * - Targeted Ejection: Supports dual-job retrieval via targetSubCategory filter.
  * - Crash Fix: Validates raw content strings before JSONObject conversion.
  * - Hierarchy Preservation: Restored internal de-duplication loop for healing.
+ * 
+ * ENHANCEMENT: CLOUDFLARE PIVOT & AUTO-HEAL ORCHESTRATION
+ * - Pivot Trigger: If Nostr results = 0 and Toggle = Gold Standard, pivot to Cloudflare R2.
+ * - Network Restoration: Re-signs and re-broadcasts Cloudflare Gold Standard data to Nostr Kind 30007.
  */
 public class MarketplaceSchemaManager {
 
@@ -91,6 +95,8 @@ public class MarketplaceSchemaManager {
      * Fetches all crowdsourced categories, fields, and historical values from the network.
      * UPDATED: Added targetSubCategory for Discovery (null) or Ejection (selectedSub).
      * FIXED: java.lang.String to JSONObject conversion crash resolved.
+     * 
+     * ENHANCEMENT: Pivot to Cloudflare if Nostr Sync returns zero results in Gold Standard mode.
      */
     public static void fetchGlobalSchema(Context context, String targetSubCategory, SchemaFetchCallback callback, TechnicalLogListener logListener) {
         new Thread(() -> {
@@ -197,6 +203,47 @@ public class MarketplaceSchemaManager {
                 }
 
                 latch.await(20, TimeUnit.SECONDS);
+
+                // =========================================================================
+                // ENHANCEMENT: CLOUDFLARE FALLBACK PIVOT
+                // =========================================================================
+                boolean isNostrEmpty = categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty();
+                String dataPreference = db.getDataSourcePreference();
+
+                if (isNostrEmpty && dataPreference.equals(AdNostrDatabaseHelper.SOURCE_CLOUDFLARE)) {
+                    if (logListener != null) logListener.onLogGenerated("NOSTR: Results are 0. Pivoting to Cloudflare Gold Standard Mode...");
+
+                    // We perform a sync fetch of the Layer 1 Categories to fill the gap
+                    CloudflareHelper cfHelper = new CloudflareHelper();
+                    final CountDownLatch cfLatch = new CountDownLatch(1);
+                    
+                    cfHelper.fetchSchemaLayer(context, "v1/categories.json", new CloudflareHelper.CloudflareCallback() {
+                        @Override public void onStatusUpdate(String log) { if (logListener != null) logListener.onLogGenerated("CF_PIVOT: " + log); }
+                        @Override public void onSuccess(String response, String extra) {
+                            try {
+                                JSONArray cfCats = new JSONArray(response);
+                                for (int i = 0; i < cfCats.length(); i++) {
+                                    JSONObject item = cfCats.getJSONObject(i);
+                                    JSONObject content = new JSONObject();
+                                    content.put("type", "category");
+                                    content.put("main", item.optString("main"));
+                                    content.put("sub", item.optString("sub"));
+                                    content.put("_event_id", "cf_" + UUID.randomUUID().toString());
+                                    categoryEvents.add(content);
+                                    
+                                    // RESTORE COLLECTIVE MEMORY: Push Gold Standard data back to Nostr
+                                    broadcastNewCategory(context, item.optString("main"), item.optString("sub"));
+                                }
+                            } catch (Exception e) {
+                                if (logListener != null) logListener.onLogGenerated("CF_ERROR: JSON parse failed during pivot.");
+                            }
+                            cfLatch.countDown();
+                        }
+                        @Override public void onFailure(Exception e) { cfLatch.countDown(); }
+                    });
+                    
+                    cfLatch.await(10, TimeUnit.SECONDS);
+                }
 
                 if (logListener != null) logListener.onLogGenerated("MERGING: Synchronizing local archive with network results...");
 
@@ -344,10 +391,10 @@ public class MarketplaceSchemaManager {
                 // =========================================================================
                 // STEP 2: RE-CACHE & AUTO-HEAL
                 // =========================================================================
-                boolean networkEmpty = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
+                boolean isNetworkEmptyFinal = (categoryEvents.isEmpty() && fieldEvents.isEmpty() && valueEvents.isEmpty());
                 boolean anchorValid = (cachedSchema != null && cachedSchema.length() > 50);
 
-                if (networkEmpty && anchorValid) {
+                if (isNetworkEmptyFinal && anchorValid) {
                     if (logListener != null) logListener.onLogGenerated("WARNING: Network amnesia detected. Ejecting local archive...");
                     executeSequentialHealing(context, logListener);
                 } else {
@@ -542,7 +589,7 @@ public class MarketplaceSchemaManager {
 
             try {
                 JSONObject filter = new JSONObject();
-                filter.put("kinds", new JSONArray().put(30006).put(30007));
+                filter.put("kinds", new JSONArray().put(30006).put(30007).put(5));
                 if (!db.isAdmin()) {
                     filter.put("authors", new JSONArray().put(myPubKey));
                 }
