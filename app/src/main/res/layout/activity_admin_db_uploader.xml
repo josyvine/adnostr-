@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/hfs_background_dark"
+    tools:context=".AdminDbUploaderActivity">
+
+    <!-- 1. TOOLBAR: Cloud Database Architect Branding -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbarArchitect"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/hfs_card_dark"
+        app:titleTextColor="@color/white"
+        app:navigationIcon="@drawable/ic_cmd_browse"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:padding="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/terminalContainer"
+        app:layout_constraintTop_toBottomOf="@id/toolbarArchitect">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- ADMIN VERIFIED BADGE -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/hfs_chip_background"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="4dp"
+                android:layout_marginBottom="24dp">
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:src="@drawable/ic_seed_tick"
+                    app:tint="@color/architect_gold"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ADMIN VERIFIED"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/architect_gold"
+                    android:layout_marginStart="6dp"/>
+            </LinearLayout>
+
+            <!-- BLOCK 1: HIERARCHY SEEDING (Tiers 1, 2, 3) -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="CONTEXT SEEDING"
+                android:textColor="@color/hfs_active_blue"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1"
+                android:layout_marginBottom="12dp"/>
+
+            <!-- Main Category Dropdown -->
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/label_main_category"
+                android:layout_marginBottom="16dp"
+                app:hintTextColor="@color/hfs_text_grey"
+                app:boxStrokeColor="@color/hfs_border_grey">
+                <AutoCompleteTextView
+                    android:id="@+id/etMainCat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/white"
+                    android:inputType="text" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Sub Category Dropdown -->
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/label_sub_category"
+                android:layout_marginBottom="16dp"
+                app:hintTextColor="@color/hfs_text_grey"
+                app:boxStrokeColor="@color/hfs_border_grey">
+                <AutoCompleteTextView
+                    android:id="@+id/etSubCat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/white"
+                    android:inputType="text" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Brand Name Dropdown -->
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/label_brand_name"
+                android:layout_marginBottom="32dp"
+                app:hintTextColor="@color/hfs_text_grey"
+                app:boxStrokeColor="@color/hfs_border_grey">
+                <AutoCompleteTextView
+                    android:id="@+id/etBrand"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/white"
+                    android:inputType="text" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- BLOCK 2: BATCH SELECTION -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="BATCH ARCHITECT (ASIN_RAW)"
+                android:textColor="@color/hfs_active_blue"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1"
+                android:layout_marginBottom="12dp"/>
+
+            <Button
+                android:id="@+id/btnSelectFiles"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="@string/btn_select_files"
+                android:textColor="@color/white"
+                app:strokeColor="@color/hfs_active_blue"
+                app:icon="@drawable/ic_nav_report"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- File List (RecyclerView) -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvBatchFiles"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:background="@color/hfs_card_dark"
+                android:padding="8dp"
+                android:layout_marginBottom="24dp"
+                tools:listitem="@layout/item_upload_file_row"/>
+
+            <Button
+                android:id="@+id/btnStartBatchUpload"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:text="@string/btn_start_upload"
+                android:backgroundTint="@color/hfs_active_green"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp"/>
+
+            <ProgressBar
+                android:id="@+id/pbUpload"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:layout_marginBottom="16dp"/>
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- BLOCK 3: FORENSIC TERMINAL (FIXED BOTTOM) -->
+    <LinearLayout
+        android:id="@+id/terminalContainer"
+        android:layout_width="match_parent"
+        android:layout_height="180dp"
+        android:orientation="vertical"
+        android:background="@color/terminal_background"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/terminal_header"
+            android:textColor="@color/black"
+            android:background="@color/architect_gold"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="4dp"
+            android:textSize="10sp"
+            android:textStyle="bold"/>
+
+        <ScrollView
+            android:id="@+id/svTerminal"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="12dp">
+            <TextView
+                android:id="@+id/tvForensicTerminal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="ARCHITECT TERMINAL STANDBY..."
+                android:textColor="@color/terminal_text_green"
+                android:textSize="11sp"/>
+        </ScrollView>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
