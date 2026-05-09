@@ -160,6 +160,14 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AdNostr.NoActionBar" />
 
+        <!-- NEW: ADMIN DATABASE ARCHITECT (JSON UPLOADER) -->
+        <activity
+            android:name=".AdminDbUploaderActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.AdNostr.NoActionBar" />
+
         <!-- ========================================================================= -->
         <!-- 4-TIER HIERARCHY: MEMORY ARCHIVE (THE TRUTH ANCHOR)                       -->
         <!-- FIXED: Added declaration to resolve ActivityNotFoundException crash.      -->
