@@ -41,6 +41,7 @@ import java.util.List;
  * GLITCH FIXES:
  * - Implemented Auto-Tier fetching: Selecting a parent dropdown now populates the child dropdown.
  * - Relaxed Hierarchy Validation: Trimmed strings and unified slug logic to prevent false "Mismatch" aborts.
+ * - Recursive Batching Engine: Uploads files in chunks of 20 to prevent Cloudflare Worker timeouts.
  */
 public class AdminDbUploaderActivity extends AppCompatActivity {
 
@@ -57,6 +58,9 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     private FileUploadAdapter fileAdapter;
 
     private final StringBuilder forensicLogs = new StringBuilder();
+    
+    // BATCH CONFIGURATION
+    private static final int CHUNK_SIZE = 20;
 
     // Launcher for Multi-File Picker (JSON Batch)
     private final ActivityResultLauncher<Intent> filePickerLauncher = registerForActivityResult(
@@ -181,7 +185,6 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
                     else if (tier.equals("tier3")) brands.add(name);
                     Toast.makeText(AdminDbUploaderActivity.this, "Seed Success", Toast.LENGTH_SHORT).show();
                     
-                    // Force refresh icon state
                     binding.etMainCat.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
                     binding.etSubCat.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
                     binding.etBrand.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
@@ -193,10 +196,6 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         });
     }
 
-    /**
-     * FIXED: Relaxed MIME filtering to prevent greyed-out JSON files.
-     * Uses Multi-MIME support for application/json and text/plain.
-     */
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("*/*"); 
@@ -217,13 +216,12 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         } else if (data.getData() != null) {
             selectedFileUris.add(data.getData());
         }
-        fileAdapter.setItems(selectedFileUris); // Using specialized setter
+        fileAdapter.setItems(selectedFileUris); 
         logForensic("BATCH: Selected " + selectedFileUris.size() + " JSON files.");
     }
 
     /**
-     * BATCH UPLOAD LOGIC: Instructions Step 5.
-     * Validates ASIN_RAW, strips _raw, and streams to R2.
+     * RECURSIVE CHUNKING LOGIC: Handles batches of 20.
      */
     private void startBatchProcess() {
         if (selectedFileUris.isEmpty()) {
@@ -233,35 +231,68 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
 
         logForensic("VALIDATING: Checking ASIN_RAW hierarchy consistency...");
 
-        // Internal Validation: First file check
         if (!validateHierarchy(selectedFileUris.get(0))) {
             logForensic("CRITICAL: Selected files do not match chosen Category/Brand. Aborting.");
             return;
         }
 
+        binding.pbUpload.setVisibility(View.VISIBLE);
+        binding.pbUpload.setMax(selectedFileUris.size());
+        binding.pbUpload.setProgress(0);
+
+        // Start recursive upload at index 0
+        uploadNextChunk(0);
+    }
+
+    /**
+     * RECURSIVE ENGINE: Splits selected files into groups of CHUNK_SIZE (20).
+     * Prevents Cloudflare Worker Timeouts.
+     */
+    private void uploadNextChunk(final int startIndex) {
+        if (startIndex >= selectedFileUris.size()) {
+            runOnUiThread(() -> {
+                binding.pbUpload.setVisibility(View.GONE);
+                logForensic("FINAL: All chunks processed. Database Architecting Complete.");
+                Toast.makeText(AdminDbUploaderActivity.this, "Total Batch Success", Toast.LENGTH_LONG).show();
+            });
+            return;
+        }
+
+        int endIndex = Math.min(startIndex + CHUNK_SIZE, selectedFileUris.size());
+        final List<Uri> chunkUris = selectedFileUris.subList(startIndex, endIndex);
+
+        logForensic("CHUNK: Uploading batch " + (startIndex / CHUNK_SIZE + 1) + " (Files " + (startIndex + 1) + " to " + endIndex + ")...");
+
         String targetPath = "v1/" + slugify(binding.etMainCat.getText().toString()) + "/" 
                            + slugify(binding.etSubCat.getText().toString()) + "/" 
                            + slugify(binding.etBrand.getText().toString()) + "/";
 
-        String sigPayload = "batch|" + selectedFileUris.size() + "|" + targetPath;
+        String sigPayload = "chunk|" + startIndex + "|" + chunkUris.size() + "|" + targetPath;
         String signature = generateAdminSignature(sigPayload);
 
-        binding.pbUpload.setVisibility(View.VISIBLE);
-        binding.pbUpload.setMax(selectedFileUris.size());
-
-        cloudHelper.uploadBatchToR2(this, selectedFileUris, targetPath, signature, new CloudflareHelper.CloudflareCallback() {
+        cloudHelper.uploadBatchToR2(this, chunkUris, targetPath, signature, new CloudflareHelper.CloudflareCallback() {
             @Override public void onStatusUpdate(String log) { logForensic(log); }
             @Override public void onSuccess(String response, String extra) {
                 runOnUiThread(() -> {
-                    binding.pbUpload.setVisibility(View.GONE);
-                    logForensic("FINAL: Batch complete. Layer 4 Query Index hydrated.");
-                    Toast.makeText(AdminDbUploaderActivity.this, "Database Architected Successfully", Toast.LENGTH_LONG).show();
+                    // Update UI Progress
+                    binding.pbUpload.setProgress(endIndex);
+                    
+                    // Mark files as success in the list
+                    for (Uri uri : chunkUris) {
+                        fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_SUCCESS);
+                    }
+
+                    // RECURSION: Trigger next chunk
+                    uploadNextChunk(startIndex + CHUNK_SIZE);
                 });
             }
             @Override public void onFailure(Exception e) {
                 runOnUiThread(() -> {
                     binding.pbUpload.setVisibility(View.GONE);
-                    logForensic("FAILED: Worker rejected batch - " + e.getMessage());
+                    logForensic("FAILED: Worker rejected chunk at index " + startIndex + " - " + e.getMessage());
+                    for (Uri uri : chunkUris) {
+                        fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_FAILED);
+                    }
                 });
             }
         });
@@ -278,7 +309,6 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             JSONObject hier = json.optJSONObject("hierarchy");
             if (hier == null) return false;
 
-            // GLITCH FIX: Use trimmed and normalized slug logic for validation
             String m = slugify(hier.optString("main_category"));
             String s = slugify(hier.optString("sub_category"));
             
@@ -309,9 +339,6 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         });
     }
 
-    /**
-     * GLITCH FIX: Populate Sub-Category based on Main selection
-     */
     private void loadSubCategories(String mainCat) {
         String path = "v1/" + slugify(mainCat) + ".json";
         cloudHelper.fetchSchemaLayer(this, path, new CloudflareHelper.CloudflareCallback() {
@@ -333,9 +360,6 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         });
     }
 
-    /**
-     * GLITCH FIX: Populate Brands based on Sub selection
-     */
     private void loadBrands(String mainCat, String subCat) {
         String path = "v1/" + slugify(mainCat) + "/" + slugify(subCat) + ".json";
         cloudHelper.fetchSchemaLayer(this, path, new CloudflareHelper.CloudflareCallback() {
