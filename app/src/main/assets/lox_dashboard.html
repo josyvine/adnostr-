@@ -51,7 +51,7 @@
 
     /* NEW: iOS Style Toggle Switch */
     .source-container { display: flex; align-items: center; gap: 8px; }
-    .source-label { font-size: 10px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; }
+    .source-label { font-size: 10px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
     .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
@@ -62,20 +62,25 @@
     /* NEW: Search Bar UI */
     .search-wrapper { 
         display: none; 
-        background: #f0f0f0; 
+        background: #f4f4f4; 
+        border: 1.5px solid var(--border);
         border-radius: 10px; 
-        padding: 10px; 
-        margin-bottom: 15px; 
+        padding: 10px 14px; 
+        margin-bottom: 20px; 
         align-items: center; 
-        gap: 10px; 
+        gap: 12px; 
+        transition: 0.3s;
     }
-    .search-wrapper i { color: var(--text-muted); }
+    .search-wrapper:focus-within { border-color: var(--primary); background: #fff; }
+    .search-wrapper i { color: var(--text-muted); font-size: 14px; }
     .search-input { 
         border: none; 
         background: transparent; 
         flex: 1; 
-        font-size: 14px; 
+        font-size: 15px; 
         outline: none; 
+        font-weight: 500;
+        color: var(--text-main);
     }
 
     /* Inputs */
@@ -259,7 +264,7 @@
         <h2><i class="fa-solid fa-circle-info"></i> Basic Details</h2>
         <div class="form-group">
             <label>Ad Title</label>
-            <input type="text" id="title" placeholder="e.g. narzo 100 Lite 5G">
+            <input type="text" id="title" placeholder="e.g. iPhone 13 128GB Excellent Condition">
         </div>
         <div class="form-group">
             <label>Description</label>
@@ -313,7 +318,7 @@
             </div>
         </div>
         <div class="toggle-row" style="margin-top: 15px;">
-            <span class="toggle-label">Negotiable Price</span>
+            <span class="toggle-label" style="font-size:15px; font-weight:500;">Negotiable Price</span>
             <label class="switch"><input type="checkbox" id="nego"><span class="slider"></span></label>
         </div>
     </div>
@@ -380,11 +385,11 @@
         <div style="height: 1px; background: var(--border); margin: 20px 0;"></div>
 
         <div class="toggle-row">
-            <span class="toggle-label">Enable In-App Chat</span>
+            <span class="toggle-label" style="font-size:15px; font-weight:500;">Enable In-App Chat</span>
             <label class="switch"><input type="checkbox" id="opt_chat" checked><span class="slider"></span></label>
         </div>
         <div class="toggle-row">
-            <span class="toggle-label">Show Phone Number Publicly</span>
+            <span class="toggle-label" style="font-size:15px; font-weight:500;">Show Phone Number Publicly</span>
             <label class="switch"><input type="checkbox" id="opt_phone" checked><span class="slider"></span></label>
         </div>
         <div class="toggle-row">
@@ -498,6 +503,7 @@
     function injectAdminStatus(isAdmin) {
         if (isAdmin) {
             document.body.classList.add('is-admin');
+            logToAndroid("ADMIN: Supremacy UI features enabled in Dashboard.");
         }
     }
 
@@ -523,6 +529,7 @@
         renderSpecs();
     }
 
+    // BASE CATEGORY SPECIFICATIONS SCHEMA (Will be appended by Network Schema)
     const CATEGORY_SCHEMA = {
         "Cars": [
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Hyundai"},
@@ -612,7 +619,7 @@
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Sony"},
             {id: "model", label: "Model", type: "text", placeholder: "e.g. PS5"},
             {id: "game_type", label: "Game Type", type: "text", placeholder: "e.g. Action"},
-            {id: "accessories", label: "Accessories", type: "text", placeholder: "2 Controllers"}
+            {id: "accessories", label: "Accessories", type: "text", placeholder: "e.g. 2 Controllers"}
         ],
         "Electronics": [
             {id: "product_type", label: "Type", type: "text", placeholder: "e.g. AC"},
@@ -626,7 +633,7 @@
             {id: "material", label: "Material", type: "text", placeholder: "e.g. Teak Wood"},
             {id: "color", label: "Color", type: "text", placeholder: "e.g. Brown"},
             {id: "dimensions", label: "Dimensions", type: "text", placeholder: "e.g. 6x4 ft"},
-            {id: "assembly", label: "Assembly", type: "text", placeholder: "Required"}
+            {id: "assembly", label: "Assembly", type: "text", placeholder: "e.g. Required"}
         ],
         "Fashion": [
             {id: "gender", label: "Gender", type: "text", placeholder: "e.g. Men"},
@@ -641,7 +648,7 @@
             {id: "material", label: "Material", type: "text", placeholder: "e.g. Gold"},
             {id: "purity", label: "Purity", type: "text", placeholder: "e.g. 22K"},
             {id: "weight", label: "Weight", type: "text", placeholder: "e.g. 5g"},
-            {id: "hallmarked", label: "Hallmarked", type: "text", placeholder: "Yes"}
+            {id: "hallmarked", label: "Hallmarked", type: "text", placeholder: "e.g. Yes"}
         ],
         "Jobs": [
             {id: "job_type", label: "Job Type", type: "text", placeholder: "e.g. Full Time"},
@@ -654,14 +661,14 @@
             {id: "service_type", label: "Service Type", type: "text", placeholder: "e.g. Plumbing"},
             {id: "level", label: "Level", type: "text", placeholder: "e.g. Expert"},
             {id: "price_mode", label: "Price Mode", type: "text", placeholder: "e.g. Hourly"},
-            {id: "availability", label: "Availability", type: "text", placeholder: "24/7"}
+            {id: "availability", label: "Availability", type: "text", placeholder: "e.g. 24/7"}
         ],
         "Education": [
             {id: "course_type", label: "Course Type", type: "text", placeholder: "e.g. Coding"},
             {id: "mode", label: "Mode", type: "text", placeholder: "e.g. Online"},
             {id: "duration", label: "Duration", type: "text", placeholder: "e.g. 3 Months"},
             {id: "fees", label: "Fees", type: "text", placeholder: "e.g. 5000"},
-            {id: "batch_size", label: "Batch Size", type: "text", placeholder: "10"}
+            {id: "batch_size", label: "Batch Size", type: "text", placeholder: "e.g. 10"}
         ],
         "Industrial": [
             {id: "equipment_type", label: "Equipment Type", type: "text", placeholder: "e.g. Generator"},
@@ -673,80 +680,79 @@
             {id: "animal_type", label: "Animal Type", type: "text", placeholder: "e.g. Dog"},
             {id: "breed", label: "Breed", type: "text", placeholder: "e.g. Pug"},
             {id: "age", label: "Age", type: "text", placeholder: "e.g. 2 Months"},
-            {id: "gender", label: "Gender", type: "text", placeholder: "Male"},
-            {id: "vaccinated", label: "Vaccinated", type: "text", placeholder: "Yes"}
+            {id: "gender", label: "Gender", type: "text", placeholder: "e.g. Male"},
+            {id: "vaccinated", label: "Vaccinated", type: "text", placeholder: "e.g. Yes"}
         ],
         "Books": [
             {id: "type", label: "Type", type: "text", placeholder: "e.g. Novel"},
             {id: "genre", label: "Genre", type: "text", placeholder: "e.g. Fiction"},
             {id: "author", label: "Author", type: "text", placeholder: "e.g. J.K. Rowling"},
-            {id: "language", label: "Language", type: "text", placeholder: "English"}
+            {id: "language", label: "Language", type: "text", placeholder: "e.g. English"}
         ],
         "Music": [
             {id: "instrument_type", label: "Instrument", type: "text", placeholder: "e.g. Guitar"},
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Yamaha"},
-            {id: "type", label: "Type", type: "text", placeholder: "Acoustic"}
+            {id: "type", label: "Type", type: "text", placeholder: "e.g. Acoustic"}
         ],
         "Art": [
             {id: "item_type", label: "Item Type", type: "text", placeholder: "e.g. Painting"},
             {id: "age", label: "Age", type: "text", placeholder: "e.g. 50 Years"},
-            {id: "authenticity", label: "Authenticity", type: "text", placeholder: "Certified"},
-            {id: "artist", label: "Artist", type: "text", placeholder: "Unknown"}
+            {id: "authenticity", label: "Authenticity", type: "text", placeholder: "e.g. Certified"},
+            {id: "artist", label: "Artist", type: "text", placeholder: "e.g. Unknown"}
         ],
         "Digital": [
             {id: "product_type", label: "Type", type: "text", placeholder: "e.g. Software"},
-            {id: "license_type", label: "License", type: "text", placeholder: "Lifetime"},
-            {id: "version", label: "Version", type: "text", placeholder: "Pro 2.0"},
-            {id: "delivery_method", label: "Delivery", type: "text", placeholder: "Email Key"}
+            {id: "license_type", label: "License", type: "text", placeholder: "e.g. Lifetime"},
+            {id: "version", label: "Version", type: "text", placeholder: "e.g. Pro 2.0"},
+            {id: "delivery_method", label: "Delivery", type: "text", placeholder: "e.g. Email Key"}
         ],
         "Grocery": [
             {id: "category", label: "Category", type: "text", placeholder: "e.g. Spices"},
             {id: "brand", label: "Brand", type: "text", placeholder: "e.g. Everest"},
-            {id: "weight", label: "Weight", type: "text", placeholder: "500g"},
-            {id: "expiry", label: "Expiry", type: "text", placeholder: "Dec 2025"},
-            {id: "organic", label: "Organic", type: "text", placeholder: "Yes"}
+            {id: "weight", label: "Weight", type: "text", placeholder: "e.g. 500g"},
+            {id: "expiry", label: "Expiry", type: "text", placeholder: "e.g. Dec 2025"},
+            {id: "organic", label: "Organic", type: "text", placeholder: "e.g. Yes"}
         ]
     };
 
     window.onload = function() {
-        // ENHANCEMENT: Default startup to Gold Standard
+        // ENHANCEMENT: Forced Startup Default to Gold Standard
         syncToggles(document.getElementById('toggle_cat'));
         renderSpecs();
     };
 
     /**
-     * RETRIEVAL BRIDGE
-     * Mode dependent action logic.
+     * DUAL-MODE RETRIEVAL BRIDGE
      */
     function triggerManualRetrieval(type) {
         if (!isCloudflareMode) {
-            // LEGACY: Original Crowdsourced logic
+            // LEGACY MODE: Standard Nostr Retrieval
+            logToAndroid(`ACTION: Manual Retrieval initiated for ${type}.`);
             if (window.AndroidBridge) {
                 if (type === 'Category') {
-                    window.AndroidBridge.retrieveCategorySchema();
+                    if (window.AndroidBridge.retrieveCategorySchema) {
+                        window.AndroidBridge.retrieveCategorySchema();
+                    } else if (window.AndroidBridge.retrieveArchiveData) {
+                        window.AndroidBridge.retrieveArchiveData();
+                    }
                 } else if (type === 'Specs') {
                     const selectedSub = document.getElementById('cat').value;
-                    window.AndroidBridge.ejectTechSpecValues(selectedSub);
+                    if (window.AndroidBridge.ejectTechSpecValues) {
+                        window.AndroidBridge.ejectTechSpecValues(selectedSub);
+                    }
                 }
             }
         } else {
-            // GOLD STANDARD: Cloudflare Hierarchical Fetch
-            fetchCloudflareCategories();
-        }
-    }
-
-    /**
-     * CLOUDFLARE HIERARCHY LOGIC
-     */
-    function fetchCloudflareCategories() {
-        if (window.AndroidBridge) {
-            window.AndroidBridge.performCloudflareQuery("v1/categories.json");
+            // GOLD STANDARD: Cloudflare Layer 1 Fetch
+            logToAndroid(`ACTION: Cloudflare Layer 1 Fetch initiated.`);
+            if (window.AndroidBridge) {
+                window.AndroidBridge.performCloudflareQuery("v1/categories.json");
+            }
         }
     }
 
     /**
      * SMART SEARCH FILTER (LAYER 4)
-     * Filters Brand and Model based on typing against Layer 4 RAM cache.
      */
     function filterCloudflareModels() {
         const query = document.getElementById('specSearch').value.toLowerCase();
@@ -755,25 +761,25 @@
         const filtered = layer4Index.filter(item => 
             item.brand.toLowerCase().includes(query) || 
             item.model.toLowerCase().includes(query) || 
-            item.tags.toLowerCase().includes(query)
+            (item.tags && item.tags.toLowerCase().includes(query))
         );
 
+        // Re-inject filtered data into the Select menus
         updateDropdownsFiltered(JSON.stringify(filtered));
     }
 
     /**
-     * Called by Java after Layer 4 search index is downloaded.
+     * DYNAMIC UI REBUILD (LAYER 4 -> UI)
      */
     function updateDropdownsFiltered(jsonString) {
         const data = JSON.parse(jsonString);
-        layer4Index = data; // Save to RAM for search
+        layer4Index = data; // Cache for local search
 
-        // Find Brand and Model fields
         const brandInput = document.getElementById('brand');
         const modelInput = document.getElementById('model');
 
         if (brandInput && modelInput) {
-            // Convert Brand input to Select for Cloudflare Mode
+            // Convert to Select dropdowns for Gold Standard mode
             brandInput.outerHTML = `<select id="brand" onchange="handleBrandSelection()"></select>`;
             modelInput.outerHTML = `<select id="model" onchange="handleModelSelection()"></select>`;
             
@@ -801,8 +807,10 @@
         const asin = document.getElementById('model').value;
         if (!asin) return;
         
-        const mainCatSlug = slugify(document.getElementById('cat').value);
-        const subCatSlug = slugify(document.getElementById('cat').selectedOptions[0].text);
+        const catSelect = document.getElementById('cat');
+        const mainCatText = catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', '');
+        const mainCatSlug = slugify(mainCatText);
+        const subCatSlug = slugify(catSelect.value);
         const brandSlug = slugify(document.getElementById('brand').value);
         
         const path = `v1/${mainCatSlug}/${subCatSlug}/${brandSlug}/${asin}.json`;
@@ -813,37 +821,63 @@
     }
 
     /**
-     * Called by Java after Layer 5 full spec sheet is downloaded.
+     * UNIVERSAL SPEC SHEET INJECTION (LAYER 5)
+     * Robust recursive form filler handles any field variation.
      */
     function applySpecSheet(jsonString) {
-        const fullData = JSON.parse(jsonString);
-        const specs = fullData.specifications;
+        try {
+            const fullData = JSON.parse(jsonString);
+            const specs = fullData.specifications;
 
-        // Auto-fill Title and MRP/Price if exists
-        document.getElementById('title').value = `${specs.brand} ${specs.model}`;
-        
-        // Deep recursive search to find all inputs by ID and set value
-        function fillForm(obj) {
-            for (const key in obj) {
-                const el = document.getElementById(key);
-                if (el) {
-                    if (typeof obj[key] === 'object') {
-                        // Handle objects like battery: {capacity: "7000mAh"}
-                        const subVal = Object.values(obj[key])[0];
-                        el.value = subVal;
-                    } else {
-                        el.value = obj[key];
+            // 1. Title Auto-Generation
+            document.getElementById('title').value = `${specs.brand} ${specs.model}`;
+
+            // 2. UNIVERSAL RECURSIVE MAPPING
+            // This function scans all levels of the JSON to find matching HTML IDs
+            const deepFill = (obj) => {
+                for (const key in obj) {
+                    const value = obj[key];
+                    
+                    // Attempt to locate an exact ID match in the DOM
+                    let el = document.getElementById(key);
+
+                    // LOGIC VARIATIONS: Check for common alternative names if exact match fails
+                    if (!el) {
+                        if (key === 'memory_storage_capacity') el = document.getElementById('storage');
+                        if (key === 'ram_memory_installed_size') el = document.getElementById('ram');
+                        if (key === 'connectivity_technology') el = document.getElementById('connectivity');
                     }
-                } else if (typeof obj[key] === 'object') {
-                    fillForm(obj[key]);
+
+                    if (el) {
+                        if (Array.isArray(value)) {
+                            el.value = value.join(", ");
+                        } else if (typeof value === 'object' && value !== null) {
+                            // If value is an object, pick the first meaningful string value
+                            const valStr = Object.values(value).find(v => typeof v === 'string');
+                            if (valStr) el.value = valStr;
+                            deepFill(value); // Continue recursion
+                        } else {
+                            el.value = value;
+                        }
+                    } else if (typeof value === 'object' && value !== null) {
+                        // If no ID match found at this level, dig deeper into the object
+                        deepFill(value);
+                    }
                 }
-            }
+            };
+
+            deepFill(specs);
+            logToAndroid("SYSTEM: Universal Spec-Sheet mapping completed.");
+
+        } catch (e) {
+            logToAndroid("ERROR: Spec Injection failed - " + e.message);
         }
-        fillForm(specs);
     }
 
     function slugify(text) {
-        return text.toString().toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
+        return text.toString().toLowerCase().trim()
+            .replace(/ & /g, '-').replace(/&/g, '-')
+            .replace(/\s+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-');
     }
 
     function handleCategoryChange() {
@@ -852,7 +886,8 @@
         renderSpecs();
 
         if (isCloudflareMode) {
-            const mainSlug = slugify(catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', ''));
+            const mainText = catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', '');
+            const mainSlug = slugify(mainText);
             const subSlug = slugify(lastSelectedCat);
             const path = `v1/${mainSlug}/${subSlug}_query_index.json`;
             if (window.AndroidBridge) window.AndroidBridge.performCloudflareQuery(path);
@@ -920,6 +955,7 @@
         }
         
         closeCategoryModal();
+        logToAndroid(`Broadcasted ${subCats.length} new Categories to global schema.`);
     }
 
     function openFieldModal() {
@@ -956,6 +992,7 @@
 
                 if (window.AndroidBridge && window.AndroidBridge.publishNewField) {
                     window.AndroidBridge.publishNewField(currentCat, fieldName);
+                    logToAndroid(`Broadcasted new Field '${fieldName}' to global schema.`);
                 }
             }
         });
@@ -976,6 +1013,7 @@
             }
 
             renderSpecs();
+            logToAndroid(`Requested permanent deletion of field: ${fieldLabel}`);
         }
     }
 
@@ -1002,6 +1040,7 @@
             catSelect.selectedIndex = 0;
             lastSelectedCat = catSelect.value;
             handleCategoryChange();
+            logToAndroid(`Deleted full category: ${catName}`);
         }
     }
 
@@ -1080,6 +1119,7 @@
 
         if (window.AndroidBridge && window.AndroidBridge.publishBulkSpecValues) {
             window.AndroidBridge.publishBulkSpecValues(lastSelectedCat, fieldId, valuesRaw, activeBulkContext.fieldId || "", activeBulkContext.value || "");
+            logToAndroid(`Broadcasted contextual bulk values for '${fieldId}'.`);
         }
         
         closeBulkValuesModal();
@@ -1211,6 +1251,8 @@
     }
 
     function updateDatalistPointer(el, fieldId) {
+        if (isCloudflareMode) return; // Dropdowns handle this in Gold mode
+
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         const catNorm = lastSelectedCat.toLowerCase();
         const fieldNorm = fieldId.toLowerCase();
