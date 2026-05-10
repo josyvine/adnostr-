@@ -1,9 +1,11 @@
 package com.adnostr.app;
 
 import android.content.Context;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.OpenableColumns;
 import android.util.Log;
 
 import org.json.JSONObject;
@@ -11,6 +13,7 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -38,6 +41,10 @@ import okhttp3.Response;
  * - Added X-AdNostr-Token Handshake for Hierarchical Database Fetching.
  * - Added Multipart Batch Stream for ASIN_RAW mass uploads.
  * - Added Administrative Seeding logic (Hierarchy Anchors).
+ * 
+ * GLITCH FIX: 
+ * - Increased write/read timeouts to 120s to prevent "Worker rejected batch - timeout" on large Samsung batches.
+ * - Added body preparation tracing to keep Forensic Terminal alive.
  */
 public class CloudflareHelper {
 
@@ -65,9 +72,9 @@ public class CloudflareHelper {
     public CloudflareHelper() {
         // High-performance client with optimized timeouts for direct private connection
         this.client = new OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .writeTimeout(60, TimeUnit.SECONDS) // Increased for Batch Uploads
-                .readTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(120, TimeUnit.SECONDS) // GLITCH FIX: Increased for 20-file chunks
+                .readTimeout(60, TimeUnit.SECONDS)   // GLITCH FIX: Increased for Worker Indexing lag
                 .build();
         this.mainHandler = new Handler(Looper.getMainLooper());
     }
@@ -234,8 +241,6 @@ public class CloudflareHelper {
     /**
      * DELETION LOGIC: Performs a physical wipe from the Advertiser's R2 Bucket.
      * Authenticates via Secret-Token to ensure only the owner can delete.
-     * 
-     * FIXED: Added logic to extract a clean filename ID if a full URL is passed.
      */
     public void deleteMedia(Context context, String fileIdOrUrl, CloudflareCallback callback) {
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
@@ -247,8 +252,6 @@ public class CloudflareHelper {
             return;
         }
 
-        // --- FIXED: CLEAN ID EXTRACTION ---
-        // If fileIdOrUrl is "https://.../123.enc", extract "123.enc"
         String cleanFileId = fileIdOrUrl;
         if (fileIdOrUrl.contains("/")) {
             cleanFileId = fileIdOrUrl.substring(fileIdOrUrl.lastIndexOf("/") + 1);
@@ -258,8 +261,6 @@ public class CloudflareHelper {
         postLog(callback, "SOURCE REF: " + fileIdOrUrl + "\n");
         postLog(callback, "CLEAN TARGET ID: " + cleanFileId + "\n");
 
-        // Construct the deletion endpoint with the sanitized ID
-        // Ensures no double-slashes or malformed query strings
         String baseWorker = workerUrl.endsWith("/") ? workerUrl.substring(0, workerUrl.length() - 1) : workerUrl;
         String deleteEndpoint = baseWorker + "?id=" + cleanFileId;
 
@@ -336,6 +337,8 @@ public class CloudflareHelper {
     /**
      * BATCH UPLOAD: Streams multiple JSON files to R2 via MultipartBody.
      * Implements X-Admin-Sig (BIP-340) and X-Target-Path headers.
+     * 
+     * GLITCH FIX: Added trace logging for Body preparation to keep the terminal alive.
      */
     public void uploadBatchToR2(Context context, List<Uri> uris, String path, String signature, CloudflareCallback callback) {
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
@@ -348,10 +351,12 @@ public class CloudflareHelper {
         MultipartBody.Builder builder = new MultipartBody.Builder().setType(MultipartBody.FORM);
 
         try {
-            for (Uri uri : uris) {
+            for (int i = 0; i < uris.size(); i++) {
+                Uri uri = uris.get(i);
                 String fileName = getFileNameFromUri(context, uri);
                 byte[] fileData = readBytesFromUri(context, uri);
                 if (fileData != null) {
+                    postLog(callback, "PREPARING: [" + (i + 1) + "/" + uris.size() + "] " + fileName + "\n");
                     builder.addFormDataPart("files", fileName, 
                             RequestBody.create(fileData, MediaType.parse("application/json")));
                 }
@@ -367,13 +372,18 @@ public class CloudflareHelper {
 
             client.newCall(request).enqueue(new Callback() {
                 @Override
-                public void onFailure(Call call, IOException e) { postFailure(callback, e); }
+                public void onFailure(Call call, IOException e) { 
+                    if (e instanceof SocketTimeoutException) {
+                        postLog(callback, "!!! NETWORK TIMEOUT: Worker took too long to respond. Increase CHUNK_SIZE or check Worker tier.\n");
+                    }
+                    postFailure(callback, e); 
+                }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     String res = response.body() != null ? response.body().string() : "";
                     if (response.isSuccessful()) {
-                        postLog(callback, "WORKER: Batch processing successful. ASIN_RAW stripped.\n");
+                        postLog(callback, "WORKER: Batch processing successful.\n");
                         postSuccess(callback, res, "BATCH_OK");
                     } else {
                         postFailure(callback, new Exception("Batch Failed: " + response.code() + " " + res));
@@ -443,11 +453,21 @@ public class CloudflareHelper {
     }
 
     private String getFileNameFromUri(Context context, Uri uri) {
-        String path = uri.getPath();
-        if (path != null && path.contains("/")) {
-            return path.substring(path.lastIndexOf("/") + 1);
+        String result = null;
+        if ("content".equals(uri.getScheme())) {
+            try (Cursor cursor = context.getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (nameIndex != -1) result = cursor.getString(nameIndex);
+                }
+            }
         }
-        return "file_" + System.currentTimeMillis() + ".json";
+        if (result == null) {
+            result = uri.getPath();
+            int cut = result.lastIndexOf('/');
+            if (cut != -1) result = result.substring(cut + 1);
+        }
+        return result;
     }
 
     // =========================================================================
