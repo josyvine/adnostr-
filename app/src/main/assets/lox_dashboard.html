@@ -264,7 +264,7 @@
         <h2><i class="fa-solid fa-circle-info"></i> Basic Details</h2>
         <div class="form-group">
             <label>Ad Title</label>
-            <input type="text" id="title" placeholder="e.g. narzo 100 Lite 5G">
+            <input type="text" id="title" placeholder="e.g. iPhone 13 128GB Excellent Condition">
         </div>
         <div class="form-group">
             <label>Description</label>
@@ -496,9 +496,10 @@
     let lastSelectedCat = "Cars"; 
     let activeBulkContext = { fieldId: null, value: null };
     
-    // ENHANCEMENT: DUAL-SOURCE STATE
+    // ENHANCEMENT: DUAL-SOURCE STATE & LOCKING
     let isCloudflareMode = true; 
-    let layer4Index = []; // Search Brain cache in RAM
+    let isDynamicSpecLoaded = false; // GLITCH FIX: Prevents 2-second hardcoded wipe
+    let layer4Index = []; 
 
     function injectAdminStatus(isAdmin) {
         if (isAdmin) {
@@ -526,7 +527,8 @@
             window.AndroidBridge.setDataSource(isCloudflareMode ? "CLOUDFLARE" : "NOSTR");
         }
 
-        // AUTO-RECOVERY: Refresh data when toggle is enabled
+        // AUTO-RECOVERY: Release lock and refresh data when toggle state changes
+        isDynamicSpecLoaded = false;
         handleCategoryChange();
     }
 
@@ -773,7 +775,6 @@
         let brandList = document.getElementById('brand');
         let modelList = document.getElementById('model');
 
-        // Transform into selects if they are currently text inputs
         if (brandList && brandList.tagName !== 'SELECT') {
             brandList.outerHTML = `<select id="brand" onchange="handleBrandSelection()"></select>`;
             modelList.outerHTML = `<select id="model" onchange="handleModelSelection()"></select>`;
@@ -812,6 +813,7 @@
     /**
      * GLITCH FIX: GENERATIVE UNIVERSAL MAPPING
      * Wipes container and creates HTML for EVERY key in the JSON automatically.
+     * Sets isDynamicSpecLoaded lock to prevent hardcoded renderer overwrite.
      */
     function applySpecSheet(jsonString) {
         try {
@@ -826,13 +828,13 @@
             let allFields = [];
 
             // Recursive function to harvest every key from nested objects
-            const harvest = (obj, prefix = '') => {
+            const harvest = (obj) => {
                 for (const key in obj) {
                     const val = obj[key];
                     if (key === 'brand' || key === 'model' || key === 'asin') continue;
 
                     if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
-                        harvest(val, key + '_');
+                        harvest(val);
                     } else {
                         allFields.push({
                             id: key,
@@ -866,6 +868,9 @@
             </div>`;
             
             container.innerHTML = html;
+            
+            // LOCK UI: Prevent hardcoded renderer from overwriting this work
+            isDynamicSpecLoaded = true; 
             logToAndroid("SYSTEM: Spec sheet generated from JSON blueprint.");
 
         } catch (e) {
@@ -890,6 +895,9 @@
     function handleCategoryChange() {
         const catSelect = document.getElementById('cat');
         lastSelectedCat = catSelect.value;
+        
+        // GLITCH FIX: Release lock when category is changed so renderer works for the new category
+        isDynamicSpecLoaded = false;
         renderSpecs();
 
         if (isCloudflareMode) {
@@ -1225,7 +1233,17 @@
         }
     }
 
+    /**
+     * GLITCH FIX: LOCK-AWARE RENDERER
+     * Aborts if a dynamic Gold Standard spec sheet is currently on screen.
+     */
     function renderSpecs() {
+        // GLITCH FIX: If a dynamic model is loaded, do not allow hardcoded overwrite
+        if (isCloudflareMode && isDynamicSpecLoaded) {
+            console.log("RENDER_Specs: Aborted. Dynamic spec lock is active.");
+            return;
+        }
+
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         const container = document.getElementById('specsContainer');
         container.innerHTML = '';
@@ -1321,7 +1339,6 @@
         const cat = document.getElementById('cat').value;
         const specs = {};
         
-        // HARVEST ALL INPUTS (Dynamic and Hardcoded)
         const allInputs = document.querySelectorAll('#specsContainer input');
         allInputs.forEach(el => {
             if(el.value.trim() !== '') specs[el.id] = el.value.trim();
