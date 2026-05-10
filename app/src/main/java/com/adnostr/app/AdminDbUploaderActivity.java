@@ -9,6 +9,7 @@ import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -36,6 +37,10 @@ import java.util.List;
  * 2. Tick Seeding: Clicking Green Tick icon broadcasts a Single-Point seed to Worker.
  * 3. Batch Engine: Selects 100+ files, validates ASIN_RAW structure, signs via BIP-340.
  * 4. Forensic Console: Displays real-time protocol frames and Worker responses.
+ * 
+ * GLITCH FIXES:
+ * - Implemented Auto-Tier fetching: Selecting a parent dropdown now populates the child dropdown.
+ * - Relaxed Hierarchy Validation: Trimmed strings and unified slug logic to prevent false "Mismatch" aborts.
  */
 public class AdminDbUploaderActivity extends AppCompatActivity {
 
@@ -96,6 +101,17 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         binding.rvBatchFiles.setLayoutManager(new LinearLayoutManager(this));
         fileAdapter = new FileUploadAdapter(selectedFileUris);
         binding.rvBatchFiles.setAdapter(fileAdapter);
+
+        // --- GLITCH FIX: AUTO-FETCH TIERED DROP-DOWNS ---
+        binding.etMainCat.setOnItemClickListener((parent, view, position, id) -> {
+            String selected = (String) parent.getItemAtPosition(position);
+            loadSubCategories(selected);
+        });
+
+        binding.etSubCat.setOnItemClickListener((parent, view, position, id) -> {
+            String selected = (String) parent.getItemAtPosition(position);
+            loadBrands(binding.etMainCat.getText().toString(), selected);
+        });
 
         // --- EDITABLE SEEDING LOGIC (THE TICK ENGINE) ---
         setupSeedingWatcher(binding.etMainCat, "tier1");
@@ -164,6 +180,11 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
                     else if (tier.equals("tier2")) subCategories.add(name);
                     else if (tier.equals("tier3")) brands.add(name);
                     Toast.makeText(AdminDbUploaderActivity.this, "Seed Success", Toast.LENGTH_SHORT).show();
+                    
+                    // Force refresh icon state
+                    binding.etMainCat.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
+                    binding.etSubCat.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
+                    binding.etBrand.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
                 });
             }
             @Override public void onFailure(Exception e) {
@@ -178,17 +199,11 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
      */
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        // Step 1: Use broad type to satisfy different Android File Manager implementations
         intent.setType("*/*"); 
-        
-        // Step 2: Add specific MIME types for JSON and Plain Text
         String[] mimeTypes = {"application/json", "text/plain", "application/octet-stream"};
         intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
-        
-        // Step 3: Ensure only openable files are shown
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        
         filePickerLauncher.launch(intent);
     }
 
@@ -202,7 +217,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         } else if (data.getData() != null) {
             selectedFileUris.add(data.getData());
         }
-        fileAdapter.notifyDataSetChanged();
+        fileAdapter.setItems(selectedFileUris); // Using specialized setter
         logForensic("BATCH: Selected " + selectedFileUris.size() + " JSON files.");
     }
 
@@ -263,11 +278,14 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             JSONObject hier = json.optJSONObject("hierarchy");
             if (hier == null) return false;
 
-            String m = hier.optString("main_category");
-            String s = hier.optString("sub_category");
+            // GLITCH FIX: Use trimmed and normalized slug logic for validation
+            String m = slugify(hier.optString("main_category"));
+            String s = slugify(hier.optString("sub_category"));
+            
+            String selectedM = slugify(binding.etMainCat.getText().toString());
+            String selectedS = slugify(binding.etSubCat.getText().toString());
 
-            return m.equalsIgnoreCase(binding.etMainCat.getText().toString()) && 
-                   s.equalsIgnoreCase(binding.etSubCat.getText().toString());
+            return m.equals(selectedM) && s.equals(selectedS);
 
         } catch (Exception e) { return false; }
     }
@@ -277,6 +295,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             @Override public void onStatusUpdate(String log) {}
             @Override public void onSuccess(String response, String extra) {
                 try {
+                    mainCategories.clear();
                     JSONArray arr = new JSONArray(response);
                     for (int i = 0; i < arr.length(); i++) mainCategories.add(arr.getJSONObject(i).optString("main"));
                     runOnUiThread(() -> {
@@ -290,13 +309,61 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * GLITCH FIX: Populate Sub-Category based on Main selection
+     */
+    private void loadSubCategories(String mainCat) {
+        String path = "v1/" + slugify(mainCat) + ".json";
+        cloudHelper.fetchSchemaLayer(this, path, new CloudflareHelper.CloudflareCallback() {
+            @Override public void onStatusUpdate(String log) {}
+            @Override public void onSuccess(String response, String extra) {
+                try {
+                    subCategories.clear();
+                    JSONArray arr = new JSONArray(response);
+                    for (int i = 0; i < arr.length(); i++) subCategories.add(arr.getJSONObject(i).optString("sub"));
+                    runOnUiThread(() -> {
+                        ArrayAdapter<String> adapter = new ArrayAdapter<>(AdminDbUploaderActivity.this, 
+                                android.R.layout.simple_dropdown_item_1line, subCategories);
+                        binding.etSubCat.setAdapter(adapter);
+                        binding.etSubCat.showDropDown();
+                    });
+                } catch (Exception ignored) {}
+            }
+            @Override public void onFailure(Exception e) { runOnUiThread(() -> subCategories.clear()); }
+        });
+    }
+
+    /**
+     * GLITCH FIX: Populate Brands based on Sub selection
+     */
+    private void loadBrands(String mainCat, String subCat) {
+        String path = "v1/" + slugify(mainCat) + "/" + slugify(subCat) + ".json";
+        cloudHelper.fetchSchemaLayer(this, path, new CloudflareHelper.CloudflareCallback() {
+            @Override public void onStatusUpdate(String log) {}
+            @Override public void onSuccess(String response, String extra) {
+                try {
+                    brands.clear();
+                    JSONArray arr = new JSONArray(response);
+                    for (int i = 0; i < arr.length(); i++) brands.add(arr.getString(i));
+                    runOnUiThread(() -> {
+                        ArrayAdapter<String> adapter = new ArrayAdapter<>(AdminDbUploaderActivity.this, 
+                                android.R.layout.simple_dropdown_item_1line, brands);
+                        binding.etBrand.setAdapter(adapter);
+                        binding.etBrand.showDropDown();
+                    });
+                } catch (Exception ignored) {}
+            }
+            @Override public void onFailure(Exception e) { runOnUiThread(() -> brands.clear()); }
+        });
+    }
+
     private String generateAdminSignature(String payload) {
         try {
             JSONObject event = new JSONObject();
             event.put("content", payload);
             event.put("created_at", System.currentTimeMillis() / 1000);
             event.put("pubkey", db.getPublicKey());
-            event.put("kind", 10000); // Admin Auth Kind
+            event.put("kind", 10000); 
             event.put("tags", new JSONArray());
 
             JSONObject signed = NostrEventSigner.signEvent(db.getPrivateKey(), event);
@@ -319,6 +386,12 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     }
 
     private String slugify(String text) {
-        return text.toLowerCase().replace(" & ", "-").replace(" ", "-").replaceAll("[^a-z0-9-]", "");
+        return text.toString().toLowerCase()
+                .trim()
+                .replace(" & ", "-")
+                .replace("&", "-")
+                .replace(" ", "-")
+                .replaceAll("[^a-z0-9-]", "")
+                .replaceAll("-+", "-");
     }
 }
