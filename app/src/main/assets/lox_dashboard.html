@@ -264,7 +264,7 @@
         <h2><i class="fa-solid fa-circle-info"></i> Basic Details</h2>
         <div class="form-group">
             <label>Ad Title</label>
-            <input type="text" id="title" placeholder="e.g. iPhone 13 128GB Excellent Condition">
+            <input type="text" id="title" placeholder="e.g. narzo 100 Lite 5G">
         </div>
         <div class="form-group">
             <label>Description</label>
@@ -508,8 +508,8 @@
     }
 
     /**
-     * DUAL-SOURCE SYNC
-     * Link Category and Spec toggles. Update labels. Persist to Java.
+     * GLITCH FIX: TOGGLE RECOVERY & AUTO-FETCH
+     * Flipping toggle now re-runs category change logic to refresh dropdowns.
      */
     function syncToggles(el) {
         isCloudflareMode = el.checked;
@@ -526,7 +526,8 @@
             window.AndroidBridge.setDataSource(isCloudflareMode ? "CLOUDFLARE" : "NOSTR");
         }
 
-        renderSpecs();
+        // AUTO-RECOVERY: Refresh data when toggle is enabled
+        handleCategoryChange();
     }
 
     // BASE CATEGORY SPECIFICATIONS SCHEMA (Will be appended by Network Schema)
@@ -716,18 +717,14 @@
     };
 
     window.onload = function() {
-        // ENHANCEMENT: Forced Startup Default to Gold Standard
-        syncToggles(document.getElementById('toggle_cat'));
         renderSpecs();
     };
 
     /**
-     * DUAL-MODE RETRIEVAL BRIDGE
+     * RETRIEVAL BRIDGE
      */
     function triggerManualRetrieval(type) {
         if (!isCloudflareMode) {
-            // LEGACY MODE: Standard Nostr Retrieval
-            logToAndroid(`ACTION: Manual Retrieval initiated for ${type}.`);
             if (window.AndroidBridge) {
                 if (type === 'Category') {
                     if (window.AndroidBridge.retrieveCategorySchema) {
@@ -743,8 +740,6 @@
                 }
             }
         } else {
-            // GOLD STANDARD: Cloudflare Layer 1 Fetch
-            logToAndroid(`ACTION: Cloudflare Layer 1 Fetch initiated.`);
             if (window.AndroidBridge) {
                 window.AndroidBridge.performCloudflareQuery("v1/categories.json");
             }
@@ -752,7 +747,7 @@
     }
 
     /**
-     * SMART SEARCH FILTER (LAYER 4)
+     * SEARCH FILTER (LAYER 4)
      */
     function filterCloudflareModels() {
         const query = document.getElementById('specSearch').value.toLowerCase();
@@ -764,31 +759,34 @@
             (item.tags && item.tags.toLowerCase().includes(query))
         );
 
-        // Re-inject filtered data into the Select menus
-        updateDropdownsFiltered(JSON.stringify(filtered));
+        updateDropdownsFiltered(JSON.stringify(filtered), true);
     }
 
     /**
-     * DYNAMIC UI REBUILD (LAYER 4 -> UI)
+     * GLITCH FIX: NON-LOCKING DROPDOWN BUILDER
+     * Now renders select menus without wiping the searchable list.
      */
-    function updateDropdownsFiltered(jsonString) {
+    function updateDropdownsFiltered(jsonString, isSearching = false) {
         const data = JSON.parse(jsonString);
-        layer4Index = data; // Cache for local search
+        if (!isSearching) layer4Index = data; 
 
-        const brandInput = document.getElementById('brand');
-        const modelInput = document.getElementById('model');
+        let brandList = document.getElementById('brand');
+        let modelList = document.getElementById('model');
 
-        if (brandInput && modelInput) {
-            // Convert to Select dropdowns for Gold Standard mode
-            brandInput.outerHTML = `<select id="brand" onchange="handleBrandSelection()"></select>`;
-            modelInput.outerHTML = `<select id="model" onchange="handleModelSelection()"></select>`;
-            
-            const bSel = document.getElementById('brand');
-            const uniqueBrands = [...new Set(data.map(i => i.brand))];
-            
-            bSel.innerHTML = '<option value="">Select Brand</option>';
-            uniqueBrands.forEach(b => bSel.add(new Option(b, b)));
+        // Transform into selects if they are currently text inputs
+        if (brandList && brandList.tagName !== 'SELECT') {
+            brandList.outerHTML = `<select id="brand" onchange="handleBrandSelection()"></select>`;
+            modelList.outerHTML = `<select id="model" onchange="handleModelSelection()"></select>`;
+            brandList = document.getElementById('brand');
+            modelList = document.getElementById('model');
         }
+
+        const uniqueBrands = [...new Set(data.map(i => i.brand))];
+        brandList.innerHTML = '<option value="">Select Brand</option>';
+        uniqueBrands.forEach(b => brandList.add(new Option(b, b)));
+
+        modelList.innerHTML = '<option value="">Select Model</option>';
+        data.forEach(m => modelList.add(new Option(m.model, m.asin)));
     }
 
     function handleBrandSelection() {
@@ -796,11 +794,8 @@
         const mSel = document.getElementById('model');
         mSel.innerHTML = '<option value="">Select Model</option>';
 
-        const models = layer4Index.filter(i => i.brand === selectedBrand);
-        models.forEach(m => {
-            const opt = new Option(m.model, m.asin);
-            mSel.add(opt);
-        });
+        const models = layer4Index.filter(i => i.brand === selectedBrand || !selectedBrand);
+        models.forEach(m => mSel.add(new Option(m.model, m.asin)));
     }
 
     function handleModelSelection() {
@@ -809,69 +804,81 @@
         
         const catSelect = document.getElementById('cat');
         const mainCatText = catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', '');
-        const mainCatSlug = slugify(mainCatText);
-        const subCatSlug = slugify(catSelect.value);
-        const brandSlug = slugify(document.getElementById('brand').value);
+        const path = `v1/${slugify(mainCatText)}/${slugify(catSelect.value)}/${slugify(document.getElementById('brand').value)}/${asin}.json`;
         
-        const path = `v1/${mainCatSlug}/${subCatSlug}/${brandSlug}/${asin}.json`;
-        
-        if (window.AndroidBridge) {
-            window.AndroidBridge.fetchLayer5Spec(path);
-        }
+        if (window.AndroidBridge) window.AndroidBridge.fetchLayer5Spec(path);
     }
 
     /**
-     * UNIVERSAL SPEC SHEET INJECTION (LAYER 5)
-     * Robust recursive form filler handles any field variation.
+     * GLITCH FIX: GENERATIVE UNIVERSAL MAPPING
+     * Wipes container and creates HTML for EVERY key in the JSON automatically.
      */
     function applySpecSheet(jsonString) {
         try {
             const fullData = JSON.parse(jsonString);
             const specs = fullData.specifications;
 
-            // 1. Title Auto-Generation
             document.getElementById('title').value = `${specs.brand} ${specs.model}`;
+            
+            const container = document.getElementById('specsContainer');
+            container.innerHTML = ''; // WIPE EVERYTHING
 
-            // 2. UNIVERSAL RECURSIVE MAPPING
-            // This function scans all levels of the JSON to find matching HTML IDs
-            const deepFill = (obj) => {
+            let allFields = [];
+
+            // Recursive function to harvest every key from nested objects
+            const harvest = (obj, prefix = '') => {
                 for (const key in obj) {
-                    const value = obj[key];
-                    
-                    // Attempt to locate an exact ID match in the DOM
-                    let el = document.getElementById(key);
+                    const val = obj[key];
+                    if (key === 'brand' || key === 'model' || key === 'asin') continue;
 
-                    // LOGIC VARIATIONS: Check for common alternative names if exact match fails
-                    if (!el) {
-                        if (key === 'memory_storage_capacity') el = document.getElementById('storage');
-                        if (key === 'ram_memory_installed_size') el = document.getElementById('ram');
-                        if (key === 'connectivity_technology') el = document.getElementById('connectivity');
-                    }
-
-                    if (el) {
-                        if (Array.isArray(value)) {
-                            el.value = value.join(", ");
-                        } else if (typeof value === 'object' && value !== null) {
-                            // If value is an object, pick the first meaningful string value
-                            const valStr = Object.values(value).find(v => typeof v === 'string');
-                            if (valStr) el.value = valStr;
-                            deepFill(value); // Continue recursion
-                        } else {
-                            el.value = value;
-                        }
-                    } else if (typeof value === 'object' && value !== null) {
-                        // If no ID match found at this level, dig deeper into the object
-                        deepFill(value);
+                    if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
+                        harvest(val, key + '_');
+                    } else {
+                        allFields.push({
+                            id: key,
+                            label: key.replace(/_/g, ' '),
+                            value: Array.isArray(val) ? val.join(", ") : val
+                        });
                     }
                 }
             };
 
-            deepFill(specs);
-            logToAndroid("SYSTEM: Universal Spec-Sheet mapping completed.");
+            harvest(specs);
+
+            // Generate HTML Grid on-the-fly
+            let html = '';
+            for (let i = 0; i < allFields.length; i += 2) {
+                html += '<div class="row" style="margin-bottom: 15px;">';
+                html += generateDynamicInput(allFields[i]);
+                if (allFields[i+1]) {
+                    html += generateDynamicInput(allFields[i+1]);
+                } else {
+                    html += '<div class="form-group" style="flex: 1;"></div>';
+                }
+                html += '</div>';
+            }
+
+            // Restore "Add Custom" buttons
+            html += `
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="add-field-btn" onclick="openFieldModal()"><i class="fa-solid fa-plus"></i> Add Custom Field</button>
+                <button class="add-field-btn" onclick="openBulkValuesModal()" style="border-color: #25D366; color: #25D366;"><i class="fa-solid fa-seedling"></i> Bulk Add Values</button>
+            </div>`;
+            
+            container.innerHTML = html;
+            logToAndroid("SYSTEM: Spec sheet generated from JSON blueprint.");
 
         } catch (e) {
-            logToAndroid("ERROR: Spec Injection failed - " + e.message);
+            logToAndroid("ERROR: Generative Rendering failed - " + e.message);
         }
+    }
+
+    function generateDynamicInput(f) {
+        return `
+        <div class="form-group" style="flex: 1;">
+            <label style="text-transform: capitalize;">${f.label}</label>
+            <input type="text" id="${f.id}" value="${f.value}" placeholder="e.g. ${f.value}">
+        </div>`;
     }
 
     function slugify(text) {
@@ -887,9 +894,7 @@
 
         if (isCloudflareMode) {
             const mainText = catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', '');
-            const mainSlug = slugify(mainText);
-            const subSlug = slugify(lastSelectedCat);
-            const path = `v1/${mainSlug}/${subSlug}_query_index.json`;
+            const path = `v1/${slugify(mainText)}/${slugify(lastSelectedCat)}_query_index.json`;
             if (window.AndroidBridge) window.AndroidBridge.performCloudflareQuery(path);
         }
     }
@@ -955,7 +960,6 @@
         }
         
         closeCategoryModal();
-        logToAndroid(`Broadcasted ${subCats.length} new Categories to global schema.`);
     }
 
     function openFieldModal() {
@@ -1129,6 +1133,7 @@
         try {
             const schema = JSON.parse(jsonString);
             const catSelect = document.getElementById('cat');
+            const customGroup = document.getElementById('og_custom');
             const hiddenItems = schema.hidden_hardcoded || [];
             
             if (hiddenItems.length > 0) {
@@ -1251,7 +1256,7 @@
     }
 
     function updateDatalistPointer(el, fieldId) {
-        if (isCloudflareMode) return; // Dropdowns handle this in Gold mode
+        if (isCloudflareMode) return; 
 
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         const catNorm = lastSelectedCat.toLowerCase();
@@ -1315,13 +1320,11 @@
     function prepareData(mode) {
         const cat = document.getElementById('cat').value;
         const specs = {};
-        const fields = CATEGORY_SCHEMA[cat] || [];
         
-        fields.forEach(f => {
-            const el = document.getElementById(f.id);
-            if(el && el.value.trim() !== '') {
-                specs[f.id] = el.value.trim();
-            }
+        // HARVEST ALL INPUTS (Dynamic and Hardcoded)
+        const allInputs = document.querySelectorAll('#specsContainer input');
+        allInputs.forEach(el => {
+            if(el.value.trim() !== '') specs[el.id] = el.value.trim();
         });
 
         const productData = {
