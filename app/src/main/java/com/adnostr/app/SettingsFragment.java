@@ -29,6 +29,7 @@ import com.adnostr.app.databinding.DialogIdentityBackupBinding;
 import com.adnostr.app.databinding.DialogModeSwitchBinding;
 import com.adnostr.app.databinding.DialogPrivacySettingsBinding;
 import com.adnostr.app.databinding.DialogUsernameSetupBinding;
+import com.adnostr.app.databinding.DialogPasteJsonBinding; // NEW BINDING
 import com.adnostr.app.databinding.FragmentSettingsBinding;
 
 /**
@@ -49,6 +50,9 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  *
  * NEW ENHANCEMENT: CLOUDFLARE DATABASE ARCHITECT (STEP 2)
  * - Added routing for CMD_CLOUDFLARE_DB to launch AdminDbUploaderActivity.
+ * 
+ * GLITCH FIX (RESTORATION): Implemented MIME wildcard logic to prevent greyed-out JSON files.
+ * NEW: Integrated "Paste JSON" UI path into the Identity Passport logic.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -297,6 +301,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
     /**
      * ENHANCEMENT COMMAND POPUP: JSON Identity Portability.
      * Allows the user to download or restore their identity passport.
+     * UPDATED: Integrated a choice selection between File Browse and manual Paste.
      */
     private void showIdentityBackupDialog() {
         DialogIdentityBackupBinding dialogBinding = DialogIdentityBackupBinding.inflate(getLayoutInflater());
@@ -304,7 +309,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 .setView(dialogBinding.getRoot())
                 .create();
 
-        // Trigger the Android System File Creator
+        // Path 1: Trigger the Android System File Creator (Export)
         dialogBinding.btnDownloadPassport.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -314,16 +319,66 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             dialog.dismiss();
         });
 
-        // Trigger the Android System File Picker
+        // Path 2: Handle the Restoration Choice
         dialogBinding.btnRestorePassport.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("application/json");
-            importLauncher.launch(intent);
-            dialog.dismiss();
+            // Show a professional sub-choice dialog for the two restore methods
+            String[] options = {"Browse Backup File", "Paste JSON Identity"};
+            new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                    .setTitle("Select Restoration Method")
+                    .setItems(options, (restoreChoice, which) -> {
+                        if (which == 0) {
+                            // OPTION 1: File Browser
+                            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                            intent.addCategory(Intent.CATEGORY_OPENABLE);
+                            
+                            // GLITCH FIX: Use wildcard with EXTRA_MIME_TYPES to prevent greyed-out files
+                            intent.setType("*/*");
+                            String[] mimeTypes = {"application/json", "text/plain", "application/octet-stream"};
+                            intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+                            
+                            importLauncher.launch(intent);
+                            dialog.dismiss();
+                        } else {
+                            // OPTION 2: Manual Paste
+                            showPasteJsonDialog();
+                            dialog.dismiss();
+                        }
+                    })
+                    .show();
         });
 
         dialogBinding.btnCloseBackup.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+    }
+
+    /**
+     * NEW: Displays a code-optimized monospace input box for manual JSON entry.
+     */
+    private void showPasteJsonDialog() {
+        DialogPasteJsonBinding pasteBinding = DialogPasteJsonBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(pasteBinding.getRoot())
+                .create();
+
+        // Logic: Execute Restoration
+        pasteBinding.btnVerifyAndRestore.setOnClickListener(v -> {
+            String input = pasteBinding.etPasteJsonInput.getText().toString().trim();
+            if (input.isEmpty()) {
+                Toast.makeText(getContext(), "Please paste your JSON string.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Route the pasted string to the unified logic engine in BackupManager
+            BackupManager.verifyAndRestore(requireContext(), input);
+            dialog.dismiss();
+        });
+
+        // Logic: Clear Input
+        pasteBinding.btnDeletePasteInput.setOnClickListener(v -> {
+            pasteBinding.etPasteJsonInput.setText("");
+        });
+
+        pasteBinding.btnCancelPaste.setOnClickListener(v -> dialog.dismiss());
         dialog.show();
     }
 
