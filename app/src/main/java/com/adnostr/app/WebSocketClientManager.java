@@ -70,7 +70,7 @@ public class WebSocketClientManager {
 
     // ADMIN SUPREMACY: Dedicated listeners for crowdsourced schema events
     private final List<SchemaEventListener> schemaListeners = new CopyOnWriteArrayList<>();
-    
+
     // SESSION DEDUPLICATION: Tracks IDs processed in the current app session to stop log spam
     private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
 
@@ -221,7 +221,7 @@ public class WebSocketClientManager {
             if (existing != null && existing.isOpen()) {
                 // FORENSIC LOG: Identifying existing tunnel reuse
                 addToLog("TCP_REUSE: Re-using existing open tunnel for " + relayUrl);
-                
+
                 // CRITICAL FIX: Notify all registered listeners on the Main Thread
                 mHandler.post(() -> {
                     for (RelayStatusListener listener : listeners) {
@@ -283,17 +283,33 @@ public class WebSocketClientManager {
                                 } else {
                                     addToLog("RELAY_CONFIRMED [" + relayUrl + "]: Event " + eventId + " published.");
                                 }
+                                
+                                // Dispatch OK status to listeners
+                                mHandler.post(() -> {
+                                    for (RelayStatusListener listener : listeners) {
+                                        listener.onMessageReceived(relayUrl, message);
+                                    }
+                                });
                             }
-                            
+
                             else if ("EVENT".equals(type)) {
                                 JSONObject event = msgArray.getJSONObject(2);
                                 String eventId = event.getString("id");
-                                
+
                                 // SESSION DEDUPLICATION: Don't process the same event multiple times per session
                                 if (processedEventIds.add(eventId)) {
                                     int kind = event.optInt("kind", -1);
+                                    
+                                    // CRASH FIX (PERFORMANCE): Only notify the UI Thread if this is a NEW event.
+                                    // If 31 relays send the same Bajaj schema, the Activity only sees it ONCE.
+                                    mHandler.post(() -> {
+                                        for (RelayStatusListener listener : listeners) {
+                                            listener.onMessageReceived(relayUrl, message);
+                                        }
+                                    });
+
                                     if (kind == 30006 || kind == 30007) {
-                                        
+
                                         // =========================================================================
                                         // DISTRIBUTED MEMORY FIX: UNIVERSAL ARCHIVE LOCK
                                         // Every device acting as an Advertiser now hard-locks discovered data.
@@ -304,7 +320,7 @@ public class WebSocketClientManager {
                                             db.saveToForensicArchive(event.toString());
                                         }
 
-                                        // PERFORMANCE FIX: Background thread dispatch to observers
+                                        // PERFORMANCE FIX: Background thread dispatch to observers (Anti-Hang)
                                         for (SchemaEventListener schemaListener : schemaListeners) {
                                             schemaListener.onSchemaEventReceived(relayUrl, event);
                                         }
@@ -315,7 +331,7 @@ public class WebSocketClientManager {
                             else if ("NOTICE".equals(type)) {
                                 String detail = msgArray.optString(1, "Relay status update");
                                 addToLog("RELAY_NOTICE [" + relayUrl + "]: " + detail);
-                                
+
                                 JSONObject noticeEv = new JSONObject();
                                 noticeEv.put("id", "ntc-" + UUID.randomUUID().toString());
                                 noticeEv.put("kind", -1); // Internal error marker
@@ -326,12 +342,18 @@ public class WebSocketClientManager {
                                 for (SchemaEventListener schemaListener : schemaListeners) {
                                     schemaListener.onSchemaEventReceived(relayUrl, noticeEv);
                                 }
+                                
+                                mHandler.post(() -> {
+                                    for (RelayStatusListener listener : listeners) {
+                                        listener.onMessageReceived(relayUrl, message);
+                                    }
+                                });
                             }
                             // REPAIR UPDATE: Subscription Shutdown Tracing
                             else if ("CLOSED".equals(type)) {
                                 String reason = msgArray.optString(2, "Subscription closed by relay");
                                 addToLog("RELAY_CLOSED [" + relayUrl + "]: " + reason);
-                                
+
                                 JSONObject closedEv = new JSONObject();
                                 closedEv.put("id", "cls-" + UUID.randomUUID().toString());
                                 closedEv.put("kind", -2); // Internal error marker
@@ -342,27 +364,34 @@ public class WebSocketClientManager {
                                 for (SchemaEventListener schemaListener : schemaListeners) {
                                     schemaListener.onSchemaEventReceived(relayUrl, closedEv);
                                 }
+                                
+                                mHandler.post(() -> {
+                                    for (RelayStatusListener listener : listeners) {
+                                        listener.onMessageReceived(relayUrl, message);
+                                    }
+                                });
+                            }
+                            // Handle other types (EOSE, etc.)
+                            else {
+                                mHandler.post(() -> {
+                                    for (RelayStatusListener listener : listeners) {
+                                        listener.onMessageReceived(relayUrl, message);
+                                    }
+                                });
                             }
                         }
                     } catch (Exception ignored) {}
-
-                    // CRASH FIX: Dispatch status updates to listeners on Main Thread for UI compatibility
-                    mHandler.post(() -> {
-                        for (RelayStatusListener listener : listeners) {
-                            listener.onMessageReceived(relayUrl, message);
-                        }
-                    });
                 }
 
                 @Override
                 public void onClose(int code, String reason, boolean remote) {
                     Log.w(TAG, "Relay Closed [" + relayUrl + "]: " + reason);
                     activeRelays.remove(relayUrl);
-                    
+
                     // FORENSIC: Identifying termination source
                     String source = remote ? "Remote Relay" : "Local App";
                     addToLog("TCP_CLOSED: " + relayUrl + "\nCode: " + code + "\nReason: " + reason + "\nSource: " + source);
-                    
+
                     // CRASH FIX: Dispatch to listeners on Main Thread
                     mHandler.post(() -> {
                         for (RelayStatusListener listener : listeners) {
@@ -375,10 +404,10 @@ public class WebSocketClientManager {
                 public void onError(Exception ex) {
                     Log.e(TAG, "Relay Failure [" + relayUrl + "]: " + ex.getMessage());
                     activeRelays.remove(relayUrl);
-                    
+
                     // FORENSIC: Full stack trace for identifying socket timeouts or SSL issues
                     addToLog("NETWORK_ERROR: " + relayUrl + "\nException: " + ex.toString());
-                    
+
                     // CRASH FIX: Dispatch to listeners on Main Thread
                     mHandler.post(() -> {
                         for (RelayStatusListener listener : listeners) {
@@ -433,7 +462,7 @@ public class WebSocketClientManager {
 
             // 3. Construct REQ with a unique Subscription ID
             String subId = "ad-" + UUID.randomUUID().toString().substring(0, 8);
-            
+
             JSONArray req = new JSONArray();
             req.put("REQ");
             req.put(subId);
