@@ -47,6 +47,10 @@ import java.util.List;
  * 
  * BATCH ARCHITECT FIX (R2 SETTLING):
  * - Implemented 1500ms cool-down between recursive chunk calls to prevent 500 Parser Desync.
+ * 
+ * PLATFORM LOAD REDUCTION (NEW):
+ * - Reduced CHUNK_SIZE from 20 to 5 to prevent Cloudflare Worker "CPU Time Limit Exceeded" crashes.
+ * - Smaller chunks ensure successful Multipart parsing within the 50ms Worker limit.
  */
 public class AdminDbUploaderActivity extends AppCompatActivity {
 
@@ -65,7 +69,8 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     private final StringBuilder forensicLogs = new StringBuilder();
     
     // BATCH CONFIGURATION
-    private static final int CHUNK_SIZE = 20;
+    // REDUCED FROM 20 TO 5: Prevents Cloudflare 500/504 CPU Time Limit Exceeded errors
+    private static final int CHUNK_SIZE = 5;
 
     // Launcher for Multi-File Picker (JSON Batch)
     private final ActivityResultLauncher<Intent> filePickerLauncher = registerForActivityResult(
@@ -226,7 +231,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     }
 
     /**
-     * RECURSIVE CHUNKING LOGIC: Handles batches of 20.
+     * RECURSIVE CHUNKING LOGIC: Handles batches of smaller size.
      */
     private void startBatchProcess() {
         if (selectedFileUris.isEmpty()) {
@@ -250,10 +255,8 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     }
 
     /**
-     * RECURSIVE ENGINE: Splits selected files into groups of CHUNK_SIZE (20).
-     * Prevents Cloudflare Worker Timeouts.
-     * 
-     * BATCH ARCHITECT FIX: Added Post-Success Cool-down logic.
+     * RECURSIVE ENGINE: Splits selected files into groups of CHUNK_SIZE (5).
+     * Reduced size prevents Cloudflare Worker CPU/RAM platform exhaustion.
      */
     private void uploadNextChunk(final int startIndex) {
         if (startIndex >= selectedFileUris.size()) {
@@ -268,7 +271,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         int endIndex = Math.min(startIndex + CHUNK_SIZE, selectedFileUris.size());
         final List<Uri> chunkUris = selectedFileUris.subList(startIndex, endIndex);
 
-        logForensic("CHUNK: Uploading batch " + (startIndex / CHUNK_SIZE + 1) + " (Files " + (startIndex + 1) + " to " + endIndex + ")...");
+        logForensic("CHUNK: Uploading batch " + (startIndex / CHUNK_SIZE + 1) + " (" + chunkUris.size() + " files)...");
 
         String targetPath = "v1/" + slugify(binding.etMainCat.getText().toString()) + "/" 
                            + slugify(binding.etSubCat.getText().toString()) + "/" 
@@ -289,8 +292,8 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
                         fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_SUCCESS);
                     }
 
-                    // BATCH ARCHITECT FIX: cool-down period
-                    logForensic("COOL-DOWN: Batch " + (startIndex / CHUNK_SIZE + 1) + " OK. Waiting 1.5s for R2 Indexing...");
+                    // BATCH ARCHITECT FIX: cool-down period between smaller chunks
+                    logForensic("COOL-DOWN: Batch successful. Waiting 1.5s for Cloudflare R2 Indexing...");
                     
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         // RECURSION: Trigger next chunk after delay
@@ -301,7 +304,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             @Override public void onFailure(Exception e) {
                 runOnUiThread(() -> {
                     binding.pbUpload.setVisibility(View.GONE);
-                    logForensic("FAILED: Worker rejected chunk at index " + startIndex + " - " + e.getMessage());
+                    logForensic("FAILED: Platform Limit Hit at index " + startIndex + ". \nReason: " + e.getMessage());
                     for (Uri uri : chunkUris) {
                         fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_FAILED);
                     }
