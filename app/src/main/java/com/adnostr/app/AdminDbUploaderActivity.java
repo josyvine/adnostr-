@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -42,6 +44,9 @@ import java.util.List;
  * - Implemented Auto-Tier fetching: Selecting a parent dropdown now populates the child dropdown.
  * - Relaxed Hierarchy Validation: Trimmed strings and unified slug logic to prevent false "Mismatch" aborts.
  * - Recursive Batching Engine: Uploads files in chunks of 20 to prevent Cloudflare Worker timeouts.
+ * 
+ * BATCH ARCHITECT FIX (R2 SETTLING):
+ * - Implemented 1500ms cool-down between recursive chunk calls to prevent 500 Parser Desync.
  */
 public class AdminDbUploaderActivity extends AppCompatActivity {
 
@@ -247,6 +252,8 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     /**
      * RECURSIVE ENGINE: Splits selected files into groups of CHUNK_SIZE (20).
      * Prevents Cloudflare Worker Timeouts.
+     * 
+     * BATCH ARCHITECT FIX: Added Post-Success Cool-down logic.
      */
     private void uploadNextChunk(final int startIndex) {
         if (startIndex >= selectedFileUris.size()) {
@@ -282,8 +289,13 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
                         fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_SUCCESS);
                     }
 
-                    // RECURSION: Trigger next chunk
-                    uploadNextChunk(startIndex + CHUNK_SIZE);
+                    // BATCH ARCHITECT FIX: cool-down period
+                    logForensic("COOL-DOWN: Batch " + (startIndex / CHUNK_SIZE + 1) + " OK. Waiting 1.5s for R2 Indexing...");
+                    
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        // RECURSION: Trigger next chunk after delay
+                        uploadNextChunk(startIndex + CHUNK_SIZE);
+                    }, 1500); 
                 });
             }
             @Override public void onFailure(Exception e) {
