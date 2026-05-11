@@ -17,6 +17,9 @@ import com.adnostr.app.databinding.ActivitySplashBinding;
  * Entry point for AdNostr.
  * Handles identity generation and navigation logic based on user setup.
  * ENHANCEMENT: Added JSON Import interception to restore an existing identity.
+ * 
+ * GLITCH FIX (RESTORATION): Broadened MIME types in the file picker to prevent
+ * JSON files from appearing greyed out on modern Android versions.
  */
 public class SplashActivity extends AppCompatActivity {
 
@@ -70,7 +73,15 @@ public class SplashActivity extends AppCompatActivity {
             // Trigger the Android System File Picker
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("application/json");
+            
+            // =========================================================================
+            // GLITCH FIX: Broaden MIME type to include text/plain/octet-stream
+            // This prevents .json files from being disabled/greyed out in the manager.
+            // =========================================================================
+            intent.setType("*/*");
+            String[] mimeTypes = {"application/json", "text/plain", "application/octet-stream"};
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+            
             importLauncher.launch(intent);
         });
 
