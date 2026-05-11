@@ -61,6 +61,7 @@
             app:cornerRadius="8dp" />
 
         <!-- Button: Import / Restore -->
+        <!-- Note: Java code in SettingsFragment now intercepts this click to offer Upload or Paste -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnRestorePassport"
             android:layout_width="match_parent"
