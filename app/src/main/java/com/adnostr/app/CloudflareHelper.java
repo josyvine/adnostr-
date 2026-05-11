@@ -45,6 +45,9 @@ import okhttp3.Response;
  * GLITCH FIX: 
  * - Increased write/read timeouts to 120s to prevent "Worker rejected batch - timeout" on large Samsung batches.
  * - Added body preparation tracing to keep Forensic Terminal alive.
+ * 
+ * BATCH ARCHITECT FIX (SOCKET ISOLATION):
+ * - Implemented 'Connection: close' header for batch streams to prevent 500 Parser Desync on subsequent chunks.
  */
 public class CloudflareHelper {
 
@@ -339,6 +342,8 @@ public class CloudflareHelper {
      * Implements X-Admin-Sig (BIP-340) and X-Target-Path headers.
      * 
      * GLITCH FIX: Added trace logging for Body preparation to keep the terminal alive.
+     * 
+     * BATCH ARCHITECT FIX: Added 'Connection: close' to ensure chunk isolation.
      */
     public void uploadBatchToR2(Context context, List<Uri> uris, String path, String signature, CloudflareCallback callback) {
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
@@ -368,6 +373,7 @@ public class CloudflareHelper {
                     .addHeader("X-AdNostr-Token", apiToken)
                     .addHeader("X-Admin-Sig", signature)
                     .addHeader("X-Target-Path", path)
+                    .addHeader("Connection", "close") // THE FIX: Forces fresh socket per chunk
                     .build();
 
             client.newCall(request).enqueue(new Callback() {
@@ -386,6 +392,7 @@ public class CloudflareHelper {
                         postLog(callback, "WORKER: Batch processing successful.\n");
                         postSuccess(callback, res, "BATCH_OK");
                     } else {
+                        // LOG RAW ERROR: Captures plain-text 500/504 errors without crashing the parser
                         postFailure(callback, new Exception("Batch Failed: " + response.code() + " " + res));
                     }
                 }
