@@ -80,4 +80,16 @@
     <string name="mode_standard">Crowdsourced</string>
     <string name="mode_gold">Gold Standard</string>
     <string name="search_hint_specs">Search specs (e.g. 128GB, Dimensity, 5G)</string>
+
+    <!-- ================================================================= -->
+    <!-- NEW: IDENTITY PORTABILITY ENHANCEMENTS                          -->
+    <!-- ================================================================= -->
+    <string name="paste_json_title">Paste JSON Identity</string>
+    <string name="paste_json_hint">Enter your backup string here…</string>
+    <string name="btn_verify_restore">VERIFY &amp; RESTORE</string>
+    <string name="btn_clear_input">CLEAR INPUT</string>
+    <string name="choice_restore_file">Browse Backup File</string>
+    <string name="choice_restore_paste">Paste Identity String</string>
+    <string name="error_empty_input">Please paste your JSON string.</string>
+    <string name="error_invalid_json">Invalid Identity: Check keys or JSON format.</string>
 </resources>
