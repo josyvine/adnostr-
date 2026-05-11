@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
@@ -67,6 +69,9 @@ import java.util.UUID;
  * - Added performCloudflareQuery for Layer 4 Index search.
  * - Added fetchLayer5Spec for ASIN-based deep specification injection.
  * - Default State: Forced to Cloudflare on activity startup.
+ * 
+ * PERFORMANCE FIX (ANTI-ANR):
+ * - Injection Debouncer: Implemented syncHandler to prevent UI thread flooding during multi-relay sync.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -85,6 +90,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
     // Global Schema State
     private String fetchedGlobalSchemaJson = "{}";
     private boolean isWebViewReady = false;
+
+    // PERFORMANCE FIX: Handler to debounce WebView updates
+    private final Handler syncHandler = new Handler(Looper.getMainLooper());
+    private Runnable syncRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -139,18 +148,29 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
     /**
      * UI AUTO-REFRESH: Implementation of SchemaEventListener.
      * REPAIR UPDATE: Triggers immediate fetch of merged forensic archive data.
+     * 
+     * PERFORMANCE FIX: Implemented a 500ms Debouncer to stop 31 relays from 
+     * choking the WebView renderer.
      */
     @Override
     public void onSchemaEventReceived(String url, JSONObject event) {
-        runOnUiThread(() -> {
+        // Remove any pending sync task
+        if (syncRunnable != null) {
+            syncHandler.removeCallbacks(syncRunnable);
+        }
+
+        // Schedule a new sync task after a 500ms quiet period
+        syncRunnable = () -> {
             // Re-fetch with the newly arrived metadata merged from the Hard-Locked Archive
-            MarketplaceSchemaManager.fetchGlobalSchema(this, null, schemaJson -> {
+            MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, null, schemaJson -> {
                 fetchedGlobalSchemaJson = schemaJson;
                 // Zero-Refresh Injection: Repopulate dropdowns in real-time
                 injectSchemaIfReady();
-                logTechnicalEvent("UI_SYNC: Dropdowns refreshed with live data from " + url);
+                logTechnicalEvent("UI_SYNC: Dropdowns refreshed with live data burst.");
             }, null);
-        });
+        };
+
+        syncHandler.postDelayed(syncRunnable, 500);
     }
 
     /**
@@ -328,7 +348,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                         runOnUiThread(() -> {
                             String base64 = Base64.encodeToString(response.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
                             binding.wvProductCreator.evaluateJavascript("applySpecSheet(decodeURIComponent(escape(window.atob('" + base64 + "'))))", null);
-                            
+
                             // AUTO-HEAL: Re-sign and re-broadcast Cloudflare Gold Standard data to Nostr
                             try {
                                 JSONObject specObj = new JSONObject(response);
@@ -654,6 +674,8 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         if (wsManager != null) {
             wsManager.removeSchemaListener(this);
         }
+        // Cleanup handler to prevent memory leaks
+        syncHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 
