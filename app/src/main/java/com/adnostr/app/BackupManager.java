@@ -25,6 +25,7 @@ import java.util.Set;
  * 
  * UPDATED: Implemented Smart Export logic to filter fields based on the active Role.
  * UPDATED: Enforced clearAllData() before restoration to ensure a clean identity swap.
+ * REFACTORED: Decoupled File I/O from Validation logic to support "Paste JSON" feature.
  */
 public class BackupManager {
 
@@ -88,12 +89,12 @@ public class BackupManager {
     }
 
     /**
-     * Reads a JSON file, validates the Nostr identity, and restores the account.
+     * Reads a JSON file content and routes it to the universal verification engine.
      * TRIGGERED BY: ACTION_OPEN_DOCUMENT result in SplashActivity or SettingsFragment.
      */
     public static void importProfileFromJson(Context context, Uri fileUri) {
         try {
-            // 1. Read JSON file content
+            // 1. Read JSON file content into a String
             InputStream inputStream = context.getContentResolver().openInputStream(fileUri);
             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
             StringBuilder sb = new StringBuilder();
@@ -103,8 +104,28 @@ public class BackupManager {
             }
             inputStream.close();
 
-            // 2. Parse JSON
-            JSONObject backup = new JSONObject(sb.toString());
+            // 2. Route the raw string to the unified verification logic
+            verifyAndRestore(context, sb.toString());
+
+        } catch (Exception e) {
+            Log.e(TAG, "File read failed: " + e.getMessage());
+            Toast.makeText(context, "File Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * CORE VERIFICATION ENGINE (NEW)
+     * Handles the heavy lifting of JSON parsing, crypto-validation, and state restoration.
+     * This can be called by either the File Picker or the manual Paste box.
+     */
+    public static void verifyAndRestore(Context context, String jsonContent) {
+        try {
+            if (jsonContent == null || jsonContent.trim().isEmpty()) {
+                throw new Exception("The identity string is empty.");
+            }
+
+            // 1. Parse JSON
+            JSONObject backup = new JSONObject(jsonContent);
             String priv = backup.optString("nostr_private_key", "");
             String pub = backup.optString("nostr_public_key", "");
             String name = backup.optString("username", "");
@@ -112,7 +133,7 @@ public class BackupManager {
             String cfUrl = backup.optString("cloudflare_worker_url", "");
             String cfToken = backup.optString("cloudflare_secret_token", "");
 
-            // 3. CRYPTOGRAPHY VALIDATION
+            // 2. CRYPTOGRAPHY VALIDATION
             // Strict check: Hex length must be 64 characters (32 bytes)
             if (priv.length() != 64 || pub.length() != 64) {
                 throw new Exception("Invalid Identity: Keys must be 64-character hex strings.");
@@ -123,10 +144,10 @@ public class BackupManager {
                 NostrKeyManager.hexToBytes(priv);
                 NostrKeyManager.hexToBytes(pub);
             } catch (Exception e) {
-                throw new Exception("Identity Error: File contains non-hex characters.");
+                throw new Exception("Identity Error: String contains non-hex characters.");
             }
 
-            // 4. Batch Restore to Database
+            // 3. Extract Interests
             Set<String> interests = new HashSet<>();
             JSONArray intArr = backup.optJSONArray("user_interests");
             if (intArr != null) {
@@ -137,19 +158,19 @@ public class BackupManager {
 
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
             
-            // CRITICAL FIX: Wipe existing auto-generated key before restoring from JSON
+            // 4. CRITICAL: Wipe existing auto-generated key before restoring
             db.clearAllData();
             
-            // Execute batch restore with imported data
+            // 5. Execute batch restore to local storage
             db.batchRestoreAccount(priv, pub, name, role, interests, cfUrl, cfToken);
 
-            Toast.makeText(context, "Identity Passport Verified. Restoring...", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Identity Verified. Restoring Account...", Toast.LENGTH_SHORT).show();
 
-            // 5. App Restart
+            // 6. Trigger App Restart to initialize the new identity
             restartApp(context);
 
         } catch (Exception e) {
-            Log.e(TAG, "Import failed: " + e.getMessage());
+            Log.e(TAG, "Verification failed: " + e.getMessage());
             Toast.makeText(context, "Restore Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
