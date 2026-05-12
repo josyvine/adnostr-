@@ -59,6 +59,10 @@ import java.util.concurrent.Executors;
  * - Added hardcoded defaults for Architect API and Secret Token.
  * - URL: https://adnostr-db-architect.joycvine.workers.dev
  * - Token: 205000
+ * 
+ * BATCH RESUME FIX:
+ * - KEY_UPLOADED_FILES_REGISTRY: Stores filenames of successfully uploaded forensic files.
+ * - Logic: Allows the Architect to skip already-synced files to stay under Cloudflare sub-request limits.
  */
 public class AdNostrDatabaseHelper {
 
@@ -137,6 +141,9 @@ public class AdNostrDatabaseHelper {
     // VOLATILITY FIX: Master Forensic Archive Key
     private static final String KEY_FORENSIC_ARCHIVE_JSON = "forensic_permanent_archive_master";
 
+    // BATCH RESUME REGISTRY
+    private static final String KEY_UPLOADED_FILES_REGISTRY = "forensic_uploaded_files_registry";
+
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
 
@@ -145,6 +152,9 @@ public class AdNostrDatabaseHelper {
 
     // PERFORMANCE FIX: Thread-safe RAM Cache to check for duplicates without reading the disk
     private final Set<String> archiveIdCache = ConcurrentHashMap.newKeySet();
+
+    // PERFORMANCE FIX: Thread-safe RAM Cache for the Sync Registry
+    private final Set<String> uploadedFilesCache = ConcurrentHashMap.newKeySet();
 
     // BOOTSTRAP RELAY LIST
     private final String[] BOOTSTRAP_RELAYS = {
@@ -183,8 +193,9 @@ public class AdNostrDatabaseHelper {
 
     private AdNostrDatabaseHelper(Context context) {
         prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        // Start pre-loading the RAM cache in the background on startup
+        // Start pre-loading the RAM caches in the background on startup
         preLoadArchiveCache();
+        preLoadSyncRegistry();
     }
 
     public static synchronized AdNostrDatabaseHelper getInstance(Context context) {
@@ -206,6 +217,53 @@ public class AdNostrDatabaseHelper {
                     archiveIdCache.add(archiveArray.getJSONObject(i).getString("id"));
                 }
             } catch (Exception ignored) {}
+        });
+    }
+
+    /**
+     * Logic: Loads successfully uploaded filenames into RAM for O(1) skipping in the batch loop.
+     */
+    private void preLoadSyncRegistry() {
+        diskExecutor.execute(() -> {
+            try {
+                Set<String> registry = prefs.getStringSet(KEY_UPLOADED_FILES_REGISTRY, new HashSet<>());
+                uploadedFilesCache.addAll(registry);
+            } catch (Exception ignored) {}
+        });
+    }
+
+    // =========================================================================
+    // BATCH RESUME REGISTRY METHODS
+    // =========================================================================
+
+    /**
+     * Logic: Checks if a file has been successfully uploaded to the Cloud Architect.
+     * Use this in the upload loop to skip files and avoid hitting the 50-fetch limit.
+     */
+    public boolean isFileUploaded(String filename) {
+        return uploadedFilesCache.contains(filename);
+    }
+
+    /**
+     * Logic: Marks a filename as uploaded and hard-locks it to the persistent registry.
+     */
+    public void markFileUploaded(String filename) {
+        if (uploadedFilesCache.add(filename)) {
+            diskExecutor.execute(() -> {
+                Set<String> registry = new HashSet<>(prefs.getStringSet(KEY_UPLOADED_FILES_REGISTRY, new HashSet<>()));
+                registry.add(filename);
+                prefs.edit().putStringSet(KEY_UPLOADED_FILES_REGISTRY, registry).commit();
+            });
+        }
+    }
+
+    /**
+     * Logic: Clears the registry. Use this if the cloud database is wiped and needs a full re-sync.
+     */
+    public void clearSyncRegistry() {
+        uploadedFilesCache.clear();
+        diskExecutor.execute(() -> {
+            prefs.edit().remove(KEY_UPLOADED_FILES_REGISTRY).commit();
         });
     }
 
