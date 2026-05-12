@@ -55,6 +55,9 @@ import java.util.concurrent.Executors;
  * - Disk Executor: Offloads blocking .commit() calls to a single-threaded background executor to prevent UI thread fsync hangs.
  * - RAM Fingerprint Cache: Added archiveIdCache for O(1) instant duplicate detection to stop thread choking.
  *
+ * RESUME ENGINE (NEW):
+ * - KEY_UPLOADED_ASIN_REGISTRY: Permanent record of ASINs successfully written to R2 to support "Smart Skipping".
+ *
  * ENHANCEMENT: 5-LAYER DATABASE QUERY API (NEW)
  * - Added hardcoded defaults for Architect API and Secret Token.
  * - URL: https://adnostr-db-architect.joycvine.workers.dev
@@ -136,6 +139,9 @@ public class AdNostrDatabaseHelper {
 
     // VOLATILITY FIX: Master Forensic Archive Key
     private static final String KEY_FORENSIC_ARCHIVE_JSON = "forensic_permanent_archive_master";
+
+    // RESUME ENGINE: Registry of Successfully processed ASINs to prevent redundant cloud writes
+    private static final String KEY_UPLOADED_ASIN_REGISTRY = "uploaded_asin_success_archive";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -289,6 +295,7 @@ public class AdNostrDatabaseHelper {
                             }
                             // CASE B: Duplicate Technical Field (TIER 3)
                             else if (kind == 30006 && "field".equals(newType)) {
+                                // Deduplicate based on CATEGORY + FIELD_NAME
                                 if (existingContent.optString("category", "").trim().toLowerCase().equals(newCat) && 
                                     existingContent.optString("label", "").trim().toLowerCase().equals(newLabel)) {
                                     archiveIdCache.remove(newId);
@@ -300,6 +307,7 @@ public class AdNostrDatabaseHelper {
                                 if (existingContent.optString("category", "").trim().toLowerCase().equals(newCat)) {
                                     JSONObject existingSpecs = existingContent.optJSONObject("specs");
                                     JSONObject nextSpecs = newContent.optJSONObject("specs");
+                                    // Deep compare specs to ensure we aren't re-saving the same list of Bajaj models
                                     if (existingSpecs != null && nextSpecs != null && existingSpecs.toString().equals(nextSpecs.toString())) {
                                         archiveIdCache.remove(newId);
                                         return;
@@ -309,6 +317,7 @@ public class AdNostrDatabaseHelper {
                         }
                     }
                 } else {
+                    // Standard de-duplication for non-schema events
                     for (int i = 0; i < archiveArray.length(); i++) {
                         if (archiveArray.getJSONObject(i).getString("id").equals(newId)) return;
                     }
@@ -318,7 +327,7 @@ public class AdNostrDatabaseHelper {
 
                 // PERFORMANCE FIX: Synchronous commit on background thread to ensure data is locked
                 prefs.edit().putString(KEY_FORENSIC_ARCHIVE_JSON, archiveArray.toString()).commit();
-                android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive. Total: " + archiveArray.length());
+                android.util.Log.i("AdNostr_Archive", "New metadata frame hard-locked to Forensic Archive. Total items: " + archiveArray.length());
 
             } catch (Exception e) {
                 android.util.Log.e("AdNostr_Archive", "Failed to append to permanent archive: " + e.getMessage());
@@ -840,6 +849,44 @@ public class AdNostrDatabaseHelper {
     public boolean isDebugModeActive() {
         // Default to FALSE for a professional experience
         return prefs.getBoolean(KEY_DEBUG_MODE_ACTIVE, false);
+    }
+
+    // =========================================================================
+    // RESUME ENGINE: SMART SKIPPING METHODS (NEW)
+    // =========================================================================
+
+    /**
+     * Permanent Memory: Records a successfully uploaded ASIN so it is skipped in future selects.
+     * Uses commit() for immediate disk-locking.
+     */
+    public void addUploadedAsin(final String asin) {
+        diskExecutor.execute(() -> {
+            Set<String> uploaded = new HashSet<>(prefs.getStringSet(KEY_UPLOADED_ASIN_REGISTRY, new HashSet<>()));
+            uploaded.add(asin);
+            prefs.edit().putStringSet(KEY_UPLOADED_ASIN_REGISTRY, uploaded).commit();
+            android.util.Log.i("AdNostr_Architect", "ASIN Locked to Cloud Registry: " + asin);
+        });
+    }
+
+    /**
+     * Provides the Activity with the full list of files already in R2.
+     */
+    public Set<String> getUploadedAsinRegistry() {
+        return prefs.getStringSet(KEY_UPLOADED_ASIN_REGISTRY, new HashSet<>());
+    }
+
+    public boolean isAsinUploaded(String asin) {
+        Set<String> registry = getUploadedAsinRegistry();
+        return registry.contains(asin);
+    }
+
+    /**
+     * Resets the entire success history if a fresh full architect session is required.
+     */
+    public void clearUploadedAsinRegistry() {
+        diskExecutor.execute(() -> {
+            prefs.edit().remove(KEY_UPLOADED_ASIN_REGISTRY).commit();
+        });
     }
 
     // =========================================================================
