@@ -1,11 +1,14 @@
 package com.adnostr.app;
 
 import android.app.Activity;
+import android.content.ContentResolver;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.OpenableColumns;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -30,6 +33,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * NEW: CLOUDFLARE DATABASE ARCHITECT (ADMIN ONLY)
@@ -48,9 +52,12 @@ import java.util.List;
  * BATCH ARCHITECT FIX (R2 SETTLING):
  * - Implemented 1500ms cool-down between recursive chunk calls to prevent 500 Parser Desync.
  * 
- * PLATFORM LOAD REDUCTION (NEW):
+ * PLATFORM LOAD REDUCTION:
  * - Reduced CHUNK_SIZE from 20 to 5 to prevent Cloudflare Worker "CPU Time Limit Exceeded" crashes.
- * - Smaller chunks ensure successful Multipart parsing within the 50ms Worker limit.
+ * 
+ * RESUME ENGINE (NEW):
+ * - Smart Skipping: Analyzes selected files and excludes ASINs already recorded in the cloud registry.
+ * - Success Recording: Automatically updates the database registry when a chunk is successfully processed.
  */
 public class AdminDbUploaderActivity extends AppCompatActivity {
 
@@ -67,9 +74,8 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     private FileUploadAdapter fileAdapter;
 
     private final StringBuilder forensicLogs = new StringBuilder();
-    
+
     // BATCH CONFIGURATION
-    // REDUCED FROM 20 TO 5: Prevents Cloudflare 500/504 CPU Time Limit Exceeded errors
     private static final int CHUNK_SIZE = 5;
 
     // Launcher for Multi-File Picker (JSON Batch)
@@ -113,7 +119,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
 
         // Setup File List
         binding.rvBatchFiles.setLayoutManager(new LinearLayoutManager(this));
-        fileAdapter = new FileUploadAdapter(selectedFileUris);
+        fileAdapter = new FileUploadAdapter(new ArrayList<>());
         binding.rvBatchFiles.setAdapter(fileAdapter);
 
         // --- GLITCH FIX: AUTO-FETCH TIERED DROP-DOWNS ---
@@ -194,7 +200,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
                     else if (tier.equals("tier2")) subCategories.add(name);
                     else if (tier.equals("tier3")) brands.add(name);
                     Toast.makeText(AdminDbUploaderActivity.this, "Seed Success", Toast.LENGTH_SHORT).show();
-                    
+
                     binding.etMainCat.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
                     binding.etSubCat.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
                     binding.etBrand.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
@@ -216,18 +222,68 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         filePickerLauncher.launch(intent);
     }
 
+    /**
+     * RESUME ENGINE LOGIC:
+     * Analyzes selected files and compares them against the database Success Registry.
+     */
     private void handleFileSelection(Intent data) {
         selectedFileUris.clear();
+        List<Uri> allPickedUris = new ArrayList<>();
+
         if (data.getClipData() != null) {
             int count = data.getClipData().getItemCount();
             for (int i = 0; i < count; i++) {
-                selectedFileUris.add(data.getClipData().getItemAt(i).getUri());
+                allPickedUris.add(data.getClipData().getItemAt(i).getUri());
             }
         } else if (data.getData() != null) {
-            selectedFileUris.add(data.getData());
+            allPickedUris.add(data.getData());
         }
-        fileAdapter.setItems(selectedFileUris); 
-        logForensic("BATCH: Selected " + selectedFileUris.size() + " JSON files.");
+
+        // Initialize adapter with all picked files
+        fileAdapter.setItems(allPickedUris);
+
+        int skipCount = 0;
+        Set<String> uploadedRegistry = db.getUploadedAsinRegistry();
+
+        for (Uri uri : allPickedUris) {
+            String fileName = getFileNameFromUri(uri);
+            String asin = fileName.replace("_RAW.json", "").replace("_raw.json", "").replace(".json", "");
+
+            if (uploadedRegistry.contains(asin)) {
+                // CASE: File already in cloud, mark success and skip
+                fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_SUCCESS);
+                skipCount++;
+            } else {
+                // CASE: New file, add to upload queue
+                selectedFileUris.add(uri);
+            }
+        }
+
+        logForensic("RESUME ENGINE: Identified " + allPickedUris.size() + " files. Skipping " + skipCount + " already in cloud.");
+        logForensic("QUEUE: " + selectedFileUris.size() + " new files scheduled for architecting.");
+    }
+
+    /**
+     * Helper to extract filename from URI
+     */
+    private String getFileNameFromUri(Uri uri) {
+        String result = null;
+        if (uri.getScheme().equals("content")) {
+            Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+            try {
+                if (cursor != null && cursor.moveToFirst()) {
+                    result = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME));
+                }
+            } finally {
+                if (cursor != null) cursor.close();
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            int cut = result.lastIndexOf('/');
+            if (cut != -1) result = result.substring(cut + 1);
+        }
+        return result;
     }
 
     /**
@@ -235,7 +291,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
      */
     private void startBatchProcess() {
         if (selectedFileUris.isEmpty()) {
-            Toast.makeText(this, "Select files first", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Queue is empty (All files already uploaded)", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -256,7 +312,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
 
     /**
      * RECURSIVE ENGINE: Splits selected files into groups of CHUNK_SIZE (5).
-     * Reduced size prevents Cloudflare Worker CPU/RAM platform exhaustion.
+     * RESUME ENGINE: Saves successful ASINs to database after every chunk.
      */
     private void uploadNextChunk(final int startIndex) {
         if (startIndex >= selectedFileUris.size()) {
@@ -286,15 +342,19 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     // Update UI Progress
                     binding.pbUpload.setProgress(endIndex);
-                    
-                    // Mark files as success in the list
+
+                    // RECORD SUCCESS IN REGISTRY
                     for (Uri uri : chunkUris) {
                         fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_SUCCESS);
+                        
+                        String fileName = getFileNameFromUri(uri);
+                        String asin = fileName.replace("_RAW.json", "").replace("_raw.json", "").replace(".json", "");
+                        db.addUploadedAsin(asin); // LOCK to permanent history
                     }
 
-                    // BATCH ARCHITECT FIX: cool-down period between smaller chunks
-                    logForensic("COOL-DOWN: Batch successful. Waiting 1.5s for Cloudflare R2 Indexing...");
-                    
+                    // BATCH ARCHITECT FIX: cool-down period
+                    logForensic("SETTLING: Batch successful. Waiting 1.5s for R2 Indexing...");
+
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         // RECURSION: Trigger next chunk after delay
                         uploadNextChunk(startIndex + CHUNK_SIZE);
@@ -304,7 +364,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
             @Override public void onFailure(Exception e) {
                 runOnUiThread(() -> {
                     binding.pbUpload.setVisibility(View.GONE);
-                    logForensic("FAILED: Platform Limit Hit at index " + startIndex + ". \nReason: " + e.getMessage());
+                    logForensic("FAILED: Platform Limit Hit at index " + startIndex + ". \nDetails: " + e.getMessage());
                     for (Uri uri : chunkUris) {
                         fileAdapter.updateStatus(uri, FileUploadAdapter.STATUS_FAILED);
                     }
@@ -326,7 +386,7 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
 
             String m = slugify(hier.optString("main_category"));
             String s = slugify(hier.optString("sub_category"));
-            
+
             String selectedM = slugify(binding.etMainCat.getText().toString());
             String selectedS = slugify(binding.etSubCat.getText().toString());
 
