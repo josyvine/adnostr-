@@ -71,4 +71,14 @@
     <!-- Cloud Architect Accents -->
     <color name="architect_gold">#FFD700</color>
     <color name="seed_tick_green">#25D366</color>
+
+    <!-- ================================================================= -->
+    <!-- NEW: DYNAMIC THEME ENGINE COLORS (DAY MODE DEFAULTS)              -->
+    <!-- ================================================================= -->
+    <color name="app_background">#FFFFFF</color>
+    <color name="app_card_background">#F4F6F8</color>
+    <color name="app_text_main">#000000</color>
+    <color name="app_text_muted">#6B7280</color>
+    <color name="app_border">#E5E7EB</color>
+    <color name="app_status_bar">#FFFFFF</color>
 </resources>
