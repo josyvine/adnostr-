@@ -30,6 +30,9 @@ import java.util.UUID;
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  * BUILD FIX: Updated ProductListing constructor to include eventId for compatibility with bulk deletion.
  * UPDATED: Extracts and displays Dynamic Category labeling in the storefront grid.
+ * 
+ * RECOVERY UPDATE: Broadened the #t tag filter to ensure ads published in standard 
+ * mode or legacy versions are not filtered out by the relays.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -92,8 +95,7 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
     /**
      * Subscribes to Kind 30005 events authored by the specific target advertiser.
-     * FIXED: Added the #t filter to ensure proper indexing and retrieval from relays.
-     * UPDATED: Triggers Forensic Diagnostic Console.
+     * UPDATED: Broadened #t filter to catch all compatible AdNostr marketplace listings.
      */
     private void fetchAdvertiserProducts() {
         storefrontLogs.setLength(0);
@@ -116,8 +118,15 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
             filter.put("kinds", new JSONArray().put(30005));
             filter.put("authors", new JSONArray().put(targetPubkey));
             
-            // CRITICAL FIX: Ensure we only fetch events tagged as marketplace_product
-            filter.put("#t", new JSONArray().put("marketplace_product"));
+            // =========================================================================
+            // RECOVERY FIX: Broadened #t Tag matching.
+            // Relays will now return events tagged as 'marketplace_product' OR 
+            // the standard 'adnostr_ad' pointer to maximize discovery.
+            // =========================================================================
+            JSONArray tagFilter = new JSONArray();
+            tagFilter.put("marketplace_product");
+            tagFilter.put("adnostr_ad");
+            filter.put("#t", tagFilter);
 
             String subId = "store-" + UUID.randomUUID().toString().substring(0, 6);
             String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
