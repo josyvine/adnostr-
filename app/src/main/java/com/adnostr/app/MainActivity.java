@@ -119,7 +119,7 @@ public class MainActivity extends AppCompatActivity {
     private void setupNavigationSystem() {
         String role = db.getUserRole();
         boolean isAdmin = db.isAdmin();
-        
+
         pagerAdapter = new MainViewPagerAdapter(this, role);
         binding.mainViewPager.setAdapter(pagerAdapter);
 
@@ -225,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
             if (!Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "Enable 'Display over other apps' to receive Ads.", Toast.LENGTH_LONG).show();
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:" + getName()));
+                        Uri.parse("package:" + getPackageName()));
                 startActivity(intent);
             }
         }
@@ -240,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
         }
-        
+
         // Android 14 Foreground Service requirement
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             permissions.add(Manifest.permission.FOREGROUND_SERVICE_LOCATION);
@@ -270,7 +270,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onRelayConnected(String url) {
                 Log.d(TAG, "Connected to " + url);
-                
+
                 // ADMIN SUPREMACY: If Admin is connected, subscribe to schema updates globally
                 if (db.isAdmin()) {
                     try {
@@ -328,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
                                     });
                                 }
                             }
-                            
+
                             // --- PART 2: ADMIN SUPREMACY ALERT LOGIC (NEW) ---
                             else if (db.isAdmin() && (kind == 30006 || kind == 30007)) {
                                 long eventTime = event.optLong("created_at", 0);
