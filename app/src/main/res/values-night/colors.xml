@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Standard Android/Material Color Names (RETAINED) -->
+    <color name="colorPrimary">#2196F3</color>
+    <color name="colorPrimaryDark">#1976D2</color>
+    <color name="colorAccent">#4CAF50</color>
+    <color name="onPrimary">#FFFFFF</color>
+    <color name="onSecondary">#000000</color>
+
+    <!-- Basic Palette -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    
+    <!-- System & Brand Colors -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+
+    <!-- AdNostr Dark Theme Palette (ORIGINAL) -->
+    <color name="hfs_background_dark">#121212</color>
+    <color name="hfs_card_dark">#1E1E1E</color>
+    <color name="hfs_border_grey">#333333</color>
+    <color name="hfs_text_grey">#B0B0B0</color>
+    <color name="hfs_subtext_grey">#666666</color>
+
+    <!-- State Colors (PERSISTED) -->
+    <color name="hfs_active_green">#4CAF50</color>
+    <color name="hfs_active_blue">#2196F3</color>
+    <color name="hfs_inactive_red">#FF5252</color>
+    <color name="hfs_error_red">#FF5252</color>
+    <color name="hfs_warning_orange">#FF9800</color>
+
+    <!-- Navigation Colors -->
+    <color name="nav_item_unselected">#666666</color>
+    <color name="nav_item_selected">#FFFFFF</color>
+
+    <!-- AMOLED Theme Fixes -->
+    <color name="amoled_colorPrimary">#2196F3</color>
+    <color name="amoled_backgroundColor">#000000</color>
+    <color name="amoled_textColor">#FFFFFF</color>
+    <color name="amoled_headerTextColor">#FFFFFF</color>
+
+    <!-- Dark Theme (dt) Fixes -->
+    <color name="dt_colorPrimary">#2196F3</color>
+    <color name="dt_backgroundColor">#121212</color>
+    <color name="dt_textColor">#E0E0E0</color>
+    <color name="dt_headerTextColor">#FFFFFF</color>
+
+    <!-- Light Theme (lt) Fixes -->
+    <color name="lt_colorPrimary">#1976D2</color>
+    <color name="lt_backgroundColor">#FFFFFF</color>
+    <color name="lt_textColor">#212121</color>
+    <color name="lt_headerTextColor">#000000</color>
+
+    <!-- ================================================================= -->
+    <!-- NEW: ARCHITECT & TOGGLE UI COLORS (PERSISTED)                   -->
+    <!-- ================================================================= -->
+    
+    <!-- Forensic Terminal Colors -->
+    <color name="terminal_background">#0A0A0A</color>
+    <color name="terminal_text_green">#00FF41</color>
+    <color name="terminal_text_amber">#FFB000</color>
+    
+    <!-- iOS Style Toggle Colors -->
+    <color name="toggle_on_track">#34C759</color>
+    <color name="toggle_off_track">#39393D</color>
+    <color name="toggle_thumb">#FFFFFF</color>
+
+    <!-- Cloud Architect Accents -->
+    <color name="architect_gold">#FFD700</color>
+    <color name="seed_tick_green">#25D366</color>
+
+    <!-- ================================================================= -->
+    <!-- NEW: DYNAMIC THEME ENGINE COLORS (NIGHT MODE OVERRIDES)           -->
+    <!-- ================================================================= -->
+    <color name="app_background">#121212</color>
+    <color name="app_card_background">#1E1E1E</color>
+    <color name="app_text_main">#FFFFFF</color>
+    <color name="app_text_muted">#B0B0B0</color>
+    <color name="app_border">#333333</color>
+    <color name="app_status_bar">#121212</color>
+</resources>
