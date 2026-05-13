@@ -4,22 +4,22 @@
         <!-- Primary brand colors -->
         <item name="colorPrimary">#2196F3</item>
         <item name="colorPrimaryVariant">#1976D2</item>
-        <item name="onPrimary">@color/white</item>
+        <item name="onPrimary">@color/onPrimary</item>
         <!-- Secondary brand colors -->
         <item name="colorSecondary">#4CAF50</item>
         <item name="colorSecondaryVariant">#388E3C</item>
-        <item name="onSecondary">@color/black</item>
+        <item name="onSecondary">@color/onSecondary</item>
         <!-- Status bar color -->
-        <item name="android:statusBarColor">#121212</item>
+        <item name="android:statusBarColor">@color/app_status_bar</item>
         <!-- Customize your theme here -->
-        <item name="android:windowBackground">#121212</item>
+        <item name="android:windowBackground">@color/app_background</item>
     </style>
 
     <!-- Full screen theme without Action Bar (Used for Splash and Main) -->
     <style name="Theme.AdNostr.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:statusBarColor">#121212</item>
+        <item name="android:statusBarColor">@color/app_status_bar</item>
     </style>
 
     <!-- Transparent Popup Theme (Used for the Ad Popup Card) -->
@@ -35,8 +35,8 @@
 
     <!-- Custom Dialog Style for Error Diagnostic and Reset Confirmation -->
     <style name="Theme.AdNostr.Dialog" parent="Theme.MaterialComponents.DayNight.Dialog">
-        <item name="android:windowBackground">@drawable/bg_card_dark</item>
-        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">@color/app_card_background</item>
+        <item name="android:textColorPrimary">@color/app_text_main</item>
         <item name="colorAccent">#2196F3</item>
     </style>
 
