@@ -33,6 +33,10 @@ import java.util.List;
  * NEW ENHANCEMENT: CLOUDFLARE DATABASE ARCHITECT (STEP 2)
  * - Added CMD_CLOUDFLARE_DB (14) for Admin-only JSON Batch Uploading and Seeding.
  * - Icon strictly guarded by isAdmin security check.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Added CMD_THEME (15) to allow global toggling between Day and Night modes.
+ * - Icon is universal and available to all roles.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -68,6 +72,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     // NEW: CLOUDFLARE DATABASE ARCHITECT IDENTIFIER
     public static final int CMD_CLOUDFLARE_DB = 14;
 
+    // NEW: THEME SWITCHER IDENTIFIER
+    public static final int CMD_THEME = 15;
+
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
 
@@ -82,6 +89,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
      * Constructor filters the icon list based on the User's Role and Admin Status.
      * UPDATED: Implements conditional logic for Admin Moderator Console vs B Archive.
      * UPDATED: Injects the Database Architect icon for Admin verified sessions.
+     * UPDATED: Injects the Theme icon for all users.
      */
     public SettingsIconAdapter(String userRole, boolean isAdmin, OnSettingClickListener listener) {
         this.listener = listener;
@@ -97,6 +105,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         // 3. FEATURE 1: Privacy Command Center (Available to Everyone)
         items.add(new SettingItem(CMD_PRIVACY, "Privacy", R.drawable.ic_cmd_privacy));
 
+        // 4. THEME SWITCHER (Available to Everyone)
+        items.add(new SettingItem(CMD_THEME, "Theme", R.drawable.ic_nav_report)); // Temporary icon, will be replaced by ic_cmd_theme.xml
+
         // GLITCH 1 FIX: Personalized Icon (Available to Everyone)
         items.add(new SettingItem(CMD_PERSONALIZED, "Personalized", R.drawable.ic_cmd_personalized));
 
@@ -105,24 +116,24 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
             items.add(new SettingItem(CMD_BROWSE, "Browse", R.drawable.ic_cmd_browse));
         }
 
-        // 4. CLOUDFLARE STORAGE (Strict: Advertiser Only)
+        // 5. CLOUDFLARE STORAGE (Strict: Advertiser Only)
         if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
             items.add(new SettingItem(CMD_CLOUDFLARE, "Storage", R.drawable.ic_cmd_storage));
 
-            // 5. MY HASHTAGS REGISTRY (Strict: Advertiser Only)
+            // 6. MY HASHTAGS REGISTRY (Strict: Advertiser Only)
             items.add(new SettingItem(CMD_MY_HASHTAGS, "Registry", R.drawable.ic_cmd_registry));
         }
 
-        // 6. History Shortcut (Everyone)
+        // 7. History Shortcut (Everyone)
         items.add(new SettingItem(CMD_HISTORY, "History", R.drawable.ic_cmd_history));
 
-        // 7. NEW: Identity Backup (Available to Everyone)
+        // 8. NEW: Identity Backup (Available to Everyone)
         items.add(new SettingItem(CMD_BACKUP, "Backup", R.drawable.ic_cmd_backup));
 
-        // 8. CONSOLE MANAGEMENT (Available to Everyone)
+        // 9. CONSOLE MANAGEMENT (Available to Everyone)
         items.add(new SettingItem(CMD_CONSOLE_TUNE, "Console", R.drawable.tune_24px));
 
-        // 9. THE TRUTH ANCHOR LOGIC
+        // 10. THE TRUTH ANCHOR LOGIC
         if (isAdmin) {
             // Admin receives full Moderator privileges
             items.add(new SettingItem(CMD_REPORT, "Report", R.drawable.ic_nav_report));
@@ -134,7 +145,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
             items.add(new SettingItem(CMD_ARCHIVE, "Archive", R.drawable.ic_nav_report));
         }
 
-        // 10. System Reset (Everyone)
+        // 11. System Reset (Everyone)
         items.add(new SettingItem(CMD_RESET, "Reset App", R.drawable.ic_cmd_reset));
     }
 
