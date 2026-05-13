@@ -15,6 +15,8 @@
 
         <!-- Status bar color -->
         <item name="android:statusBarColor">@color/app_status_bar</item>
+        <!-- Logic: Ensures status bar icons are light for the dark background -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
 
         <!-- Surface and Background colors - Required for Material Components -->
         <item name="android:colorBackground">@color/app_background</item>
@@ -42,14 +44,16 @@
     <!-- ================================================================= -->
     <!-- NEW: ADNOSTR THEME MAPPING (REQUIRED BY UPDATED JAVA FILES)       -->
     <!-- ================================================================= -->
-    
+
     <style name="Theme.AdNostr" parent="Theme.CloudNest">
         <item name="android:windowBackground">@color/app_background</item>
         <item name="android:statusBarColor">@color/app_status_bar</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
     </style>
 
     <style name="Theme.AdNostr.NoActionBar" parent="Theme.CloudNest.NoActionBar">
         <!-- Inherits from CloudNest Dark variant -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
     </style>
 
     <!-- Night variant for Dialogs -->
