@@ -29,7 +29,8 @@ import com.adnostr.app.databinding.DialogIdentityBackupBinding;
 import com.adnostr.app.databinding.DialogModeSwitchBinding;
 import com.adnostr.app.databinding.DialogPrivacySettingsBinding;
 import com.adnostr.app.databinding.DialogUsernameSetupBinding;
-import com.adnostr.app.databinding.DialogPasteJsonBinding; // NEW BINDING
+import com.adnostr.app.databinding.DialogPasteJsonBinding; 
+import com.adnostr.app.databinding.DialogThemeSettingsBinding; // NEW BINDING
 import com.adnostr.app.databinding.FragmentSettingsBinding;
 
 /**
@@ -53,6 +54,10 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * 
  * GLITCH FIX (RESTORATION): Implemented MIME wildcard logic to prevent greyed-out JSON files.
  * NEW: Integrated "Paste JSON" UI path into the Identity Passport logic.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Added CMD_THEME case to launch the Day/Night toggle dialog.
+ * - Implemented showThemeDialog for global UI skin management.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -151,6 +156,9 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             case SettingsIconAdapter.CMD_PRIVACY:
                 showPrivacyDialog();
                 break;
+            case SettingsIconAdapter.CMD_THEME:
+                showThemeDialog();
+                break;
             case SettingsIconAdapter.CMD_CLOUDFLARE:
                 showCloudflareDialog();
                 break;
@@ -188,6 +196,35 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 startActivity(new Intent(requireContext(), AdminDbUploaderActivity.class));
                 break;
         }
+    }
+
+    /**
+     * NEW: Theme Management Dialog.
+     * Toggles between Day (Light) and Night (Dark) mode globally.
+     */
+    private void showThemeDialog() {
+        DialogThemeSettingsBinding dialogBinding = DialogThemeSettingsBinding.inflate(getLayoutInflater());
+        AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
+                .setView(dialogBinding.getRoot())
+                .create();
+
+        // Load current state
+        dialogBinding.switchDayMode.setChecked(db.isDayMode());
+
+        dialogBinding.switchDayMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            db.setDayMode(isChecked);
+            String mode = isChecked ? "Day Mode Activated" : "Night Mode Activated";
+            Toast.makeText(getContext(), mode, Toast.LENGTH_SHORT).show();
+            
+            // Force activity recreation to apply new theme attributes immediately
+            if (getActivity() != null) {
+                getActivity().recreate();
+            }
+            dialog.dismiss();
+        });
+
+        dialogBinding.btnCancelTheme.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
     }
 
     /**
