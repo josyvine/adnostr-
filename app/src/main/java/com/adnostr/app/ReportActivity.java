@@ -1,5 +1,6 @@
 package com.adnostr.app;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -11,6 +12,7 @@ import android.view.WindowManager;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.adnostr.app.databinding.ActivityReportBinding;
@@ -52,6 +54,9 @@ import java.util.UUID;
  * - Async Loading: Archive processing moved to background to prevent startup freezes.
  * - Background Processing: Leverages the updated WebSocketClientManager background 
  *   dispatch to perform archival and de-duplication off the Main Thread.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Control Room" functionality.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -75,14 +80,26 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        db = AdNostrDatabaseHelper.getInstance(this);
+
         // 1. Immersive Control Room UI Setup
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        
+        // =========================================================================
+        // THEME ENGINE: Conditional Status Bar Logic
+        // =========================================================================
+        if (db.isDayMode()) {
+            getWindow().setStatusBarColor(ContextCompat.getColor(this, R.color.white));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        } else {
+            getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        }
 
         binding = ActivityReportBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        db = AdNostrDatabaseHelper.getInstance(this);
         wsManager = WebSocketClientManager.getInstance();
 
         // =========================================================================
