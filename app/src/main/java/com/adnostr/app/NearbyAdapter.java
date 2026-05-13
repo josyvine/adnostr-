@@ -16,6 +16,10 @@ import java.util.Locale;
  * Adapter for the Nearby Radar List.
  * FEATURE 3: Renders discovered users/advertisers with distance info.
  * Logic: Binds NearbyUser data -> Formats Distance String -> Styles Role Badge.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Color Persistence: Green/Blue role accents are maintained across themes.
+ * - Native Contrast: Name and Proximity labels follow global theme attributes.
  */
 public class NearbyAdapter extends RecyclerView.Adapter<NearbyAdapter.NearbyViewHolder> {
 
@@ -65,12 +69,12 @@ public class NearbyAdapter extends RecyclerView.Adapter<NearbyAdapter.NearbyView
             // 2. Set and Style Role Badge
             binding.tvNearbyUserRole.setText(user.role);
             if (RoleSelectionActivity.ROLE_ADVERTISER.equals(user.role)) {
-                // Businesses get a green tint
+                // Businesses get a green tint (Persisted color)
                 binding.tvNearbyUserRole.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.hfs_active_green));
                 binding.ivNearbyAvatar.setImageResource(R.drawable.ic_nav_publisher);
                 binding.ivNearbyAvatar.setColorFilter(ContextCompat.getColor(itemView.getContext(), R.color.hfs_active_green));
             } else {
-                // Standard users get the default blue tint
+                // Standard users get the default blue tint (Persisted color)
                 binding.tvNearbyUserRole.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.hfs_active_blue));
                 binding.ivNearbyAvatar.setImageResource(R.drawable.ic_cmd_profile);
                 binding.ivNearbyAvatar.setColorFilter(ContextCompat.getColor(itemView.getContext(), R.color.hfs_active_blue));
