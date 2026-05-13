@@ -33,6 +33,9 @@ import coil.request.ImageRequest;
  * FEATURE: Handles both single-string and JSONArray image payloads from IPFS.
  * 
  * FIXED: IndexOutOfBoundsException by validating list size before selection retrieval.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Styling: Leverages theme-aware resources for background and text contrast.
  */
 public class AdHistoryAdapter extends RecyclerView.Adapter<AdHistoryAdapter.AdHistoryViewHolder> {
 
@@ -65,7 +68,7 @@ public class AdHistoryAdapter extends RecyclerView.Adapter<AdHistoryAdapter.AdHi
     @Override
     public void onBindViewHolder(@NonNull AdHistoryViewHolder holder, int position) {
         if (adJsonList == null || position >= adJsonList.size()) return;
-        
+
         String fullPayload = adJsonList.get(position);
         boolean isSelected = selectedPositions.contains(position);
         holder.bind(fullPayload, position, isSelected);
@@ -98,7 +101,7 @@ public class AdHistoryAdapter extends RecyclerView.Adapter<AdHistoryAdapter.AdHi
     public List<String> getSelectedItems() {
         List<String> selected = new ArrayList<>();
         int currentSize = adJsonList.size();
-        
+
         for (Integer pos : selectedPositions) {
             // CRITICAL FIX: Only attempt to get if the position is still valid
             if (pos >= 0 && pos < currentSize) {
@@ -138,14 +141,14 @@ public class AdHistoryAdapter extends RecyclerView.Adapter<AdHistoryAdapter.AdHi
                 // 1. Parse the full Nostr message array ["EVENT", subId, {event}]
                 JSONArray msgArray = new JSONArray(fullPayload);
                 JSONObject eventObj = msgArray.getJSONObject(2);
-                
+
                 // 2. Extract content JSON
                 String contentStr = eventObj.getString("content");
                 JSONObject content = new JSONObject(contentStr);
 
                 // 3. Set Title and Timestamp
                 binding.tvHistoryAdTitle.setText(content.optString("title", "Untitled Ad"));
-                
+
                 long createdAt = eventObj.optLong("created_at", 0) * 1000;
                 String dateStr = new SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
                         .format(new Date(createdAt));
