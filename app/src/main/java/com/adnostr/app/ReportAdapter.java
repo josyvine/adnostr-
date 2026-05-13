@@ -47,6 +47,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 
  * UI STABILIZATION FIX:
  * - Fixed timestamp flickering by rounding currentTime to the second.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Borders: Replaced hardcoded grey hex with theme-aware resource colors.
  */
 public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicViewHolder> {
 
@@ -138,11 +141,12 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ForensicVi
                 // 2. Determine NEW Status (Visual State Machine)
                 boolean isNew = createdAt > lastSeenTimestamp;
                 if (isNew) {
-                    binding.cvReportContainer.setStrokeColor(Color.parseColor("#FF6A00")); // Orange Glow
+                    binding.cvReportContainer.setStrokeColor(Color.parseColor("#FF6A00")); // Orange Glow (Persisted)
                     binding.cvReportContainer.setStrokeWidth(4);
                     binding.tvNewBadge.setVisibility(View.VISIBLE);
                 } else {
-                    binding.cvReportContainer.setStrokeColor(Color.parseColor("#333333")); // Flat Grey
+                    // THEME FIX: Use resource color instead of hardcoded dark grey #333333
+                    binding.cvReportContainer.setStrokeColor(ContextCompat.getColor(context, R.color.hfs_border_grey));
                     binding.cvReportContainer.setStrokeWidth(2);
                     binding.tvNewBadge.setVisibility(View.GONE);
                 }
