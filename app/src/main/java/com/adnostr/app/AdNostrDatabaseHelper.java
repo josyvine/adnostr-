@@ -62,6 +62,9 @@ import java.util.concurrent.Executors;
  * - Added hardcoded defaults for Architect API and Secret Token.
  * - URL: https://adnostr-db-architect.joycvine.workers.dev
  * - Token: 205000
+ * 
+ * THEME ENGINE (NEW):
+ * - KEY_THEME_MODE: Persists the User preference for Day (Light) or Night (Dark) mode.
  */
 public class AdNostrDatabaseHelper {
 
@@ -142,6 +145,9 @@ public class AdNostrDatabaseHelper {
 
     // RESUME ENGINE: Registry of Successfully processed ASINs to prevent redundant cloud writes
     private static final String KEY_UPLOADED_ASIN_REGISTRY = "uploaded_asin_success_archive";
+
+    // THEME ENGINE KEY
+    private static final String KEY_THEME_MODE = "app_theme_day_mode";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -887,6 +893,24 @@ public class AdNostrDatabaseHelper {
         diskExecutor.execute(() -> {
             prefs.edit().remove(KEY_UPLOADED_ASIN_REGISTRY).commit();
         });
+    }
+
+    // =========================================================================
+    // THEME ENGINE (NEW)
+    // =========================================================================
+
+    /**
+     * Logic: Persists the theme choice (Light vs Dark).
+     */
+    public void setDayMode(boolean isDay) {
+        diskExecutor.execute(() -> {
+            prefs.edit().putBoolean(KEY_THEME_MODE, isDay).commit();
+        });
+    }
+
+    public boolean isDayMode() {
+        // Default to FALSE (Night Mode as current)
+        return prefs.getBoolean(KEY_THEME_MODE, false);
     }
 
     // =========================================================================
