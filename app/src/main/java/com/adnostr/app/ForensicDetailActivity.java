@@ -1,5 +1,6 @@
 package com.adnostr.app;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -7,6 +8,7 @@ import android.view.WindowManager;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.adnostr.app.databinding.ActivityForensicDetailBinding;
@@ -23,6 +25,9 @@ import java.util.List;
  * - Role: Renders the full contents of a crowdsourced card vertically.
  * - Governance: Allows surgical selection and deletion of specific models/years.
  * - Logic: Kind 30007 partial updates (Nuke old, broadcast corrected new).
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Deep-Dive" functionality.
  */
 public class ForensicDetailActivity extends AppCompatActivity {
 
@@ -41,14 +46,26 @@ public class ForensicDetailActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        db = AdNostrDatabaseHelper.getInstance(this);
+
         // 1. Immersive UI Setup
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        
+        // =========================================================================
+        // THEME ENGINE: Conditional Status Bar Logic
+        // =========================================================================
+        if (db.isDayMode()) {
+            getWindow().setStatusBarColor(ContextCompat.getColor(this, R.color.white));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        } else {
+            getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        }
 
         binding = ActivityForensicDetailBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        db = AdNostrDatabaseHelper.getInstance(this);
         wsManager = WebSocketClientManager.getInstance();
 
         // 2. Extract Data from Intent
