@@ -9,20 +9,37 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <style>
+    /* THEME ENGINE: Default Night Mode (Matching Native App) */
     :root {
-        --primary: #002f34; /* OLX Teal */
-        --secondary: #25D366; /* WhatsApp Green */
-        --accent: #007bff; /* Blue */
+        --primary: #002f34; 
+        --secondary: #25D366; /* WhatsApp Green (Persisted) */
+        --accent: #2196F3; /* Blue */
+        --bg: #121212;
+        --card-bg: #1E1E1E;
+        --text-main: #FFFFFF;
+        --text-muted: #A0A0A0;
+        --price: #00a49f; /* OLX Teal (Persisted) */
+        --border: #333333;
+    }
+
+    /* THEME ENGINE: Day Mode Override */
+    body.day-mode {
         --bg: #F2F4F5;
         --card-bg: #FFFFFF;
         --text-main: #002f34;
         --text-muted: #406367;
-        --price: #00a49f;
+        --border: #EBEDEE;
     }
 
     * { box-sizing: border-box; font-family: 'Roboto', sans-serif; }
 
-    body { margin: 0; background: var(--bg); color: var(--text-main); padding-bottom: 80px; }
+    body { 
+        margin: 0; 
+        background: var(--bg); 
+        color: var(--text-main); 
+        padding-bottom: 80px; 
+        transition: background 0.3s, color 0.3s;
+    }
 
     /* Image Gallery */
     .gallery-container {
@@ -39,16 +56,16 @@
         width: 100%;
         height: 100%;
         object-fit: contain;
-        background: #fff;
+        background: var(--card-bg);
     }
 
     .thumb-strip {
         display: flex;
         overflow-x: auto;
         padding: 10px;
-        background: #fff;
+        background: var(--card-bg);
         gap: 8px;
-        border-bottom: 1px solid #ebedee;
+        border-bottom: 1px solid var(--border);
     }
 
     .thumb-strip img {
@@ -65,7 +82,7 @@
     }
 
     /* Content Area */
-    .content { padding: 16px; background: #fff; margin-bottom: 8px; }
+    .content { padding: 16px; background: var(--card-bg); margin-bottom: 8px; }
 
     .price-row {
         display: flex;
@@ -78,7 +95,7 @@
     
     .mrp-tag { 
         font-size: 14px; 
-        color: #7f9799; 
+        color: var(--text-muted); 
         text-decoration: line-through; 
         margin-left: 10px; 
     }
@@ -86,15 +103,15 @@
     .share-btn {
         width: 40px; height: 40px; border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
-        background: #f2f4f5; color: var(--text-main);
+        background: var(--bg); color: var(--text-main);
     }
 
     .title { font-size: 18px; line-height: 1.4; color: var(--text-muted); margin-bottom: 12px; }
 
-    .loc-row { display: flex; align-items: center; gap: 6px; color: #7f9799; font-size: 13px; }
+    .loc-row { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 13px; }
 
     /* Section Cards */
-    .section-card { background: #fff; padding: 16px; margin-bottom: 8px; }
+    .section-card { background: var(--card-bg); padding: 16px; margin-bottom: 8px; }
     .section-title { 
         font-size: 16px; font-weight: 700; margin-bottom: 15px; 
         text-transform: uppercase; letter-spacing: 1px; color: var(--text-main);
@@ -103,27 +120,28 @@
     /* Attributes Grid */
     .attr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .attr-item { display: flex; flex-direction: column; gap: 2px; }
-    .attr-label { font-size: 12px; color: #7f9799; }
+    .attr-label { font-size: 12px; color: var(--text-muted); }
     .attr-value { font-size: 14px; font-weight: 500; color: var(--text-main); }
 
     /* Description */
     .desc-text { font-size: 15px; line-height: 1.6; color: var(--text-muted); white-space: pre-line; }
 
     /* Seller Info */
+    .section-card { background: var(--card-bg); padding: 16px; margin-bottom: 8px; }
     .seller-card { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
     .seller-avatar { 
-        width: 50px; height: 50px; background: #ebedee; 
+        width: 50px; height: 50px; background: var(--bg); 
         border-radius: 50%; display: flex; align-items: center; justify-content: center;
         font-weight: 700; color: var(--price); font-size: 20px;
     }
     .seller-meta { flex: 1; }
     .seller-name { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
-    .seller-joined { font-size: 12px; color: #7f9799; }
+    .seller-joined { font-size: 12px; color: var(--text-muted); }
 
     /* Sticky Bottom Bar */
     .action-bar {
         position: fixed; bottom: 0; left: 0; width: 100%;
-        background: #fff; padding: 12px 16px;
+        background: var(--card-bg); padding: 12px 16px;
         display: flex; gap: 12px; box-shadow: 0 -4px 10px rgba(0,0,0,0.08);
     }
 
@@ -133,7 +151,7 @@
         text-decoration: none; font-weight: 700; font-size: 15px;
     }
 
-    .btn-chat { background: var(--text-main); color: #fff; }
+    .btn-chat { background: var(--text-main); color: var(--card-bg); }
     .btn-call { border: 2px solid var(--text-main); color: var(--text-main); }
     .btn-whatsapp { background: var(--secondary); color: #fff; }
 
@@ -219,6 +237,17 @@
     </div>
 
     <script>
+        /**
+         * THEME ENGINE: Bridge to native Day/Night mode
+         */
+        window.setTheme = function(theme) {
+            if (theme === 'day') {
+                document.body.classList.add('day-mode');
+            } else {
+                document.body.classList.remove('day-mode');
+            }
+        };
+
         /**
          * Intelligent icon mapper based on the dynamic spec key.
          * ENHANCED: Expanded fuzzy matching to support crowdsourced, user-generated fields.
