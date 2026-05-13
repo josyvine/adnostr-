@@ -5,6 +5,7 @@ import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -58,6 +59,9 @@ import java.util.Set;
  * RESUME ENGINE (NEW):
  * - Smart Skipping: Analyzes selected files and excludes ASINs already recorded in the cloud registry.
  * - Success Recording: Automatically updates the database registry when a chunk is successfully processed.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Status Bar: Adapts to Day/Night mode while maintaining terminal diagnostics.
  */
 public class AdminDbUploaderActivity extends AppCompatActivity {
 
@@ -91,10 +95,24 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        db = AdNostrDatabaseHelper.getInstance(this);
+
+        // =========================================================================
+        // THEME ENGINE: Conditional Status Bar Logic
+        // =========================================================================
+        if (db.isDayMode()) {
+            getWindow().setStatusBarColor(ContextCompat.getColor(this, R.color.white));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        } else {
+            getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        }
+
         binding = ActivityAdminDbUploaderBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        db = AdNostrDatabaseHelper.getInstance(this);
         cloudHelper = new CloudflareHelper();
 
         // SECURITY GATE: Double check Admin Authority
