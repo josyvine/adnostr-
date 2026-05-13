@@ -3,15 +3,18 @@ package com.adnostr.app;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
+import android.view.View;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import com.adnostr.app.databinding.ActivityProductDetailBinding;
 
@@ -22,12 +25,16 @@ import java.nio.charset.StandardCharsets;
  * Logic: Receives a Cloudflare URL -> Downloads full Product JSON -> 
  * Loads lox_viewer.html asset -> Injects JSON via JavaScript render function.
  * UPDATED: Uses Base64 encoding for the JS bridge to prevent crashes from dynamic text input.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic UI: Adapts status bar and WebView skin to Day/Night mode.
  */
 public class ProductDetailActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_ProdDetail";
     private ActivityProductDetailBinding binding;
     private CloudflareHelper cloudHelper;
+    private AdNostrDatabaseHelper db;
     private String productJsonUrl;
     private String downloadedJson = "";
     private boolean isPageLoaded = false;
@@ -35,6 +42,16 @@ public class ProductDetailActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        db = AdNostrDatabaseHelper.getInstance(this);
+
+        // THEME ENGINE: Conditional Status Bar Logic
+        if (db.isDayMode()) {
+            getWindow().setStatusBarColor(ContextCompat.getColor(this, R.color.white));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        }
 
         binding = ActivityProductDetailBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
@@ -94,6 +111,10 @@ public class ProductDetailActivity extends AppCompatActivity {
                 super.onPageFinished(view, url);
                 isPageLoaded = true;
                 Log.d(TAG, "WebView Template Loaded.");
+
+                // THEME ENGINE: Synchronize WebView theme with native preference
+                String theme = db.isDayMode() ? "day" : "night";
+                binding.wvProductDetail.evaluateJavascript("if(window.setTheme) setTheme('" + theme + "');", null);
                 
                 // If data was downloaded before the page finished loading, inject it now
                 if (!downloadedJson.isEmpty()) {
