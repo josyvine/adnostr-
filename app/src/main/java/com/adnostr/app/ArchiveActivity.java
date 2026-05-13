@@ -1,5 +1,6 @@
 package com.adnostr.app;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,6 +11,7 @@ import android.view.View;
 import android.view.WindowManager;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.adnostr.app.databinding.ActivityArchiveBinding;
@@ -29,6 +31,9 @@ import java.util.UUID;
  * - Purpose: Provides every advertiser visibility into their hard-locked data.
  * - Hierarchy: Implements the 4-Tier logic (T1, T2, T3, T4).
  * - Healing: Allows Advertiser B to restore the network memory via Sequential Healing.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Truth Anchor" functionality.
  */
 public class ArchiveActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -52,14 +57,26 @@ public class ArchiveActivity extends AppCompatActivity implements WebSocketClien
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        db = AdNostrDatabaseHelper.getInstance(this);
+
         // 1. Dark Immersive Theme
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        
+        // =========================================================================
+        // THEME ENGINE: Conditional Status Bar Logic
+        // =========================================================================
+        if (db.isDayMode()) {
+            getWindow().setStatusBarColor(ContextCompat.getColor(this, R.color.white));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        } else {
+            getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        }
 
         binding = ActivityArchiveBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        db = AdNostrDatabaseHelper.getInstance(this);
         wsManager = WebSocketClientManager.getInstance();
 
         setupToolbar();
