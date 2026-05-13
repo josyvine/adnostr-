@@ -72,6 +72,9 @@ import java.util.UUID;
  * 
  * PERFORMANCE FIX (ANTI-ANR):
  * - Injection Debouncer: Implemented syncHandler to prevent UI thread flooding during multi-relay sync.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Added getThemeMode bridge to synchronize WebView UI with native preference.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -258,6 +261,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 binding.wvProductCreator.evaluateJavascript("if(window.injectAdminStatus) injectAdminStatus(" + isAdmin + ");", null);
                 if(isAdmin) logTechnicalEvent("ADMIN: Supremacy authenticated in WebView.");
 
+                // THEME ENGINE: Inject current theme preference on load
+                String theme = db.isDayMode() ? "day" : "night";
+                binding.wvProductCreator.evaluateJavascript("if(window.setTheme) setTheme('" + theme + "');", null);
+
                 injectSchemaIfReady();
             }
         });
@@ -295,6 +302,17 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
             technicalConsole.append(filteredMsg).append("\n");
             Log.d(TAG, "Forensic: " + filteredMsg);
+        }
+
+        /**
+         * =========================================================================
+         * NEW: THEME BRIDGE
+         * Provides the HTML engine with the current Day/Night status.
+         * =========================================================================
+         */
+        @JavascriptInterface
+        public String getThemeMode() {
+            return db.isDayMode() ? "day" : "night";
         }
 
         /**
