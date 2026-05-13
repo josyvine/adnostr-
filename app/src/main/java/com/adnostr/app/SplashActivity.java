@@ -10,6 +10,7 @@ import android.util.Log;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
 
 import com.adnostr.app.databinding.ActivitySplashBinding;
 
@@ -20,31 +21,44 @@ import com.adnostr.app.databinding.ActivitySplashBinding;
  * 
  * GLITCH FIX (RESTORATION): Broadened MIME types in the file picker to prevent
  * JSON files from appearing greyed out on modern Android versions.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Implemented startup theme application to ensure splash screen matches choice.
  */
 public class SplashActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_Splash";
     private static final int SPLASH_DELAY_MS = 2500;
-    
+
     private ActivitySplashBinding binding;
     private AdNostrDatabaseHelper db;
 
     // ENHANCEMENT: Handlers to manage and cancel the auto-login countdown
     private Handler splashHandler;
     private Runnable splashRunnable;
-    
+
     // ENHANCEMENT: Launcher for the Android Storage Access Framework (SAF)
     private ActivityResultLauncher<Intent> importLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // =========================================================================
+        // THEME ENGINE: Apply preference BEFORE super.onCreate
+        // =========================================================================
+        db = AdNostrDatabaseHelper.getInstance(this);
+        if (db.isDayMode()) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+        } else {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
+        }
+
         super.onCreate(savedInstanceState);
 
         // 1. Initialize ViewBinding
         binding = ActivitySplashBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // 2. Initialize Database Helper for local settings storage
+        // 2. Initialize Database Helper for local settings storage (Maintained reference)
         db = AdNostrDatabaseHelper.getInstance(this);
 
         // ENHANCEMENT: Register the launcher for IMPORTING the JSON backup
@@ -73,7 +87,7 @@ public class SplashActivity extends AppCompatActivity {
             // Trigger the Android System File Picker
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            
+
             // =========================================================================
             // GLITCH FIX: Broaden MIME type to include text/plain/octet-stream
             // This prevents .json files from being disabled/greyed out in the manager.
@@ -81,7 +95,7 @@ public class SplashActivity extends AppCompatActivity {
             intent.setType("*/*");
             String[] mimeTypes = {"application/json", "text/plain", "application/octet-stream"};
             intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
-            
+
             importLauncher.launch(intent);
         });
 
@@ -102,14 +116,14 @@ public class SplashActivity extends AppCompatActivity {
 
             if (privateKey == null || privateKey.isEmpty()) {
                 Log.i(TAG, "First launch detected. Generating decentralized identity...");
-                
+
                 // Generate a new Schnorr/Secp256k1 keypair via the Key Manager
                 String[] newKeys = NostrKeyManager.generateKeyPair();
-                
+
                 // Save keys securely to local storage
                 db.savePrivateKey(newKeys[0]); // hex private key
                 db.savePublicKey(newKeys[1]);  // hex public key (npub source)
-                
+
                 Log.i(TAG, "Identity created: " + newKeys[1]);
             } else {
                 Log.i(TAG, "Existing identity verified: " + db.getPublicKey());
@@ -131,7 +145,7 @@ public class SplashActivity extends AppCompatActivity {
      */
     private void proceedToNextScreen() {
         Intent intent;
-        
+
         // If the user hasn't selected whether they are a User or Advertiser yet
         if (db.getUserRole() == null || db.getUserRole().isEmpty()) {
             Log.d(TAG, "No role found. Redirecting to Onboarding (Role Selection).");
@@ -142,7 +156,7 @@ public class SplashActivity extends AppCompatActivity {
         }
 
         startActivity(intent);
-        
+
         // Remove Splash from the backstack so user can't return to it
         finish();
     }
