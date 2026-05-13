@@ -25,6 +25,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Branding: Strictly uses ic_nav_report for all hierarchy tiers.
  * - Security: Read-Only mode. No purge or deletion logic implemented.
  * - Stability: Uses pre-parsed JSON cache to prevent UI thread stalls.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Persistence: Hierarchy colors (Gold, Green, Blue, Orange) are preserved across Day/Night modes.
  */
 public class ArchiveAdapter extends RecyclerView.Adapter<ArchiveAdapter.ArchiveViewHolder> {
 
@@ -110,24 +113,24 @@ public class ArchiveAdapter extends RecyclerView.Adapter<ArchiveAdapter.ArchiveV
                     if ("category".equals(subType)) {
                         if (content.has("main")) {
                             // TIER 1: MAIN CATEGORY
-                            binding.ivArchiveIcon.setColorFilter(Color.parseColor("#FFD700")); // Gold Anchor
+                            binding.ivArchiveIcon.setColorFilter(Color.parseColor("#FFD700")); // Gold Anchor (Persisted)
                             binding.tvArchiveTitle.setText(content.optString("main", "Global Sector"));
                             binding.tvArchiveSubtitle.setText("Truth Level: Tier 1 (Main)");
                         } else {
                             // TIER 2: SUB CATEGORY
-                            binding.ivArchiveIcon.setColorFilter(Color.parseColor("#4CAF50")); // Green Anchor
+                            binding.ivArchiveIcon.setColorFilter(Color.parseColor("#4CAF50")); // Green Anchor (Persisted)
                             binding.tvArchiveTitle.setText(content.optString("sub", "Sub Sector"));
                             binding.tvArchiveSubtitle.setText("Anchor Category: " + content.optString("main", "General"));
                         }
                     } else if ("field".equals(subType)) {
                         // TIER 3: TECH FIELD ANCHOR (Brand, Model, Year)
-                        binding.ivArchiveIcon.setColorFilter(Color.parseColor("#2196F3")); // Blue Anchor
+                        binding.ivArchiveIcon.setColorFilter(Color.parseColor("#2196F3")); // Blue Anchor (Persisted)
                         binding.tvArchiveTitle.setText(content.optString("label", "Unknown Anchor"));
                         binding.tvArchiveSubtitle.setText("Spec Anchor for: " + content.optString("category", "General"));
                     }
                 } else if (kind == 30007) {
                     // TIER 4: VALUE POOL (Bajaj, Pulsar, 2024)
-                    binding.ivArchiveIcon.setColorFilter(Color.parseColor("#FF9800")); // Orange Anchor
+                    binding.ivArchiveIcon.setColorFilter(Color.parseColor("#FF9800")); // Orange Anchor (Persisted)
 
                     JSONObject specs = content.optJSONObject("specs");
                     JSONObject contextObj = content.optJSONObject("context");
