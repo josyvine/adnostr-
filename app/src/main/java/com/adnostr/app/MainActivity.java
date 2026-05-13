@@ -15,6 +15,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.viewpager2.widget.ViewPager2;
@@ -52,6 +53,9 @@ import java.util.concurrent.TimeUnit;
  * ADMIN SUPREMACY UPDATE:
  * - Forensic Authority: Unlocks the "Report" tab for verified Admin identity.
  * - Live Alert Engine: Real-time Red Badge counter for unseen crowdsourced metadata.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Implemented startup theme detection via AppCompatDelegate to support Day/Night switching.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -68,13 +72,22 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // =========================================================================
+        // THEME ENGINE: Apply preference BEFORE super.onCreate
+        // =========================================================================
+        db = AdNostrDatabaseHelper.getInstance(this);
+        if (db.isDayMode()) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+        } else {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
+        }
+
         super.onCreate(savedInstanceState);
 
         // 1. Initialize ViewBinding
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        db = AdNostrDatabaseHelper.getInstance(this);
         wsManager = WebSocketClientManager.getInstance();
         wsManager.init(this);
 
@@ -212,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
             if (!Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "Enable 'Display over other apps' to receive Ads.", Toast.LENGTH_LONG).show();
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:" + getPackageName()));
+                        Uri.parse("package:" + getName()));
                 startActivity(intent);
             }
         }
