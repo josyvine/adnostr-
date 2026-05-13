@@ -37,7 +37,7 @@
             android:layout_height="1dp"
             android:background="@color/app_border"
             android:layout_marginTop="16dp"
-            android:layout_bottom="16dp" />
+            android:layout_marginBottom="16dp" />
 
         <!-- Day Mode Toggle Row -->
         <LinearLayout
