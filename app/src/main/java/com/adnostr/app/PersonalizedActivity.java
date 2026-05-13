@@ -1,11 +1,13 @@
 package com.adnostr.app;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.adnostr.app.databinding.ActivityPersonalizedBinding;
@@ -24,6 +26,9 @@ import java.util.Set;
  * Allows users to choose business/interest categories.
  * Broadcasts selection as Kind 30003 for directory discovery.
  * FIXED (Glitch 8): Role bleeding resolved. db.getInterests() now utilizes the role-aware keys updated in AdNostrDatabaseHelper.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Topic Selector" functionality.
  */
 public class PersonalizedActivity extends AppCompatActivity {
 
@@ -51,13 +56,24 @@ public class PersonalizedActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Standard AdNostr Dark Theme setup
-        getWindow().setStatusBarColor(android.graphics.Color.parseColor("#121212"));
+        db = AdNostrDatabaseHelper.getInstance(this);
 
-        binding = ActivityPersonalizedBinding.inflate(getLayoutInflater());
+        // Standard AdNostr Dark Theme setup
+        // =========================================================================
+        // THEME ENGINE: Conditional Status Bar Logic
+        // =========================================================================
+        if (db.isDayMode()) {
+            getWindow().setStatusBarColor(ContextCompat.getColor(this, R.color.white));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        } else {
+            getWindow().setStatusBarColor(android.graphics.Color.parseColor("#121212"));
+        }
+
+        binding = ActivityPersonalizedActivityBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        db = AdNostrDatabaseHelper.getInstance(this);
         wsManager = WebSocketClientManager.getInstance();
 
         setupTopicList();
