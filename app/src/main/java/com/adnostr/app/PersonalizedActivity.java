@@ -29,6 +29,9 @@ import java.util.Set;
  * 
  * THEME ENGINE UPDATE:
  * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Topic Selector" functionality.
+ * 
+ * BUILD FIX:
+ * - Corrected ViewBinding class name reference to resolve compilation error.
  */
 public class PersonalizedActivity extends AppCompatActivity {
 
@@ -58,7 +61,6 @@ public class PersonalizedActivity extends AppCompatActivity {
 
         db = AdNostrDatabaseHelper.getInstance(this);
 
-        // Standard AdNostr Dark Theme setup
         // =========================================================================
         // THEME ENGINE: Conditional Status Bar Logic
         // =========================================================================
@@ -71,7 +73,8 @@ public class PersonalizedActivity extends AppCompatActivity {
             getWindow().setStatusBarColor(android.graphics.Color.parseColor("#121212"));
         }
 
-        binding = ActivityPersonalizedActivityBinding.inflate(getLayoutInflater());
+        // FIXED: Corrected symbol name to resolve build error
+        binding = ActivityPersonalizedBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
         wsManager = WebSocketClientManager.getInstance();
@@ -88,11 +91,11 @@ public class PersonalizedActivity extends AppCompatActivity {
      */
     private void setupTopicList() {
         binding.rvTopicList.setLayoutManager(new LinearLayoutManager(this));
-        
+
         // Retrieve current saved topics (Feature 4 database enhancement)
         // This call now automatically fetches role-specific data based on the AdNostrDatabaseHelper updates.
         Set<String> savedTopics = db.getInterests(); 
-        
+
         adapter = new TopicAdapter(availableTopics, savedTopics);
         binding.rvTopicList.setAdapter(adapter);
     }
@@ -125,7 +128,7 @@ public class PersonalizedActivity extends AppCompatActivity {
             event.put("kind", 30003);
             event.put("pubkey", db.getPublicKey());
             event.put("created_at", System.currentTimeMillis() / 1000);
-            
+
             // Content is the JSON string of the topics array
             event.put("content", topicsArray.toString());
 
@@ -135,7 +138,7 @@ public class PersonalizedActivity extends AppCompatActivity {
             dTag.put("d");
             dTag.put("adnostr_personalized_topics");
             tags.put(dTag);
-            
+
             // Add 't' tags for relay indexing
             for(String topic : selected) {
                 JSONArray tTag = new JSONArray();
@@ -150,7 +153,7 @@ public class PersonalizedActivity extends AppCompatActivity {
             if (signedEvent != null) {
                 wsManager.broadcastEvent(signedEvent.toString());
                 Log.i(TAG, "Personalized Topics Broadcasted: " + topicsArray.toString());
-                
+
                 Toast.makeText(this, "Profile Updated Locally & Globally", Toast.LENGTH_SHORT).show();
                 finish();
             } else {
