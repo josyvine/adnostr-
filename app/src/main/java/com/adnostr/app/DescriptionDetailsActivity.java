@@ -1,12 +1,15 @@
 package com.adnostr.app;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Html;
 import android.text.Spanned;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import com.adnostr.app.databinding.ActivityDescriptionDetailsBinding;
 
@@ -16,19 +19,36 @@ import com.adnostr.app.databinding.ActivityDescriptionDetailsBinding;
  * FEATURE: Implements HTML-to-Span conversion for rich text display.
  * FEATURE: Supports legacy and modern Android HTML rendering modes.
  * FEATURE: Provides an immersive, distraction-free reading environment.
+ * 
+ * THEME ENGINE UPDATE:
+ * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Premium Viewer" aesthetics.
  */
 public class DescriptionDetailsActivity extends AppCompatActivity {
 
     private static final String TAG = "AdNostr_DescDetails";
     private ActivityDescriptionDetailsBinding binding;
+    private AdNostrDatabaseHelper db;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        db = AdNostrDatabaseHelper.getInstance(this);
+
         // 1. Immersive UI Flags (Matches the premium feel of the Ad Popup)
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-        getWindow().setStatusBarColor(android.graphics.Color.parseColor("#1E1E1E"));
+        
+        // =========================================================================
+        // THEME ENGINE: Conditional Status Bar Logic
+        // =========================================================================
+        if (db.isDayMode()) {
+            getWindow().setStatusBarColor(ContextCompat.getColor(this, R.color.white));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        } else {
+            getWindow().setStatusBarColor(android.graphics.Color.parseColor("#1E1E1E"));
+        }
 
         binding = ActivityDescriptionDetailsBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
