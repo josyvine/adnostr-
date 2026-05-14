@@ -12,6 +12,10 @@ import androidx.viewpager2.adapter.FragmentStateAdapter;
  * 
  * UPDATED: USER ROLE (5 TABS) -> Interests, History, Nearby, Console, Settings.
  * UPDATED: ADVERTISER ROLE (8 TABS) -> Stats, History, Broadcast, Network, Publisher, Nearby, Console, Settings.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - Performance Tracking: Logs the exact time taken to instantiate each fragment.
+ * - Interaction Logging: Records every tab generation request to the .txt report.
  */
 public class MainViewPagerAdapter extends FragmentStateAdapter {
 
@@ -25,49 +29,74 @@ public class MainViewPagerAdapter extends FragmentStateAdapter {
     /**
      * Instantiates the fragment for the given position based on the User's Role.
      * This separates the User and Advertiser views completely.
+     * SURVEILLANCE: Measures initialization time to detect UI Bloating during swipes.
      */
     @NonNull
     @Override
     public Fragment createFragment(int position) {
+        long startTime = System.currentTimeMillis();
+        Fragment fragment;
+
         if (RoleSelectionActivity.ROLE_USER.equals(userRole)) {
             // USER PATH (Exactly 5 Fragments)
             switch (position) {
                 case 0:
-                    return new UserDashboardFragment(); // Interests
+                    fragment = new UserDashboardFragment(); // Interests
+                    break;
                 case 1:
-                    return new AdsHistoryFragment();    // History
+                    fragment = new AdsHistoryFragment();    // History
+                    break;
                 case 2:
-                    return new NearbyFragment();        // Nearby (Feature 3)
+                    fragment = new NearbyFragment();        // Nearby (Feature 3)
+                    break;
                 case 3:
-                    return new ConsoleFragment();       // Console (New Tab)
+                    fragment = new ConsoleFragment();       // Console (New Tab)
+                    break;
                 case 4:
-                    return new SettingsFragment();      // Settings
+                    fragment = new SettingsFragment();      // Settings
+                    break;
                 default:
-                    return new UserDashboardFragment();
+                    fragment = new UserDashboardFragment();
+                    break;
             }
         } else {
             // ADVERTISER PATH (Exactly 8 Fragments)
             switch (position) {
                 case 0:
-                    return new AdvDashboardFragment();  // Stats
+                    fragment = new AdvDashboardFragment();  // Stats
+                    break;
                 case 1:
-                    return new AdsHistoryFragment();    // History
+                    fragment = new AdsHistoryFragment();    // History
+                    break;
                 case 2:
-                    return new CreateAdFragment();      // Broadcast
+                    fragment = new CreateAdFragment();      // Broadcast
+                    break;
                 case 3:
-                    return new MarketplaceFragment();   // Network
+                    fragment = new MarketplaceFragment();   // Network
+                    break;
                 case 4:
-                    return new AdsPublisherFragment();  // Publisher (Feature 5)
+                    fragment = new AdsPublisherFragment();  // Publisher (Feature 5)
+                    break;
                 case 5:
-                    return new NearbyFragment();        // Nearby (Feature 3)
+                    fragment = new NearbyFragment();        // Nearby (Feature 3)
+                    break;
                 case 6:
-                    return new ConsoleFragment();       // Console (New Tab)
+                    fragment = new ConsoleFragment();       // Console (New Tab)
+                    break;
                 case 7:
-                    return new SettingsFragment();      // Settings
+                    fragment = new SettingsFragment();      // Settings
+                    break;
                 default:
-                    return new AdvDashboardFragment();
+                    fragment = new AdvDashboardFragment();
+                    break;
             }
         }
+
+        long duration = System.currentTimeMillis() - startTime;
+        String fragName = fragment.getClass().getSimpleName();
+        ActionReportLogger.logAction("PAGER_RENDER", "Generated " + fragName + " for position " + position + ". Time: " + duration + "ms");
+
+        return fragment;
     }
 
     /**
