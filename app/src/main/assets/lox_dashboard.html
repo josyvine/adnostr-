@@ -75,6 +75,10 @@
     input:checked + .slider { background-color: var(--success); }
     input:checked + .slider:before { transform: translateX(20px); }
 
+    /* Sync Button */
+    .btn-sync { background: transparent; border: none; color: var(--primary); cursor: pointer; font-size: 14px; padding: 4px; }
+    .btn-sync:active { transform: scale(0.9); }
+
     /* NEW: Search Bar UI */
     .search-wrapper { 
         display: none; 
@@ -222,6 +226,8 @@
                     <input type="checkbox" id="toggle_cat" checked onchange="syncToggles(this)">
                     <span class="slider"></span>
                 </label>
+                <!-- ADDED: Manual Sync Button for Category Gathering -->
+                <button class="btn-sync" onclick="triggerManualRetrieval('Category')"><i class="fa-solid fa-rotate"></i></button>
             </div>
         </h2>
         <div class="form-group">
@@ -299,6 +305,8 @@
                     <input type="checkbox" id="toggle_spec" checked onchange="syncToggles(this)">
                     <span class="slider"></span>
                 </label>
+                <!-- ADDED: Manual Sync Button for Spec Value Gathering -->
+                <button class="btn-sync" onclick="triggerManualRetrieval('Specs')"><i class="fa-solid fa-rotate"></i></button>
             </div>
         </h2>
         
@@ -558,6 +566,11 @@
         // AUTO-RECOVERY: Release lock and refresh data when toggle state changes
         isDynamicSpecLoaded = false;
         handleCategoryChange();
+
+        // ADDED FIX: Trigger Discovery Console automatically when switching to crowdsourced
+        if (!isCloudflareMode) {
+            triggerManualRetrieval('Category');
+        }
     }
 
     // BASE CATEGORY SPECIFICATIONS SCHEMA (Will be appended by Network Schema)
@@ -932,6 +945,9 @@
             const mainText = catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', '');
             const path = `v1/${slugify(mainText)}/${slugify(lastSelectedCat)}_query_index.json`;
             if (window.AndroidBridge) window.AndroidBridge.performCloudflareQuery(path);
+        } else {
+            // ADDED FIX: Trigger Ejection Console automatically when selecting a new crowdsourced category
+            triggerManualRetrieval('Specs');
         }
     }
 
