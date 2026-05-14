@@ -57,6 +57,10 @@ import java.util.UUID;
  * 
  * THEME ENGINE UPDATE:
  * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Control Room" functionality.
+ * 
+ * PERFORMANCE FIX (STABILITY):
+ * - UI Throttling: Increased batch update window to 500ms to stabilize UI during relay bursts.
+ * - Log Capping: Manual healer logs are now limited to 10,000 characters.
  */
 public class ReportActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -75,6 +79,7 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
     private final Handler uiUpdateHandler = new Handler(Looper.getMainLooper());
     private boolean isUpdatePending = false;
     private final Runnable uiRefreshRunnable = this::applyFilterAndNotify;
+    private static final long UI_REFRESH_DELAY = 500;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -284,12 +289,12 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
 
     /**
      * PERFORMANCE ENGINE: Debounces UI updates. 
-     * Ensures redrawing only happens at most 3 times per second.
+     * PERFORMANCE FIX: Window increased to 500ms.
      */
     private void requestBatchUpdate() {
         if (!isUpdatePending) {
             isUpdatePending = true;
-            uiUpdateHandler.postDelayed(uiRefreshRunnable, 300);
+            uiUpdateHandler.postDelayed(uiRefreshRunnable, UI_REFRESH_DELAY);
         }
     }
 
@@ -485,6 +490,12 @@ public class ReportActivity extends AppCompatActivity implements WebSocketClient
             MarketplaceSchemaManager.TechnicalLogListener healerListener = msg -> {
                 runOnUiThread(() -> {
                     healerLogs.append(msg).append("\n");
+                    
+                    // PERFORMANCE FIX: Cap buffer size at 10,000 chars
+                    if (healerLogs.length() > 10000) {
+                        healerLogs.delete(0, 2000);
+                    }
+                    
                     report.updateTechnicalLogs("Healing in Progress...", healerLogs.toString());
                 });
             };
