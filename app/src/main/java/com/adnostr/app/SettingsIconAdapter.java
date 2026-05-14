@@ -44,6 +44,14 @@ import java.util.List;
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
+    /**
+     * INTERFACE DEFINITION (FIXES BUILD ERROR)
+     * Communicates grid clicks back to the SettingsFragment.
+     */
+    public interface OnSettingClickListener {
+        void onSettingClicked(int commandType);
+    }
+
     // Unique Identifiers for Command Actions
     public static final int CMD_PROFILE = 1;
     public static final int CMD_MODE_SWITCH = 2;
