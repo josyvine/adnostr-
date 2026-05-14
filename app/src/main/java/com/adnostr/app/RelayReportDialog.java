@@ -7,6 +7,8 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -31,6 +33,10 @@ import com.adnostr.app.databinding.DialogRelayReportBinding;
  * CRASH FIX: Enforced Main Thread execution for all UI updates to prevent CalledFromWrongThreadException.
  * ENHANCEMENT: Added Minimize functionality to allow temporary hiding of the console.
  * ENHANCEMENT: Implements Global Visibility check and Professional Mode filtering.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - UI Debouncing: Implemented a 500ms throttle on updates to prevent Main Thread saturation.
+ * - Character Capping: Limits text length in the view to maintain smooth scrolling.
  */
 public class RelayReportDialog extends DialogFragment {
 
@@ -38,6 +44,13 @@ public class RelayReportDialog extends DialogFragment {
     private String title;
     private String summary;
     private String logs;
+
+    // PERFORMANCE FIX: Debounce variables
+    private final Handler debounceHandler = new Handler(Looper.getMainLooper());
+    private Runnable pendingUpdateRunnable;
+    private String pendingSummary;
+    private String pendingLogs;
+    private static final long UI_REFRESH_DELAY_MS = 500;
 
     // Interface to notify parent when minimize is clicked
     public interface OnConsoleMinimizeListener {
@@ -158,32 +171,54 @@ public class RelayReportDialog extends DialogFragment {
      * Used to push real-time Blossom upload status and AES encryption diagnostics.
      * FIXED: Now automatically scrolls to the bottom so newest forensic data is visible.
      * FIXED: Enforced UI thread safety via binding.getRoot().post() to handle background WebSocket events.
-     * ENHANCEMENT: Integrated Console Enable check and Debug Mode filtering.
+     * PERFORMANCE FIX: Implemented UI Throttling to prevent app hanging during high traffic.
      */
     public void updateTechnicalLogs(final String newSummary, final String newLogs) {
         if (binding != null) {
-            // CRITICAL FIX: Ensure all UI work is offloaded to the Main Thread
-            binding.getRoot().post(() -> {
-                if (binding != null) {
-                    AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(binding.getRoot().getContext());
-                    
-                    // Stop updating if logs are disabled
-                    if (!db.isConsoleLogEnabled()) return;
+            // Store the latest data for the next UI pulse
+            this.pendingSummary = newSummary;
+            this.pendingLogs = newLogs;
 
-                    binding.tvNetworkSummary.setText(newSummary);
-                    
-                    // Apply Filter before rendering
-                    binding.tvConsoleLog.setText(applyProfessionalFilter(newLogs, db));
+            // If an update is already scheduled, don't create another one
+            if (pendingUpdateRunnable != null) return;
 
-                    // AUTO-SCROLL FIX: Ensure we always see the latest Forensic Rejection Reason
-                    if (binding.tvConsoleLog.getParent() instanceof android.view.View) {
-                        View parent = (View) binding.tvConsoleLog.getParent();
-                        if (parent instanceof android.widget.ScrollView || parent instanceof androidx.core.widget.NestedScrollView) {
-                            parent.scrollTo(0, binding.tvConsoleLog.getBottom());
+            pendingUpdateRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    if (binding != null) {
+                        AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(binding.getRoot().getContext());
+                        
+                        // Stop updating if logs are disabled
+                        if (!db.isConsoleLogEnabled()) {
+                            pendingUpdateRunnable = null;
+                            return;
+                        }
+
+                        binding.tvNetworkSummary.setText(pendingSummary);
+                        
+                        // PERFORMANCE FIX: Ensure string rendering doesn't exceed 10,000 chars in the view
+                        String filteredLogs = applyProfessionalFilter(pendingLogs, db);
+                        if (filteredLogs.length() > 10000) {
+                            filteredLogs = filteredLogs.substring(0, 10000);
+                        }
+                        
+                        binding.tvConsoleLog.setText(filteredLogs);
+
+                        // AUTO-SCROLL FIX: Ensure we always see the latest Forensic Rejection Reason
+                        if (binding.tvConsoleLog.getParent() instanceof android.view.View) {
+                            View parent = (View) binding.tvConsoleLog.getParent();
+                            if (parent instanceof android.widget.ScrollView || parent instanceof androidx.core.widget.NestedScrollView) {
+                                parent.scrollTo(0, binding.tvConsoleLog.getBottom());
+                            }
                         }
                     }
+                    // Reset the runnable so the next pulse can trigger
+                    pendingUpdateRunnable = null;
                 }
-            });
+            };
+
+            // Post the update with a 500ms delay to throttle UI redraws
+            debounceHandler.postDelayed(pendingUpdateRunnable, UI_REFRESH_DELAY_MS);
         }
     }
 
@@ -227,6 +262,8 @@ public class RelayReportDialog extends DialogFragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        // PERFORMANCE FIX: Remove callbacks to prevent memory leaks or background crashes
+        debounceHandler.removeCallbacksAndMessages(null);
         binding = null;
     }
 }
