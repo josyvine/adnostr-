@@ -56,6 +56,10 @@ import java.util.concurrent.TimeUnit;
  * 
  * THEME ENGINE UPDATE:
  * - Implemented startup theme detection via AppCompatDelegate to support Day/Night switching.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - Footer Tracking: Logs every tab selection and navigation icon click.
+ * - Permission Surveillance: Logs the outcome of system permission dialogs.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -72,6 +76,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // --- SURVEILLANCE START ---
+        ActionReportLogger.logAction("MAIN_ACTIVITY", "Activity onCreate initiated.");
+        
         // =========================================================================
         // THEME ENGINE: Apply preference BEFORE super.onCreate
         // =========================================================================
@@ -105,6 +112,8 @@ public class MainActivity extends AppCompatActivity {
 
         // 6. Setup Global Ad Monitoring Listener
         setupGlobalAdListener();
+        
+        ActionReportLogger.logAction("MAIN_ACTIVITY", "Setup sequence complete.");
     }
 
     /**
@@ -212,6 +221,21 @@ public class MainActivity extends AppCompatActivity {
             }
         }).attach();
 
+        // --- SURVEILLANCE: Log Footer Clicks ---
+        binding.tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+                String tabName = tab.getText() != null ? tab.getText().toString() : "Unknown";
+                ActionReportLogger.logAction("FOOTER_CLICK", "User switched to tab: " + tabName + " (Index: " + tab.getPosition() + ")");
+            }
+
+            @Override public void onTabUnselected(TabLayout.Tab tab) {}
+            @Override public void onTabReselected(TabLayout.Tab tab) {
+                String tabName = tab.getText() != null ? tab.getText().toString() : "Unknown";
+                ActionReportLogger.logAction("FOOTER_RESELECT", "User tapped active tab: " + tabName);
+            }
+        });
+
         // Initial focus placement
         configureRoleBasedUI();
     }
@@ -221,8 +245,10 @@ public class MainActivity extends AppCompatActivity {
      * FEATURE 3: Ensure location permissions are strictly checked for Nearby features.
      */
     private void checkAndRequestAppPermissions() {
+        ActionReportLogger.logAction("PERMISSION_SURVEILLANCE", "Checking system permissions.");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(this)) {
+                ActionReportLogger.logAction("PERMISSION_SURVEILLANCE", "Overlay permission missing. Requesting...");
                 Toast.makeText(this, "Enable 'Display over other apps' to receive Ads.", Toast.LENGTH_LONG).show();
                 Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:" + getPackageName()));
@@ -254,6 +280,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (!listPermissionsNeeded.isEmpty()) {
+            ActionReportLogger.logAction("PERMISSION_SURVEILLANCE", "Requesting batch: " + listPermissionsNeeded.toString());
             ActivityCompat.requestPermissions(this, listPermissionsNeeded.toArray(new String[0]), PERMISSION_REQUEST_CODE);
         }
     }
@@ -270,6 +297,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onRelayConnected(String url) {
                 Log.d(TAG, "Connected to " + url);
+                ActionReportLogger.logAction("WS_MONITOR", "Relay Connected: " + url);
 
                 // ADMIN SUPREMACY: If Admin is connected, subscribe to schema updates globally
                 if (db.isAdmin()) {
@@ -286,6 +314,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onRelayDisconnected(String url, String reason) {
                 Log.d(TAG, "Disconnected from " + url);
+                ActionReportLogger.logAction("WS_MONITOR", "Relay Disconnected: " + url + " Reason: " + reason);
             }
 
             @Override
@@ -319,6 +348,7 @@ public class MainActivity extends AppCompatActivity {
                                 }
 
                                 if (isAdBroadcast && db.isListening()) {
+                                    ActionReportLogger.logAction("AD_SNIFFER", "Ad Received from " + url);
                                     db.saveToUserHistory(message);
                                     runOnUiThread(() -> {
                                         Intent intent = new Intent(MainActivity.this, AdPopupActivity.class);
@@ -333,6 +363,7 @@ public class MainActivity extends AppCompatActivity {
                             else if (db.isAdmin() && (kind == 30006 || kind == 30007)) {
                                 long eventTime = event.optLong("created_at", 0);
                                 if (eventTime > db.getReportLastSeen() && reportTabIndex != -1) {
+                                    ActionReportLogger.logAction("ADMIN_ALERT", "New schema event detected. Triggering badge.");
                                     runOnUiThread(() -> {
                                         TabLayout.Tab reportTab = binding.tabLayout.getTabAt(reportTabIndex);
                                         if (reportTab != null) {
@@ -348,12 +379,14 @@ public class MainActivity extends AppCompatActivity {
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Message processing failed: " + e.getMessage());
+                    ActionReportLogger.logError("WS_PROCESSING", "Failed to parse message: " + e.getMessage());
                 }
             }
 
             @Override
             public void onError(String url, Exception ex) {
                 Log.e(TAG, "Relay Error: " + ex.getMessage());
+                ActionReportLogger.logError("WS_ERROR", "Relay: " + url + " Error: " + ex.getMessage());
             }
         });
     }
@@ -363,6 +396,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private void configureRoleBasedUI() {
         String role = db.getUserRole();
+        ActionReportLogger.logAction("UI_CONFIG", "Configuring interface for role: " + role);
         if (RoleSelectionActivity.ROLE_USER.equals(role)) {
             binding.mainViewPager.setCurrentItem(0, false);
         } else {
@@ -372,6 +406,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void startBackgroundAdListener() {
         if (RoleSelectionActivity.ROLE_USER.equals(db.getUserRole())) {
+            ActionReportLogger.logAction("WORKER_SETUP", "Starting background ad monitoring.");
             PeriodicWorkRequest adListenRequest = new PeriodicWorkRequest.Builder(
                     NostrListenerWorker.class, 15, TimeUnit.MINUTES)
                     .addTag("NOSTR_AD_LISTENER").build();
@@ -390,6 +425,7 @@ public class MainActivity extends AppCompatActivity {
      * Fixes the NullPointerException by ensuring fragments are re-setup properly.
      */
     public void refreshRoleAndUI() {
+        ActionReportLogger.logAction("ROLE_SWITCH", "User switched roles. Refreshing UI system.");
         runOnUiThread(() -> {
             setupNavigationSystem();
         });
@@ -399,6 +435,11 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSION_REQUEST_CODE) {
+            for (int i = 0; i < permissions.length; i++) {
+                String status = (grantResults[i] == PackageManager.PERMISSION_GRANTED) ? "GRANTED" : "DENIED";
+                ActionReportLogger.logAction("PERMISSION_RESULT", permissions[i] + " was " + status);
+            }
+            
             for (int result : grantResults) {
                 if (result != PackageManager.PERMISSION_GRANTED) {
                     Toast.makeText(this, "Permissions denied.", Toast.LENGTH_SHORT).show();
