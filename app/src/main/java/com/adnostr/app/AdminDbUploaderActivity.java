@@ -62,6 +62,10 @@ import java.util.Set;
  * 
  * THEME ENGINE UPDATE:
  * - Dynamic Status Bar: Adapts to Day/Night mode while maintaining terminal diagnostics.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - UI Throttling: Terminal updates are now rate-limited to 500ms.
+ * - Character Capping: forensicLogs buffer capped at 10,000 characters.
  */
 public class AdminDbUploaderActivity extends AppCompatActivity {
 
@@ -78,6 +82,10 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
     private FileUploadAdapter fileAdapter;
 
     private final StringBuilder forensicLogs = new StringBuilder();
+
+    // PERFORMANCE FIX: Throttle variables
+    private long lastUiUpdateTime = 0;
+    private static final long UI_THROTTLE_MS = 500;
 
     // BATCH CONFIGURATION
     private static final int CHUNK_SIZE = 5;
@@ -488,11 +496,28 @@ public class AdminDbUploaderActivity extends AppCompatActivity {
         } catch (Exception e) { return ""; }
     }
 
+    /**
+     * PERFORMANCE FIX: Implemented Throttling and Hard Capping for the Terminal.
+     */
     private void logForensic(String msg) {
+        // Append to background buffer
+        forensicLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
+        
+        // PERFORMANCE FIX: Cap buffer size at 10,000 characters
+        if (forensicLogs.length() > 10000) {
+            forensicLogs.delete(0, 2000);
+        }
+
+        // PERFORMANCE FIX: Throttle UI redraw to 500ms
+        long now = System.currentTimeMillis();
+        if (now - lastUiUpdateTime < UI_THROTTLE_MS) return;
+        lastUiUpdateTime = now;
+
         runOnUiThread(() -> {
-            forensicLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
-            binding.tvForensicTerminal.setText(forensicLogs.toString());
-            binding.svTerminal.post(() -> binding.svTerminal.fullScroll(View.FOCUS_DOWN));
+            if (binding != null) {
+                binding.tvForensicTerminal.setText(forensicLogs.toString());
+                binding.svTerminal.post(() -> binding.svTerminal.fullScroll(View.FOCUS_DOWN));
+            }
         });
     }
 
