@@ -39,6 +39,9 @@ import java.util.Locale;
  * 
  * Logic: Get Location -> Wrap in JSON -> Master Encrypt -> Sign Kind 30004 -> Broadcast.
  * FORENSIC UPDATE: Implements persistent background tracing for radar diagnostics.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - Log Capping: logBackgroundForensic is strictly limited to 10,000 characters to prevent I/O lag.
  */
 public class LocationUpdateService extends Service {
 
@@ -197,6 +200,7 @@ public class LocationUpdateService extends Service {
     /**
      * Internal forensic logger. Writes to SharedPreferences so NearbyFragment can 
      * pull background logs for its diagnostic console display.
+     * PERFORMANCE FIX: Enforced character limit to prevent I/O lag.
      */
     private void logBackgroundForensic(String msg) {
         String time = new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
@@ -205,7 +209,7 @@ public class LocationUpdateService extends Service {
         SharedPreferences logPrefs = getSharedPreferences("adnostr_background_logs", MODE_PRIVATE);
         String currentLogs = logPrefs.getString("trace", "");
         
-        // Keep the last 10,000 characters of background trace
+        // PERFORMANCE FIX: Hard character cap of 10,000 characters
         String updatedLogs = entry + currentLogs;
         if (updatedLogs.length() > 10000) {
             updatedLogs = updatedLogs.substring(0, 8000);
