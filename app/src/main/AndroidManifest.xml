@@ -21,12 +21,19 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- STORAGE PERMISSIONS: Required to select images from gallery -->
+    <!-- STORAGE PERMISSIONS: Required to select images from gallery and save Surveillance Reports -->
     <!-- For devices running Android 12 (API 32) and below -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    
     <!-- For devices running Android 13 (API 33) and above -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    
+    <!-- MANDATORY FOR ACTION REPORT LOGGER: Allows writing to public "adnostr report" folder on modern Android -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" 
+        tools:ignore="ScopedStorage" />
 
     <!-- Background Execution & WorkManager for listening to Ad Relays -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -45,6 +52,7 @@
         android:roundIcon="@drawable/adnostr"
         android:supportsRtl="true"
         android:theme="@style/Theme.AdNostr"
+        android:requestLegacyExternalStorage="true"
         tools:targetApi="31">
 
         <!-- Splash Screen: Silently generates Nostr Keys and routes the user -->
