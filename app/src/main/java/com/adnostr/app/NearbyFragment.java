@@ -40,6 +40,9 @@ import java.util.UUID;
  * CRASH FIX: Enforced runOnUiThread in logDiagnostic and used addStatusListener to prevent Popup interference.
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  * ENHANCEMENT: Radar forensics respect Global Console Visibility and Debug/Professional modes.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - Log Capping: diagnosticLogs buffer is now strictly limited to 10,000 characters to prevent UI lag.
  */
 public class NearbyFragment extends Fragment {
 
@@ -312,6 +315,7 @@ public class NearbyFragment extends Fragment {
      * FIXED: Wrapped UI updates in runOnUiThread to prevent crash during background relay reports.
      * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
      * ENHANCEMENT: Master Switch check added.
+     * PERFORMANCE FIX: Hard Character Cap implemented.
      */
     private void logDiagnostic(final String msg) {
         // ENHANCEMENT: Early exit if console is disabled
@@ -321,9 +325,9 @@ public class NearbyFragment extends Fragment {
         getActivity().runOnUiThread(() -> {
             diagnosticLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
 
-            // FIX: Prevent OutOfMemoryError by pruning old logs
-            if (diagnosticLogs.length() > 20000) {
-                diagnosticLogs.delete(0, 5000);
+            // PERFORMANCE FIX: Prevent OutOfMemoryError and UI lag by pruning buffer
+            if (diagnosticLogs.length() > 10000) {
+                diagnosticLogs.delete(0, 2000);
             }
 
             if (isAdded()) {
