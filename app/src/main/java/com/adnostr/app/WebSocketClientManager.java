@@ -31,7 +31,7 @@ import java.util.List;
  * CRITICAL FIX FOR POPUP: Converted to Multi-Listener Observer Pattern to prevent Fragments 
  * from overwriting the Global MainActivity ad listener.
  * CRASH FIX: Enforced all listener callbacks on the Main Thread to prevent CalledFromWrongThreadException.
- * ENHANCEMENT: Implemented master console switch and Professional vs. Debug log filtering.
+ * ENHANCEMENT: Implements master console switch and Professional vs. Debug log filtering.
  * 
  * ADMIN SUPREMACY UPDATE:
  * - Schema Observer: Added a high-level hook to notify the system when new crowdsourced metadata arrives.
@@ -80,6 +80,10 @@ public class WebSocketClientManager {
 
     // CRASH FIX: Handler to dispatch events to the Main UI Thread
     private final Handler mHandler = new Handler(Looper.getMainLooper());
+
+    // PERFORMANCE FIX: UI Throttle tracking
+    private long lastUiUpdateTime = 0;
+    private static final long UI_THROTTLE_MS = 500;
 
     public interface RelayStatusListener {
         void onRelayConnected(String url);
@@ -152,6 +156,7 @@ public class WebSocketClientManager {
     /**
      * Records a timestamped technical event for the big detailed popup.
      * UPDATED: Now respects the Global Console Enable switch and Debug Mode filter.
+     * PERFORMANCE FIX: Hard character capping to 10,000 to prevent string manipulation lag.
      */
     private synchronized void addToLog(String message) {
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(appContext);
@@ -187,8 +192,10 @@ public class WebSocketClientManager {
         String time = timeFormat.format(new Date());
         // PREPEND to the log so the newest network events appear at the top
         liveLogs.insert(0, "[" + time + "] " + logOutput + "\n\n");
-        if (liveLogs.length() > 80000) {
-            liveLogs.setLength(60000); // Prevent memory bloat while keeping history
+        
+        // PERFORMANCE FIX: Hard character limit of 10,000 to prevent UI thread choking
+        if (liveLogs.length() > 10000) {
+            liveLogs.setLength(8000); 
         }
     }
 
@@ -288,12 +295,16 @@ public class WebSocketClientManager {
                                     addToLog("RELAY_CONFIRMED [" + relayUrl + "]: Event " + eventId + " published.");
                                 }
                                 
-                                // Dispatch OK status to listeners
-                                mHandler.post(() -> {
-                                    for (RelayStatusListener listener : listeners) {
-                                        listener.onMessageReceived(relayUrl, message);
-                                    }
-                                });
+                                // PERFORMANCE FIX: UI Debouncing logic
+                                long now = System.currentTimeMillis();
+                                if (now - lastUiUpdateTime > UI_THROTTLE_MS) {
+                                    lastUiUpdateTime = now;
+                                    mHandler.post(() -> {
+                                        for (RelayStatusListener listener : listeners) {
+                                            listener.onMessageReceived(relayUrl, message);
+                                        }
+                                    });
+                                }
                             }
 
                             else if ("EVENT".equals(type)) {
@@ -311,12 +322,16 @@ public class WebSocketClientManager {
 
                                 if (isNewToSession || isAdKind) {
                                     
-                                    // CRASH FIX (PERFORMANCE): Notify UI Thread
-                                    mHandler.post(() -> {
-                                        for (RelayStatusListener listener : listeners) {
-                                            listener.onMessageReceived(relayUrl, message);
-                                        }
-                                    });
+                                    // PERFORMANCE FIX: UI Debouncing logic
+                                    long now = System.currentTimeMillis();
+                                    if (now - lastUiUpdateTime > UI_THROTTLE_MS || isAdKind) {
+                                        if (!isAdKind) lastUiUpdateTime = now;
+                                        mHandler.post(() -> {
+                                            for (RelayStatusListener listener : listeners) {
+                                                listener.onMessageReceived(relayUrl, message);
+                                            }
+                                        });
+                                    }
 
                                     // If ad-related, also hard-lock to the permanent store instantly
                                     if (isAdKind) {
