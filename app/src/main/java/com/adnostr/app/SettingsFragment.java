@@ -58,6 +58,10 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * THEME ENGINE UPDATE:
  * - Added CMD_THEME case to launch the Day/Night toggle dialog.
  * - Implemented showThemeDialog for global UI skin management.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - Command Center Clicks: Logs every icon interaction in the grid.
+ * - Dialog Surveillance: Logs interactions (Save/Cancel) inside every popup dialog.
  */
 public class SettingsFragment extends Fragment implements SettingsIconAdapter.OnSettingClickListener {
 
@@ -80,6 +84,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 result -> {
                     if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                         if (result.getData().getData() != null) {
+                            ActionReportLogger.logAction("IDENTITY_EXPORT", "User selected save destination.");
                             BackupManager.exportProfileToJson(requireContext(), result.getData().getData());
                         }
                     }
@@ -92,6 +97,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 result -> {
                     if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                         if (result.getData().getData() != null) {
+                            ActionReportLogger.logAction("IDENTITY_IMPORT", "User selected file for restoration.");
                             BackupManager.importProfileFromJson(requireContext(), result.getData().getData());
                         }
                     }
@@ -102,6 +108,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        ActionReportLogger.logAction("SETTINGS_UI", "Creating Settings View.");
         // Initialize ViewBinding for the main settings layout
         binding = FragmentSettingsBinding.inflate(inflater, container, false);
         return binding.getRoot();
@@ -120,6 +127,8 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // 2. Initialize the Command Center Icon Grid
         setupIconGrid();
+        
+        ActionReportLogger.logAction("SETTINGS_UI", "Settings View created and grid populated.");
     }
 
     /**
@@ -146,6 +155,9 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      */
     @Override
     public void onSettingClicked(int commandType) {
+        // --- SURVEILLANCE: Log Icon Clicks ---
+        ActionReportLogger.logAction("COMMAND_CENTER_CLICK", "CommandType Tapped: " + commandType);
+
         switch (commandType) {
             case SettingsIconAdapter.CMD_PROFILE:
                 showUsernameDialog();
@@ -178,21 +190,26 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 showResetConfirmation();
                 break;
             case SettingsIconAdapter.CMD_PERSONALIZED:
+                ActionReportLogger.logAction("NAV_TRANSITION", "Launching PersonalizedActivity.");
                 startActivity(new Intent(requireContext(), PersonalizedActivity.class));
                 break;
             case SettingsIconAdapter.CMD_BROWSE:
+                ActionReportLogger.logAction("NAV_TRANSITION", "Launching BrowseAdvertisersActivity.");
                 startActivity(new Intent(requireContext(), BrowseAdvertisersActivity.class));
                 break;
             // ADMIN SUPREMACY: Launch Moderator Forensic Feed
             case SettingsIconAdapter.CMD_REPORT:
+                ActionReportLogger.logAction("NAV_TRANSITION", "Launching ReportActivity (Admin).");
                 startActivity(new Intent(requireContext(), ReportActivity.class));
                 break;
             // 4-TIER UPDATE: Launch Read-Only Memory Archive for Advertiser B
             case SettingsIconAdapter.CMD_ARCHIVE:
+                ActionReportLogger.logAction("NAV_TRANSITION", "Launching ArchiveActivity (Advertiser B).");
                 startActivity(new Intent(requireContext(), ArchiveActivity.class));
                 break;
             // NEW: ADMIN DATABASE ARCHITECT (STEP 2)
             case SettingsIconAdapter.CMD_CLOUDFLARE_DB:
+                ActionReportLogger.logAction("NAV_TRANSITION", "Launching AdminDbUploaderActivity.");
                 startActivity(new Intent(requireContext(), AdminDbUploaderActivity.class));
                 break;
         }
@@ -203,6 +220,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Toggles between Day (Light) and Night (Dark) mode globally.
      */
     private void showThemeDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Theme Settings Dialog opened.");
         DialogThemeSettingsBinding dialogBinding = DialogThemeSettingsBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
@@ -212,6 +230,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
         dialogBinding.switchDayMode.setChecked(db.isDayMode());
 
         dialogBinding.switchDayMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ActionReportLogger.logAction("THEME_CHANGE", "User switched DayMode to: " + isChecked);
             db.setDayMode(isChecked);
             String mode = isChecked ? "Day Mode Activated" : "Night Mode Activated";
             Toast.makeText(getContext(), mode, Toast.LENGTH_SHORT).show();
@@ -223,7 +242,10 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             dialog.dismiss();
         });
 
-        dialogBinding.btnCancelTheme.setOnClickListener(v -> dialog.dismiss());
+        dialogBinding.btnCancelTheme.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CANCEL", "Theme Settings Dialog dismissed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -232,6 +254,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Logic: Controls the global visibility of protocol logs and toggles Professional vs Debug output.
      */
     private void showConsoleSettingsDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Console Settings Dialog opened.");
         DialogConsoleSettingsBinding dialogBinding = DialogConsoleSettingsBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
@@ -248,6 +271,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // 3. Listener: Master Visibility Toggle
         dialogBinding.switchEnableConsole.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ActionReportLogger.logAction("CONSOLE_SETTING", "Master Console Enabled: " + isChecked);
             db.setConsoleLogEnabled(isChecked);
 
             // Enable/Disable the debug sub-toggle visually
@@ -261,13 +285,17 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // 4. Listener: Debug Mode Toggle
         dialogBinding.switchDebugMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ActionReportLogger.logAction("CONSOLE_SETTING", "Debug Mode (Raw JSON) Enabled: " + isChecked);
             db.setDebugModeActive(isChecked);
             String mode = isChecked ? "Debug Mode: Raw JSON visible." : "Professional Mode: Summarized status active.";
             Toast.makeText(getContext(), mode, Toast.LENGTH_SHORT).show();
             Log.d(TAG, "Debug Mode set to: " + isChecked);
         });
 
-        dialogBinding.btnDoneConsole.setOnClickListener(v -> dialog.dismiss());
+        dialogBinding.btnDoneConsole.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CLOSE", "Console Settings Dialog closed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -276,6 +304,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Manages toggles for Username Anonymity and Live Location broadcasting.
      */
     private void showPrivacyDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Privacy Settings Dialog opened.");
         DialogPrivacySettingsBinding dialogBinding = DialogPrivacySettingsBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
@@ -287,6 +316,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // 2. GLITCH 4 FIX: Handle Username Visibility Toggle with UI Sync and Rebroadcast
         dialogBinding.switchUsernameDiscovery.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ActionReportLogger.logAction("PRIVACY_ACTION", "Username Hidden toggle: " + isChecked);
             db.setUsernameHidden(isChecked);
 
             // Sync logic: Find the User Dashboard Fragment to update header and rebroadcast to Nostr
@@ -311,14 +341,17 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // 3. GLITCH 3 FIX: Handle Live Location Toggle (Beacon Mode Service)
         dialogBinding.switchLiveLocation.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ActionReportLogger.logAction("PRIVACY_ACTION", "Live Location Beacon toggle: " + isChecked);
             db.setLiveLocationEnabled(isChecked);
 
             if (isChecked) {
                 // Check permissions before starting the service
                 if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    ActionReportLogger.logAction("LOCATION_SERVICE", "Starting LocationUpdateService beacon.");
                     ContextCompat.startForegroundService(requireContext(), new Intent(requireContext(), LocationUpdateService.class));
                     Log.d(TAG, "Privacy: Location Beacon Service Started.");
                 } else {
+                    ActionReportLogger.logAction("LOCATION_SERVICE", "Service failed: Permissions missing.");
                     // Request permission if not granted
                     requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 101);
                     dialogBinding.switchLiveLocation.setChecked(false); // Reset switch if no permission
@@ -326,12 +359,16 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 }
             } else {
                 // Stop the beacon service
+                ActionReportLogger.logAction("LOCATION_SERVICE", "Stopping LocationUpdateService beacon.");
                 requireContext().stopService(new Intent(requireContext(), LocationUpdateService.class));
                 Log.d(TAG, "Privacy: Location Beacon Service Stopped.");
             }
         });
 
-        dialogBinding.btnCancelPrivacy.setOnClickListener(v -> dialog.dismiss());
+        dialogBinding.btnCancelPrivacy.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CANCEL", "Privacy Settings Dialog dismissed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -341,6 +378,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * UPDATED: Integrated a choice selection between File Browse and manual Paste.
      */
     private void showIdentityBackupDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Identity Backup Dialog opened.");
         DialogIdentityBackupBinding dialogBinding = DialogIdentityBackupBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
@@ -348,6 +386,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // Path 1: Trigger the Android System File Creator (Export)
         dialogBinding.btnDownloadPassport.setOnClickListener(v -> {
+            ActionReportLogger.logAction("BACKUP_ACTION", "Triggering Document Creator for JSON export.");
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("application/json");
@@ -358,12 +397,14 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // Path 2: Handle the Restoration Choice
         dialogBinding.btnRestorePassport.setOnClickListener(v -> {
+            ActionReportLogger.logAction("BACKUP_ACTION", "Showing Restoration options sub-menu.");
             // Show a professional sub-choice dialog for the two restore methods
             String[] options = {"Browse Backup File", "Paste JSON Identity"};
             new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                     .setTitle("Select Restoration Method")
                     .setItems(options, (restoreChoice, which) -> {
                         if (which == 0) {
+                            ActionReportLogger.logAction("BACKUP_ACTION", "Option Selected: File Browser.");
                             // OPTION 1: File Browser
                             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                             intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -376,6 +417,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                             importLauncher.launch(intent);
                             dialog.dismiss();
                         } else {
+                            ActionReportLogger.logAction("BACKUP_ACTION", "Option Selected: Manual Paste.");
                             // OPTION 2: Manual Paste
                             showPasteJsonDialog();
                             dialog.dismiss();
@@ -384,7 +426,10 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                     .show();
         });
 
-        dialogBinding.btnCloseBackup.setOnClickListener(v -> dialog.dismiss());
+        dialogBinding.btnCloseBackup.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CLOSE", "Identity Backup Dialog closed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -392,6 +437,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * NEW: Displays a code-optimized monospace input box for manual JSON entry.
      */
     private void showPasteJsonDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Paste JSON Dialog opened.");
         DialogPasteJsonBinding pasteBinding = DialogPasteJsonBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(pasteBinding.getRoot())
@@ -404,6 +450,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 Toast.makeText(getContext(), "Please paste your JSON string.", Toast.LENGTH_SHORT).show();
                 return;
             }
+            ActionReportLogger.logAction("BACKUP_RESTORE", "Manual JSON Paste submitted for verification.");
 
             // Route the pasted string to the unified logic engine in BackupManager
             BackupManager.verifyAndRestore(requireContext(), input);
@@ -412,10 +459,14 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         // Logic: Clear Input
         pasteBinding.btnDeletePasteInput.setOnClickListener(v -> {
+            ActionReportLogger.logAction("UI_INTERACTION", "Paste input cleared.");
             pasteBinding.etPasteJsonInput.setText("");
         });
 
-        pasteBinding.btnCancelPaste.setOnClickListener(v -> dialog.dismiss());
+        pasteBinding.btnCancelPaste.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CANCEL", "Paste JSON Dialog dismissed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -424,6 +475,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Handles network checking, claiming, and releasing via Kind 0 events.
      */
     private void showUsernameDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Username Manager Dialog opened.");
         DialogUsernameSetupBinding dialogBinding = DialogUsernameSetupBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
@@ -445,23 +497,27 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                     return;
                 }
 
+                ActionReportLogger.logAction("USERNAME_CLAIM", "User initiated claim for: " + requestedName);
                 dialogBinding.btnUsernameActionPopup.setEnabled(false);
                 dialogBinding.btnUsernameActionPopup.setText("CHECKING...");
 
                 UsernameManager.checkAvailability(requestedName, db.getPublicKey(), (isAvailable, message) -> {
                     if (!isAdded()) return;
                     if (isAvailable) {
+                        ActionReportLogger.logAction("USERNAME_CLAIM", "Availability confirmed. Signing Kind 0.");
                         UsernameManager.claimUsername(requireContext(), requestedName, db.getPrivateKey(), db.getPublicKey(), (success, claimMsg) -> {
                             if (success) {
                                 db.saveUsername(requestedName);
                                 Toast.makeText(getContext(), "Username Locked!", Toast.LENGTH_SHORT).show();
                                 dialog.dismiss();
                             } else {
+                                ActionReportLogger.logError("USERNAME_CLAIM", "Broadcast failure: " + claimMsg);
                                 dialogBinding.btnUsernameActionPopup.setEnabled(true);
                                 dialogBinding.btnUsernameActionPopup.setText("CLAIM FAILED");
                             }
                         });
                     } else {
+                        ActionReportLogger.logAction("USERNAME_CLAIM", "Claim rejected: Name taken.");
                         Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
                         dialogBinding.btnUsernameActionPopup.setEnabled(true);
                         dialogBinding.btnUsernameActionPopup.setText("CLAIM USERNAME");
@@ -476,6 +532,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             dialogBinding.btnUsernameActionPopup.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#FF5252")));
 
             dialogBinding.btnUsernameActionPopup.setOnClickListener(v -> {
+                ActionReportLogger.logAction("USERNAME_RELEASE", "User initiated release for: " + savedName);
                 dialogBinding.btnUsernameActionPopup.setEnabled(false);
                 dialogBinding.btnUsernameActionPopup.setText("RELEASING...");
 
@@ -485,13 +542,17 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                         Toast.makeText(getContext(), "Username Released.", Toast.LENGTH_SHORT).show();
                         dialog.dismiss();
                     } else {
+                        ActionReportLogger.logError("USERNAME_RELEASE", "Release failed: " + releaseMsg);
                         dialogBinding.btnUsernameActionPopup.setEnabled(true);
                     }
                 });
             });
         }
 
-        dialogBinding.btnCancelUsername.setOnClickListener(v -> dialog.dismiss());
+        dialogBinding.btnCancelUsername.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CANCEL", "Username Manager Dialog dismissed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -500,6 +561,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Manages Advertiser Private Storage credentials.
      */
     private void showCloudflareDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Cloudflare Config Dialog opened.");
         DialogCloudflareConfigBinding dialogBinding = DialogCloudflareConfigBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
@@ -514,17 +576,22 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             String token = dialogBinding.etCloudflareTokenPopup.getText().toString().trim();
 
             if (url.startsWith("http")) {
+                ActionReportLogger.logAction("CLOUDFLARE_SAVE", "User updated Worker URL: " + url);
                 db.saveCloudflareWorkerUrl(url);
                 db.saveCloudflareSecretToken(token);
                 Toast.makeText(getContext(), "Cloudflare Configuration Saved", Toast.LENGTH_SHORT).show();
                 Log.i(TAG, "Private Storage Updated: " + url);
                 dialog.dismiss();
             } else {
+                ActionReportLogger.logAction("CLOUDFLARE_SAVE", "Save rejected: Invalid URL.");
                 Toast.makeText(getContext(), "Invalid Worker URL", Toast.LENGTH_SHORT).show();
             }
         });
 
-        dialogBinding.btnCancelCloudflare.setOnClickListener(v -> dialog.dismiss());
+        dialogBinding.btnCancelCloudflare.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CANCEL", "Cloudflare Config Dialog dismissed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -533,6 +600,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Allows instant migration between User and Advertiser profiles.
      */
     private void showModeSwitchDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Role Switch Dialog opened.");
         DialogModeSwitchBinding dialogBinding = DialogModeSwitchBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
@@ -547,6 +615,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
 
         dialogBinding.btnSwitchActionPopup.setOnClickListener(v -> {
             String newRole = isUser ? RoleSelectionActivity.ROLE_ADVERTISER : RoleSelectionActivity.ROLE_USER;
+            ActionReportLogger.logAction("ROLE_SWITCH", "User switched active profile to: " + newRole);
             db.saveUserRole(newRole);
 
             Toast.makeText(getContext(), "Role switched to " + newRole, Toast.LENGTH_SHORT).show();
@@ -558,7 +627,10 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
             }
         });
 
-        dialogBinding.btnCancelMode.setOnClickListener(v -> dialog.dismiss());
+        dialogBinding.btnCancelMode.setOnClickListener(v -> {
+            ActionReportLogger.logAction("DIALOG_CANCEL", "Role Switch Dialog dismissed.");
+            dialog.dismiss();
+        });
         dialog.show();
     }
 
@@ -566,6 +638,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * NEW COMMAND: Launches the My Hashtags Registry Manager.
      */
     private void showMyHashtagsDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Hashtag Registry Dialog opened.");
         // Registry logic to be implemented in the specialized registry manager
         // This launches the popup where advertisers manage their deeds.
         HashtagRegistryManager.showRegistryDialog(requireContext(), getChildFragmentManager());
@@ -575,6 +648,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Icon Action: Quick jump to the History ViewPager index.
      */
     private void navigateToHistory() {
+        ActionReportLogger.logAction("NAV_TRANSITION", "User shortcut to History tab.");
         if (getActivity() != null) {
             ViewPager2 pager = getActivity().findViewById(R.id.mainViewPager);
             if (pager != null) pager.setCurrentItem(1, true);
@@ -597,17 +671,21 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
      * Final confirmation before wiping the decentralized identity and keys.
      */
     private void showResetConfirmation() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "App Reset confirmation opened.");
         new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setTitle("Clear All Data?")
                 .setMessage("This will permanently delete your Nostr keys and settings. You will need to start onboarding again.")
                 .setPositiveButton("RESET", (dialog, which) -> {
+                    ActionReportLogger.logAction("SYSTEM_RESET", "User executed permanent data wipe.");
                     db.clearAllData();
                     Intent intent = new Intent(requireContext(), SplashActivity.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                     startActivity(intent);
                     requireActivity().finish();
                 })
-                .setNegativeButton("CANCEL", null)
+                .setNegativeButton("CANCEL", (dialog, which) -> {
+                    ActionReportLogger.logAction("DIALOG_CANCEL", "Reset operation aborted.");
+                })
                 .show();
     }
 
