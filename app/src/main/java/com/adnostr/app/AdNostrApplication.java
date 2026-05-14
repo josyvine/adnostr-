@@ -27,6 +27,10 @@ import java.util.concurrent.TimeUnit;
  * VOLATILITY FIX:
  * - Heartbeat Initialization: Automatically schedules the Hourly Sequential Re-Publisher
  *   to keep the crowdsourced database alive on ephemeral Nostr relays.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - ActionReportLogger: Established for silent interaction and error logging to .txt files.
+ * - UIHangDetector: Background watchdog for detecting UI bloating and thread freezes.
  */
 public class AdNostrApplication extends Application {
 
@@ -38,16 +42,27 @@ public class AdNostrApplication extends Application {
 
     @Override
     public void onCreate() {
+        // Start tracking application initialization time
+        long startTime = System.currentTimeMillis();
         super.onCreate();
 
-        // 1. Initialize the Global Crash Watchdog
+        // 1. Initialize Total Surveillance Reporting Engine
+        // This creates the "adnostr report" folder in public storage.
+        ActionReportLogger.init(this);
+        ActionReportLogger.logAction("APP_STARTUP", "Application onCreate initiated.");
+
+        // 2. Start UI Hang Watchdog
+        // Monitors the Main Thread for bloating, delays, and hard freezes.
+        UIHangDetector.startWatchdog();
+
+        // 3. Initialize the Global Crash Watchdog
         // This will catch any failure in any function across the entire app
         setupGlobalExceptionHandler();
 
-        // 2. Initialize Notification Channels for Ad Alerts
+        // 4. Initialize Notification Channels for Ad Alerts
         createNotificationChannels();
 
-        // 3. START DECENTRALIZED P2P NODE REMOVED
+        // 5. START DECENTRALIZED P2P NODE REMOVED
         // This section originally started the IPFS node service.
         // It has been removed to prevent build failures and native crashes,
         // as the app now uses Encrypted HTTP Media Relays.
@@ -61,9 +76,12 @@ public class AdNostrApplication extends Application {
         if (AdNostrDatabaseHelper.getInstance(this).isAdmin()) {
             scheduleSchemaHeartbeat();
             Log.i(TAG, "ADMIN DETECTED: Hourly Schema Heartbeat engine scheduled.");
+            ActionReportLogger.logAction("ADMIN_ENGINE", "Hourly Heartbeat scheduled.");
         }
         
+        long duration = System.currentTimeMillis() - startTime;
         Log.i(TAG, "AdNostr Application Started and Protected by Crash Watchdog.");
+        ActionReportLogger.logAction("APP_READY", "Application fully initialized in " + duration + "ms.");
     }
 
     /**
@@ -71,6 +89,7 @@ public class AdNostrApplication extends Application {
      * Frequency: 1 Hour (Balance between relay persistence and battery life).
      */
     private void scheduleSchemaHeartbeat() {
+        ActionReportLogger.logAction("HEARTBEAT_SETUP", "Registering SchemaHeartbeatWorker with WorkManager.");
         PeriodicWorkRequest heartbeatRequest = new PeriodicWorkRequest.Builder(
                 SchemaHeartbeatWorker.class, 1, TimeUnit.HOURS)
                 .addTag("SCHEMA_HEARTBEAT")
@@ -86,6 +105,7 @@ public class AdNostrApplication extends Application {
     /**
      * Configures the system to intercept all uncaught Java errors.
      * When a crash occurs, it gathers the stack trace and opens ErrorDisplayActivity.
+     * UPDATED: Now silently records the crash log to a .txt file before UI transition.
      */
     private void setupGlobalExceptionHandler() {
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
@@ -98,6 +118,10 @@ public class AdNostrApplication extends Application {
                 String stackTrace = sw.toString();
 
                 Log.e(TAG, "CRITICAL FAILURE DETECTED: " + stackTrace);
+
+                // --- SURVEILLANCE LOGGING ---
+                // Silently save the crash report to the public .txt file
+                ActionReportLogger.logError("UNCAUGHT_EXCEPTION", "Process Crashed. Stack Trace:\n" + stackTrace);
 
                 // Create an intent to launch our Big Screen Error Activity
                 // We use FLAG_ACTIVITY_NEW_TASK because we are outside an Activity context
@@ -126,6 +150,8 @@ public class AdNostrApplication extends Application {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             if (notificationManager == null) return;
+
+            ActionReportLogger.logAction("NOTIF_SETUP", "Creating Notification Channels.");
 
             // --- CHANNEL 1: STANDARD AD NOTIFICATIONS ---
             CharSequence name = "Local Ad Notifications";
