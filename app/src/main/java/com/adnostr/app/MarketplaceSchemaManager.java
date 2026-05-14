@@ -70,6 +70,10 @@ import java.util.concurrent.TimeUnit;
  * ENHANCEMENT: CLOUDFLARE PIVOT & AUTO-HEAL ORCHESTRATION
  * - Pivot Trigger: If Nostr results = 0 and Toggle = Gold Standard, pivot to Cloudflare R2.
  * - Network Restoration: Re-signs and re-broadcasts Cloudflare Gold Standard data to Nostr Kind 30007.
+ * 
+ * TOTAL PERSISTENCE FIX:
+ * - Ad Hard-Locking: Integrated db.saveToPermanentAdStore within the message loop.
+ * - Archive-First Loading: Merged archive data is pushed to UI before the network latch closes.
  */
 public class MarketplaceSchemaManager {
 
@@ -132,7 +136,8 @@ public class MarketplaceSchemaManager {
 
             try {
                 JSONObject filter = new JSONObject();
-                filter.put("kinds", new JSONArray().put(30006).put(30007).put(5));
+                // TOTAL PERSISTENCE: Extended filter to capture Ads (30001) and Pointers (30005)
+                filter.put("kinds", new JSONArray().put(30006).put(30007).put(30001).put(30005).put(5));
 
                 String subId = "schema-sync-" + UUID.randomUUID().toString().substring(0, 6);
                 String req = new JSONArray().put("REQ").put(subId).put(filter).toString();
@@ -155,6 +160,11 @@ public class MarketplaceSchemaManager {
                                         int kind = event.getInt("kind");
                                         String eventId = event.getString("id");
 
+                                        // TOTAL PERSISTENCE: Hard-lock ads to permanent store during sync
+                                        if (kind == 30001 || kind == 30005) {
+                                            db.saveToPermanentAdStore(event.toString());
+                                        }
+
                                         db.saveToForensicArchive(event.toString());
 
                                         if (kind == 5) {
@@ -165,6 +175,8 @@ public class MarketplaceSchemaManager {
                                                     if (tag.length() >= 2) {
                                                         if ("e".equals(tag.getString(0))) {
                                                             deletedEventIds.add(tag.getString(1));
+                                                            // Wipe from persistent ad store if ad is deleted
+                                                            db.deleteFromPermanentAdStore(tag.getString(1));
                                                         } else if ("hardcoded_name".equals(tag.getString(0))) {
                                                             hiddenHardcodedNames.add(tag.getString(1));
                                                         }
@@ -287,7 +299,7 @@ public class MarketplaceSchemaManager {
                         JSONObject arcEvent = archiveArray.getJSONObject(i);
                         String eid = arcEvent.getString("id");
                         JSONObject content = archiveContentMap.get(eid);
-                        
+
                         if (content != null && arcEvent.getInt("kind") == 30006 && "category".equals(content.optString("type"))) {
                             String sub = content.optString("sub", "");
                             String finger = "cat:" + sub.trim().toLowerCase();
