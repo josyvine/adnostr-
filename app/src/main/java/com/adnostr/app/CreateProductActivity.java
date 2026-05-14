@@ -72,6 +72,7 @@ import java.util.UUID;
  * 
  * PERFORMANCE FIX (ANTI-ANR):
  * - Injection Debouncer: Implemented syncHandler to prevent UI thread flooding during multi-relay sync.
+ * - Log Capping: technicalConsole StringBuilder is strictly limited to 10,000 characters.
  * 
  * THEME ENGINE UPDATE:
  * - Added getThemeMode bridge to synchronize WebView UI with native preference.
@@ -301,6 +302,12 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             }
 
             technicalConsole.append(filteredMsg).append("\n");
+            
+            // PERFORMANCE FIX: Hard cap for bridge logs
+            if (technicalConsole.length() > 10000) {
+                technicalConsole.delete(0, 2000);
+            }
+
             Log.d(TAG, "Forensic: " + filteredMsg);
         }
 
@@ -672,6 +679,9 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         } catch (Exception ignored) {}
     }
 
+    /**
+     * PERFORMANCE FIX: Hard Character Cap for native helper.
+     */
     private void logTechnicalEvent(String msg) {
         if (!db.isConsoleLogEnabled()) return;
 
@@ -684,6 +694,12 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         }
 
         technicalConsole.append("[").append(System.currentTimeMillis()).append("] ").append(filteredMsg).append("\n");
+        
+        // PERFORMANCE FIX: Cap buffer size at 10,000 characters
+        if (technicalConsole.length() > 10000) {
+            technicalConsole.delete(0, 2000);
+        }
+        
         Log.d(TAG, filteredMsg);
     }
 
