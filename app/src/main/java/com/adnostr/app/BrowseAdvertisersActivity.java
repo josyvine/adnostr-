@@ -30,6 +30,10 @@ import java.util.UUID;
  * Allows users to find businesses relevant to their "Personalized" profile.
  * FORENSIC UPDATE: Integrated RelayReportDialog for deep search diagnostics.
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size. Added floating console FAB logic.
+ * 
+ * TOTAL PERSISTENCE FIX:
+ * - Local Hard-Load: Directory now populates instantly from Forensic Archive on startup.
+ * - Auto-Archiving: Discovered business profiles are hard-locked to disk to survive refreshes.
  */
 public class BrowseAdvertisersActivity extends AppCompatActivity implements RelayReportDialog.OnConsoleMinimizeListener {
 
@@ -69,6 +73,13 @@ public class BrowseAdvertisersActivity extends AppCompatActivity implements Rela
         setupRecyclerView();
         setupSearchView();
 
+        // =========================================================================
+        // PERSISTENCE FIX: STARTUP ANCHOR
+        // Immediately load previously discovered businesses from the Hard-Locked 
+        // archive so the directory is never empty.
+        // =========================================================================
+        loadProfilesFromArchive();
+
         // 3. Setup Floating Console FAB (Hidden by default)
         binding.fabFloatingConsole.setOnClickListener(v -> {
             binding.fabFloatingConsole.setVisibility(View.GONE);
@@ -81,8 +92,35 @@ public class BrowseAdvertisersActivity extends AppCompatActivity implements Rela
             report.showSafe(getSupportFragmentManager(), "SEARCH_LOG");
         });
 
-        // 4. Initiate Network Scan
+        // 4. Initiate Network Scan (Synchronizes local archive with relay state)
         startAdvertiserDiscovery();
+    }
+
+    /**
+     * Logic: Extracts archived Kind 30003 events from local forensic storage.
+     */
+    private void loadProfilesFromArchive() {
+        try {
+            String archiveData = db.getForensicArchive();
+            if (archiveData == null || archiveData.equals("[]")) return;
+
+            JSONArray archiveArray = new JSONArray(archiveData);
+            Log.i(TAG, "ARCHIVE: Hard-loading " + archiveArray.length() + " profiles from local truth anchor.");
+            
+            for (int i = 0; i < archiveArray.length(); i++) {
+                JSONObject event = archiveArray.getJSONObject(i);
+                if (event.optInt("kind") == 30003) {
+                    // Re-package into the protocol format for the existing processor
+                    JSONArray msg = new JSONArray();
+                    msg.put("EVENT");
+                    msg.put("archive");
+                    msg.put(event);
+                    processDirectoryEvent(msg.toString());
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Archive load failure: " + e.getMessage());
+        }
     }
 
     private void setupRecyclerView() {
@@ -133,8 +171,9 @@ public class BrowseAdvertisersActivity extends AppCompatActivity implements Rela
         report.showSafe(getSupportFragmentManager(), "SEARCH_LOG");
 
         binding.pbBrowseLoading.setVisibility(View.VISIBLE);
-        fullList.clear();
-        filteredList.clear();
+        
+        // PERSISTENCE FIX: We DO NOT clear the lists here.
+        // This keeps archived profiles visible while the network syncs.
 
         try {
             JSONObject filter = new JSONObject();
@@ -188,6 +227,9 @@ public class BrowseAdvertisersActivity extends AppCompatActivity implements Rela
                 String pubkey = event.getString("pubkey");
                 String content = event.getString("content");
 
+                // PERSISTENCE FIX: Hard-lock every discovered profile to forensic archive
+                db.saveToForensicArchive(event.toString());
+
                 logForensic("EVENT_IN: Set received from " + pubkey.substring(0, 8));
 
                 // Check for duplicate profiles from different relays
@@ -232,7 +274,7 @@ public class BrowseAdvertisersActivity extends AppCompatActivity implements Rela
                     logForensic("RESULT: 0 matching advertisers found in global pool.");
                 }
             } else if ("NOTICE".equals(type)) {
-                logForensic("RELAY_NOTICE: " + msg.optString(1));
+                logForensic("NOTICE_FROM_RELAY: " + msg.optString(1));
             }
 
         } catch (Exception e) {
