@@ -34,6 +34,10 @@ import java.util.UUID;
  * 
  * THEME ENGINE UPDATE:
  * - Dynamic Status Bar: Adapts to Day/Night mode while preserving "Truth Anchor" functionality.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - UI Throttling: requestBatchUpdate delay increased to 500ms.
+ * - Log Capping: healLogs buffer strictly limited to 10,000 characters during restoration.
  */
 public class ArchiveActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -52,6 +56,7 @@ public class ArchiveActivity extends AppCompatActivity implements WebSocketClien
     private final Handler uiUpdateHandler = new Handler(Looper.getMainLooper());
     private boolean isUpdatePending = false;
     private final Runnable uiRefreshRunnable = this::applyFilterAndNotify;
+    private static final long UI_REFRESH_DELAY = 500;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -178,10 +183,13 @@ public class ArchiveActivity extends AppCompatActivity implements WebSocketClien
         } catch (Exception ignored) {}
     }
 
+    /**
+     * PERFORMANCE FIX: Delay window set to 500ms.
+     */
     private void requestBatchUpdate() {
         if (!isUpdatePending) {
             isUpdatePending = true;
-            uiUpdateHandler.postDelayed(uiRefreshRunnable, 400);
+            uiUpdateHandler.postDelayed(uiRefreshRunnable, UI_REFRESH_DELAY);
         }
     }
 
@@ -272,6 +280,12 @@ public class ArchiveActivity extends AppCompatActivity implements WebSocketClien
             MarketplaceSchemaManager.TechnicalLogListener healerListener = msg -> {
                 runOnUiThread(() -> {
                     healLogs.append(msg).append("\n");
+                    
+                    // PERFORMANCE FIX: Cap memory usage at 10,000 characters
+                    if (healLogs.length() > 10000) {
+                        healLogs.delete(0, 2000);
+                    }
+                    
                     report.updateTechnicalLogs("Restoring Memory...", healLogs.toString());
                 });
             };
