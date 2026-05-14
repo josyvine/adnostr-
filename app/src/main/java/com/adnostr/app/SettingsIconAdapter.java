@@ -37,6 +37,10 @@ import java.util.List;
  * THEME ENGINE UPDATE:
  * - Added CMD_THEME (15) to allow global toggling between Day and Night modes.
  * - Icon is universal and available to all roles.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - Performance Tracking: Measures binding duration for each icon to detect scroll bloat.
+ * - Interaction Surveillance: Logs the specific title and ID of every command clicked.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -77,13 +81,6 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
     private final List<SettingItem> items = new ArrayList<>();
     private final OnSettingClickListener listener;
-
-    /**
-     * Interface to communicate grid clicks back to the SettingsFragment.
-     */
-    public interface OnSettingClickListener {
-        void onSettingClicked(int commandType);
-    }
 
     /**
      * Constructor filters the icon list based on the User's Role and Admin Status.
@@ -147,6 +144,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
         // 11. System Reset (Everyone)
         items.add(new SettingItem(CMD_RESET, "Reset App", R.drawable.ic_cmd_reset));
+
+        // --- SURVEILLANCE: Log Adapter Initialization ---
+        ActionReportLogger.logAction("COMMAND_GRID_INIT", "Populated grid with " + items.size() + " commands for role: " + userRole + " (Admin: " + isAdmin + ")");
     }
 
     @NonNull
@@ -159,8 +159,15 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
     @Override
     public void onBindViewHolder(@NonNull IconViewHolder holder, int position) {
+        // --- PERFORMANCE SURVEILLANCE ---
+        long startTime = System.currentTimeMillis();
+        
         SettingItem item = items.get(position);
         holder.bind(item, listener);
+
+        long duration = System.currentTimeMillis() - startTime;
+        // Log individual bind times to detect UI Bloat while scrolling the command center
+        ActionReportLogger.logAction("ICON_RENDER", "Rendering: " + item.title + " (Index: " + position + "). Bind time: " + duration + "ms");
     }
 
     @Override
@@ -185,6 +192,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
 
             // Trigger the Command Popup logic in the Fragment
             binding.cvSettingIcon.setOnClickListener(v -> {
+                // --- SURVEILLANCE: Log Physical Click ---
+                ActionReportLogger.logAction("ICON_CLICK", "User tapped command: " + item.title + " (Type: " + item.commandType + ")");
+                
                 if (listener != null) {
                     listener.onSettingClicked(item.commandType);
                 }
