@@ -26,6 +26,10 @@ import java.util.UUID;
  * FIXED: Implements Forensic Log reporting during the network phase.
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  * ENHANCEMENT: Forensic logs respect Global Console Visibility and Debug/Professional modes.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - UI Throttling: console updates are now limited to a 500ms pulse.
+ * - Log Capping: forensicLogs StringBuilder strictly capped to 10,000 characters.
  */
 public class ProductPreviewActivity extends AppCompatActivity {
 
@@ -38,6 +42,10 @@ public class ProductPreviewActivity extends AppCompatActivity {
     private String productJsonString;
     private boolean isPageLoaded = false;
     private final StringBuilder forensicLogs = new StringBuilder();
+
+    // PERFORMANCE FIX: Throttle variables
+    private long lastUiUpdateTime = 0;
+    private static final long UI_THROTTLE_MS = 500;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -155,7 +163,12 @@ public class ProductPreviewActivity extends AppCompatActivity {
                 appendToForensicLogs("[R2_TRACE] " + log + "\n");
                 runOnUiThread(() -> {
                     if (finalConsole != null) {
-                        finalConsole.updateTechnicalLogs("Cloudflare Link Active", forensicLogs.toString());
+                        // PERFORMANCE FIX: Throttle UI Refresh
+                        long now = System.currentTimeMillis();
+                        if (now - lastUiUpdateTime > UI_THROTTLE_MS) {
+                            lastUiUpdateTime = now;
+                            finalConsole.updateTechnicalLogs("Cloudflare Link Active", forensicLogs.toString());
+                        }
                     }
                 });
             }
@@ -256,6 +269,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
      * Helper to append logs while managing memory.
      * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
      * ENHANCEMENT: Respects master switch and filters for Professional mode.
+     * PERFORMANCE FIX: Hard Character Cap set to 10,000.
      */
     private void appendToForensicLogs(String msg) {
         // ENHANCEMENT: Early exit if console is disabled
@@ -267,15 +281,15 @@ public class ProductPreviewActivity extends AppCompatActivity {
         if (!db.isDebugModeActive()) {
             if (msg.contains("REQUEST: POST")) filteredMsg = "Initiating secure cloud storage request.\n";
             else if (msg.contains("BIP-340 CRYPTO SIGNING")) filteredMsg = "Generating cryptographic signature.\n";
-            else if (msg.contains("RELAY POOL BROADCAST")) filteredMsg = "Transmitting listing to decentralized network.\n";
+            else if (msg.contains("RELAY_POOL BROADCAST")) filteredMsg = "Transmitting listing to decentralized network.\n";
             else if (msg.contains("EVENT_ID:") || msg.contains("SIGNATURE:") || msg.contains("RAW_FRAME:")) return; // Skip protocol hex
         }
 
         forensicLogs.append(filteredMsg);
         
-        // Prevent OutOfMemoryError by pruning old logs
-        if (forensicLogs.length() > 20000) {
-            forensicLogs.delete(0, 5000);
+        // PERFORMANCE FIX: Prevent memory bloat and string lag
+        if (forensicLogs.length() > 10000) {
+            forensicLogs.delete(0, 2000);
         }
         Log.d(TAG, filteredMsg);
     }
