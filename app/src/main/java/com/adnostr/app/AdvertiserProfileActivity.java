@@ -35,6 +35,10 @@ import java.util.UUID;
  * PERSISTENCE FIX: 
  * - Removed wsManager.shutdown() to prevent global connection loss upon exit.
  * - Implemented Local hard-load to show ads instantly from permanent storage.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - UI Throttling: logForensic is rate-limited to 500ms for UI updates.
+ * - Log Capping: storefrontLogs buffer strictly limited to 10,000 characters.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -50,6 +54,10 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
     // Forensic Log Accumulator
     private final StringBuilder storefrontLogs = new StringBuilder();
+
+    // PERFORMANCE FIX: Throttle variables
+    private long lastUiUpdateTime = 0;
+    private static final long UI_THROTTLE_MS = 500;
 
     // Listener reference for targeted cleanup
     private WebSocketClientManager.RelayStatusListener mStoreListener;
@@ -247,15 +255,21 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
     /**
      * FIXED: Wrapped forensic logging in runOnUiThread to prevent crash during background relay reports.
      * FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint.
+     * PERFORMANCE FIX: Implemented Throttling and Hard Capping.
      */
     private void logForensic(final String msg) {
         runOnUiThread(() -> {
             storefrontLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
             
-            // FIX: Prevent OutOfMemoryError by pruning old logs
-            if (storefrontLogs.length() > 20000) {
-                storefrontLogs.delete(0, 5000);
+            // PERFORMANCE FIX: Cap buffer size at 10,000 characters to prevent RAM/Scroll lag
+            if (storefrontLogs.length() > 10000) {
+                storefrontLogs.delete(0, 2000);
             }
+
+            // PERFORMANCE FIX: Throttle UI update logic
+            long now = System.currentTimeMillis();
+            if (now - lastUiUpdateTime < UI_THROTTLE_MS) return;
+            lastUiUpdateTime = now;
 
             RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("STORE_LOG");
             if (report != null) {
