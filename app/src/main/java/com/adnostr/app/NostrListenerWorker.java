@@ -53,6 +53,10 @@ import java.util.concurrent.TimeUnit;
  * 4-TIER HIERARCHY REPAIR:
  * - Distributed Sniffer: Advertiser B now requests schema frames in background to build the anchor.
  * - JSON Safety: Validates JSONObject structure to prevent background worker crashes.
+ * 
+ * TOTAL PERSISTENCE FIX:
+ * - Hard-Locking: Every incoming ad is now saved to the PermanentAdStore to survive refreshes.
+ * - Extended Sniffer: Now captures Kind 30005 pointers in the background to build the storefront archive.
  */
 public class NostrListenerWorker extends Worker {
 
@@ -118,9 +122,10 @@ public class NostrListenerWorker extends Worker {
             String subId = UUID.randomUUID().toString().substring(0, 8);
             JSONArray reqArray = new JSONArray().put("REQ").put(subId);
 
-            // --- FILTER 1: STANDARD AD & DELETION SNIFFER ---
+            // --- FILTER 1: STANDARD AD, POINTER, & DELETION SNIFFER ---
             JSONObject adFilter = new JSONObject();
-            adFilter.put("kinds", new JSONArray().put(30001).put(5));
+            // TOTAL PERSISTENCE: Now requesting Kind 30001 (Ads), 30005 (Pointers), and 5 (Deletions)
+            adFilter.put("kinds", new JSONArray().put(30001).put(30005).put(5));
 
             if (!interests.isEmpty()) {
                 JSONArray tags = new JSONArray();
@@ -237,6 +242,9 @@ public class NostrListenerWorker extends Worker {
                                 db.addWipedAdId(tagValue);
                                 db.addWipedSchemaId(tagValue);
 
+                                // TOTAL PERSISTENCE: Wipe from hard-locked store
+                                db.deleteFromPermanentAdStore(tagValue);
+
                                 Set<String> localHistory = db.getUserHistory();
                                 for (String savedItem : localHistory) {
                                     if (savedItem.contains("\"id\":\"" + tagValue + "\"")) {
@@ -281,13 +289,17 @@ public class NostrListenerWorker extends Worker {
             }
 
             // =================================================================
-            // HANDLE KIND 30001: INCOMING ADS
+            // HANDLE KIND 30001 & 30005: INCOMING ADS AND POINTERS
             // =================================================================
-            if (kind == 30001) {
+            if (kind == 30001 || kind == 30005) {
+
+                // PERSISTENCE FIX: Hard-lock every ad frame to disk immediately
+                db.saveToPermanentAdStore(event.toString());
+
                 Set<String> history = db.getUserHistory();
                 for (String savedItem : history) {
                     if (savedItem.contains("\"id\":\"" + eventId + "\"")) {
-                        Log.d(TAG, "Ad " + eventId + " already exists in history. Dropping duplicate.");
+                        Log.d(TAG, "Ad " + eventId + " already exists in history. Skipping notification.");
                         return; 
                     }
                 }
@@ -308,7 +320,7 @@ public class NostrListenerWorker extends Worker {
                             String tagValue = tagPair.optString(1);
 
                             if ("d".equals(tagName)) {
-                                if (tagValue.startsWith("adnostr_ad_")) {
+                                if (tagValue.startsWith("adnostr_ad_") || tagValue.startsWith("adnostr_listing_")) {
                                     isAdNostrBroadcast = true;
                                 } else if ("adnostr_interests".equals(tagValue)) {
                                     return; 
@@ -325,6 +337,13 @@ public class NostrListenerWorker extends Worker {
                     return;
                 }
 
+                // If it's a Marketplace Pointer (30005), it usually isn't encrypted like 30001
+                if (kind == 30005) {
+                    saveAndNotifyVerifiedAd(eventId, senderPubkey, contentStr, "Marketplace Listing", "A new product is available in the storefront.", event, rawMessage);
+                    return;
+                }
+
+                // Standard 30001 Decryption path
                 String decryptedJson;
                 try {
                     decryptedJson = EncryptionUtils.decryptPayload(contentStr);
@@ -342,16 +361,6 @@ public class NostrListenerWorker extends Worker {
                 if (!content.has("image")) {
                     Log.d(TAG, "Integrity fail: Missing image field. Dropping ghost ad.");
                     return;
-                }
-
-                Object imageObj = content.get("image");
-                if (imageObj instanceof JSONArray) {
-                    if (((JSONArray) imageObj).length() == 0) {
-                        Log.d(TAG, "Integrity fail: Image array empty. Dropping ghost ad.");
-                        return;
-                    }
-                } else if (imageObj instanceof String) {
-                    if (((String) imageObj).isEmpty()) return;
                 }
 
                 if (!adTag.isEmpty()) {
