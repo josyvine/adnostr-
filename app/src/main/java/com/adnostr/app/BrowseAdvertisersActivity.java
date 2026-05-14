@@ -34,6 +34,10 @@ import java.util.UUID;
  * TOTAL PERSISTENCE FIX:
  * - Local Hard-Load: Directory now populates instantly from Forensic Archive on startup.
  * - Auto-Archiving: Discovered business profiles are hard-locked to disk to survive refreshes.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - UI Throttling: logForensic is rate-limited to 500ms for UI updates.
+ * - Log Capping: searchLogs buffer strictly limited to 10,000 characters.
  */
 public class BrowseAdvertisersActivity extends AppCompatActivity implements RelayReportDialog.OnConsoleMinimizeListener {
 
@@ -49,6 +53,10 @@ public class BrowseAdvertisersActivity extends AppCompatActivity implements Rela
 
     // Forensic Log Accumulator
     private final StringBuilder searchLogs = new StringBuilder();
+
+    // PERFORMANCE FIX: Throttle variables
+    private long lastUiUpdateTime = 0;
+    private static final long UI_THROTTLE_MS = 500;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -282,13 +290,21 @@ public class BrowseAdvertisersActivity extends AppCompatActivity implements Rela
         }
     }
 
+    /**
+     * PERFORMANCE FIX: Implemented Throttling and Hard Capping.
+     */
     private void logForensic(String msg) {
         searchLogs.append("[").append(System.currentTimeMillis()).append("] ").append(msg).append("\n");
         
-        // FIX: OOM Crash Fix - Limit StringBuilder Memory Footprint
-        if (searchLogs.length() > 20000) {
-            searchLogs.delete(0, 5000);
+        // PERFORMANCE FIX: Cap buffer size at 10,000 chars to prevent string lag
+        if (searchLogs.length() > 10000) {
+            searchLogs.delete(0, 2000);
         }
+
+        // PERFORMANCE FIX: Throttle UI updates to once every 500ms
+        long now = System.currentTimeMillis();
+        if (now - lastUiUpdateTime < UI_THROTTLE_MS) return;
+        lastUiUpdateTime = now;
 
         RelayReportDialog report = (RelayReportDialog) getSupportFragmentManager().findFragmentByTag("SEARCH_LOG");
         if (report != null) {
