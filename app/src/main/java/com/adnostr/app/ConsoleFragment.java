@@ -23,6 +23,10 @@ import com.adnostr.app.databinding.FragmentConsoleBinding;
  * Provides a centralized, full-screen view of network traffic and forensic events.
  * Acts as the "Home" for minimized log dialogs.
  * ENHANCEMENT: Integrated visibility check to support the "Hide Console" setting.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - Relies on the 10,000-character Hard Cap implemented in WebSocketClientManager.
+ * - The 1000ms REFRESH_MS interval is inherently safe now that the string buffer is light.
  */
 public class ConsoleFragment extends Fragment {
 
