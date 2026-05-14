@@ -65,6 +65,9 @@ import java.util.concurrent.Executors;
  * 
  * THEME ENGINE (NEW):
  * - KEY_THEME_MODE: Persists the User preference for Day (Light) or Night (Dark) mode.
+ * 
+ * TOTAL PERSISTENCE UPDATE (FIX):
+ * - KEY_PERMANENT_AD_STORE: New immutable storage for Kind 30001 and 30005 to survive refresh/reopen.
  */
 public class AdNostrDatabaseHelper {
 
@@ -114,6 +117,9 @@ public class AdNostrDatabaseHelper {
     // History Keys
     private static final String KEY_USER_HISTORY = "local_user_ad_history";
     private static final String KEY_ADVERTISER_HISTORY = "local_advertiser_ad_history";
+
+    // TOTAL PERSISTENCE: IMMUTABLE AD STORAGE (NEW)
+    private static final String KEY_PERMANENT_AD_STORE = "persistent_ads_hard_locked";
 
     // PHANTOM AD PREVENTION
     private static final String KEY_WIPED_AD_IDS = "wiped_deleted_ad_ids";
@@ -383,6 +389,76 @@ public class AdNostrDatabaseHelper {
     }
 
     // =========================================================================
+    // TOTAL PERSISTENCE: IMMUTABLE AD STORAGE (NEW)
+    // =========================================================================
+
+    /**
+     * Logic: Hard-locks every ad seen on the network to disk.
+     * This is the "Primary Source of Truth" that prevents ads from vanishing 
+     * when the relay prunes them or the app is refreshed.
+     */
+    public synchronized void saveToPermanentAdStore(String eventJson) {
+        diskExecutor.execute(() -> {
+            try {
+                JSONObject newAd = new JSONObject(eventJson);
+                String adId = newAd.optString("id");
+
+                if (adId.isEmpty() || isAdWiped(adId)) return;
+
+                String currentStore = prefs.getString(KEY_PERMANENT_AD_STORE, "[]");
+                JSONArray adArray = new JSONArray(currentStore);
+
+                // Deduplicate by ID
+                for (int i = 0; i < adArray.length(); i++) {
+                    if (adArray.getJSONObject(i).optString("id").equals(adId)) return;
+                }
+
+                adArray.put(newAd);
+                prefs.edit().putString(KEY_PERMANENT_AD_STORE, adArray.toString()).commit();
+                android.util.Log.i("AdNostr_Persist", "Ad [Hard-Locked] to Permanent Storage: " + adId);
+            } catch (Exception e) {
+                android.util.Log.e("AdNostr_Persist", "Failed to hard-lock ad: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Pulls the hard-locked ads from local storage.
+     */
+    public Set<String> getPermanentAds() {
+        Set<String> ads = new HashSet<>();
+        try {
+            String rawStore = prefs.getString(KEY_PERMANENT_AD_STORE, "[]");
+            JSONArray adArray = new JSONArray(rawStore);
+            for (int i = 0; i < adArray.length(); i++) {
+                ads.add(adArray.getString(i));
+            }
+        } catch (Exception ignored) {}
+        return ads;
+    }
+
+    /**
+     * Removes an ad from the permanent store (used during Kind 5 Deletion).
+     */
+    public void deleteFromPermanentAdStore(String eventId) {
+        diskExecutor.execute(() -> {
+            try {
+                String currentStore = prefs.getString(KEY_PERMANENT_AD_STORE, "[]");
+                JSONArray adArray = new JSONArray(currentStore);
+                JSONArray filtered = new JSONArray();
+
+                for (int i = 0; i < adArray.length(); i++) {
+                    JSONObject ad = adArray.getJSONObject(i);
+                    if (!ad.optString("id").equals(eventId)) {
+                        filtered.put(ad);
+                    }
+                }
+                prefs.edit().putString(KEY_PERMANENT_AD_STORE, filtered.toString()).commit();
+            } catch (Exception ignored) {}
+        });
+    }
+
+    // =========================================================================
     // ADMIN SUPREMACY HELPERS
     // =========================================================================
 
@@ -619,6 +695,7 @@ public class AdNostrDatabaseHelper {
         Set<String> history = new HashSet<>(prefs.getStringSet(KEY_USER_HISTORY, new HashSet<>()));
         history.add(eventJson);
         prefs.edit().putStringSet(KEY_USER_HISTORY, history).apply();
+        saveToPermanentAdStore(eventJson); // Lock to immutable store
     }
 
     public Set<String> getUserHistory() {
@@ -635,6 +712,7 @@ public class AdNostrDatabaseHelper {
         Set<String> history = new HashSet<>(prefs.getStringSet(KEY_ADVERTISER_HISTORY, new HashSet<>()));
         history.add(eventJson);
         prefs.edit().putStringSet(KEY_ADVERTISER_HISTORY, history).apply();
+        saveToPermanentAdStore(eventJson); // Lock to immutable store
     }
 
     public Set<String> getAdvertiserHistory() {
@@ -654,6 +732,7 @@ public class AdNostrDatabaseHelper {
         Set<String> wiped = new HashSet<>(prefs.getStringSet(KEY_WIPED_AD_IDS, new HashSet<>()));
         wiped.add(eventId);
         prefs.edit().putStringSet(KEY_WIPED_AD_IDS, wiped).apply();
+        deleteFromPermanentAdStore(eventId); // Purge from hard-lock on deletion
     }
 
     /**
