@@ -20,6 +20,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -27,6 +28,10 @@ import java.util.UUID;
  * Logic: Fetches Kind 30005 (Marketplace Pointer) events authored by this user.
  * Displays a list of active products and provides the entry point to create new ones.
  * ENHANCEMENT: Added bulk deletion functionality for both Nostr Events and Cloudflare R2 storage.
+ * 
+ * TOTAL PERSISTENCE FIX:
+ * - Local Hard-Load: Catalogue now populates instantly from Permanent Storage on startup.
+ * - Merge-on-Refresh: Removed list clearing to ensure ads stay visible while the relay syncs.
  */
 public class AdsPublisherFragment extends Fragment implements PublisherAdapter.OnProductClickListener {
 
@@ -56,6 +61,13 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
 
         setupRecyclerView();
 
+        // =========================================================================
+        // PERSISTENCE FIX: STARTUP ANCHOR
+        // Immediately load ads from the Hard-Locked local archive so the 
+        // catalogue is available even without an internet connection.
+        // =========================================================================
+        loadProductsFromLocalArchive();
+
         // FAB: Open the WebView-based Product Creator
         binding.fabCreateProduct.setOnClickListener(v -> {
             Intent intent = new Intent(requireContext(), CreateProductActivity.class);
@@ -67,8 +79,23 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
 
         binding.swipeRefreshPublisher.setOnRefreshListener(this::fetchMyProducts);
 
-        // Initial fetch
+        // Initial network fetch (Synchronizes local archive with relay state)
         fetchMyProducts();
+    }
+
+    /**
+     * Logic: Pulls hard-locked ads from local storage.
+     */
+    private void loadProductsFromLocalArchive() {
+        Set<String> archivedAds = db.getPermanentAds();
+        if (archivedAds == null || archivedAds.isEmpty()) return;
+
+        Log.i(TAG, "ARCHIVE: Hard-loading " + archivedAds.size() + " ads from local truth anchor.");
+        for (String adJson : archivedAds) {
+            // Re-process the stored JSON string as if it just came from a relay
+            processProductEvent(adJson); 
+        }
+        updateEmptyState();
     }
 
     private void setupRecyclerView() {
@@ -83,8 +110,12 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
      */
     private void fetchMyProducts() {
         binding.swipeRefreshPublisher.setRefreshing(true);
-        myProducts.clear();
-        adapter.notifyDataSetChanged();
+        
+        // =========================================================================
+        // PERSISTENCE FIX: REMOVED myProducts.clear()
+        // We no longer wipe the list. The processProductEvent logic handles 
+        // duplication by checking the JSON URL, allowing a seamless background refresh.
+        // =========================================================================
 
         try {
             JSONObject filter = new JSONObject();
@@ -124,6 +155,10 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
             if ("EVENT".equals(type)) {
                 JSONObject event = msg.getJSONObject(2);
                 String eventId = event.getString("id"); // Extract Event ID for Kind 5 deletion
+                
+                // TOTAL PERSISTENCE: If we found a valid user ad on the wire, hard-lock it
+                db.saveToPermanentAdStore(event.toString());
+
                 String content = event.getString("content");
                 JSONObject meta = new JSONObject(content);
 
@@ -181,6 +216,9 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
                 if (signedDeletion != null) {
                     wsManager.broadcastEvent(signedDeletion.toString());
                 }
+
+                // TOTAL PERSISTENCE: Wipe from local permanent store
+                db.deleteFromPermanentAdStore(product.eventId);
 
                 // Remove from local UI list
                 myProducts.remove(product);
