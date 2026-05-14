@@ -50,6 +50,10 @@ import java.util.List;
  * DISTRIBUTED MEMORY FIX:
  * - Universal Archiving: Every device now sniffs and saves crowdsourced database frames 
  *   into the local Forensic Archive to prevent "Memory Vacuum" on fresh installs.
+ * 
+ * TOTAL PERSISTENCE FIX:
+ * - Ad-Type Bypass: Ensures Kind 30001 and 30005 always reach the UI, bypassing the 
+ *   processedEventIds block to allow successful catalogue/browse refreshes.
  */
 public class WebSocketClientManager {
 
@@ -295,18 +299,29 @@ public class WebSocketClientManager {
                             else if ("EVENT".equals(type)) {
                                 JSONObject event = msgArray.getJSONObject(2);
                                 String eventId = event.getString("id");
+                                int kind = event.optInt("kind", -1);
 
-                                // SESSION DEDUPLICATION: Don't process the same event multiple times per session
-                                if (processedEventIds.add(eventId)) {
-                                    int kind = event.optInt("kind", -1);
+                                // =========================================================================
+                                // PERSISTENCE BYPASS: 
+                                // If this is an Ad (30001) or Pointer (30005), we bypass the deduplication
+                                // 'false' return. This allows the Ad to reach the UI on every refresh.
+                                // =========================================================================
+                                boolean isAdKind = (kind == 30001 || kind == 30005);
+                                boolean isNewToSession = processedEventIds.add(eventId);
+
+                                if (isNewToSession || isAdKind) {
                                     
-                                    // CRASH FIX (PERFORMANCE): Only notify the UI Thread if this is a NEW event.
-                                    // If 31 relays send the same Bajaj schema, the Activity only sees it ONCE.
+                                    // CRASH FIX (PERFORMANCE): Notify UI Thread
                                     mHandler.post(() -> {
                                         for (RelayStatusListener listener : listeners) {
                                             listener.onMessageReceived(relayUrl, message);
                                         }
                                     });
+
+                                    // If ad-related, also hard-lock to the permanent store instantly
+                                    if (isAdKind) {
+                                        AdNostrDatabaseHelper.getInstance(appContext).saveToPermanentAdStore(event.toString());
+                                    }
 
                                     if (kind == 30006 || kind == 30007) {
 
