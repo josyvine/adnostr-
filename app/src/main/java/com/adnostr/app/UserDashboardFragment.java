@@ -41,6 +41,10 @@ import java.util.Set;
  * FIXED (Glitch 3): Respects Privacy Command Center "Hide Username" flag strictly.
  * CRITICAL FIX FOR POPUP: Switched to addStatusListener to prevent overwriting MainActivity logic.
  * ENHANCEMENT: Console monitoring respects Global Visibility and Debug/Professional mode settings.
+ * 
+ * PERFORMANCE FIX (ANTI-HANG):
+ * - UI Throttling: updateOpenConsole is rate-limited to 500ms to stop UI freezing.
+ * - Log Capping: technicalLogs buffer strictly limited to 10,000 characters.
  */
 public class UserDashboardFragment extends Fragment implements HashtagAdapter.OnHashtagClickListener {
 
@@ -56,6 +60,10 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     // Technical Log Accumulator for the Network Console
     private final StringBuilder technicalLogs = new StringBuilder();
+
+    // PERFORMANCE FIX: UI Update throttling
+    private long lastUiUpdateTime = 0;
+    private static final long UI_THROTTLE_MS = 500;
 
     @Nullable
     @Override
@@ -120,9 +128,15 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
 
     /**
      * Dynamically pushes new data to the console if it is currently open on screen.
+     * PERFORMANCE FIX: Throttled to UI_THROTTLE_MS to prevent app hang.
      */
     private void updateOpenConsole() {
         if (isAdded() && getActivity() != null) {
+            // PERFORMANCE GATE
+            long now = System.currentTimeMillis();
+            if (now - lastUiUpdateTime < UI_THROTTLE_MS) return;
+            lastUiUpdateTime = now;
+
             getActivity().runOnUiThread(() -> {
                 RelayReportDialog existing = (RelayReportDialog) getChildFragmentManager().findFragmentByTag("USER_CONSOLE");
                 if (existing != null) {
@@ -245,15 +259,21 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                     technicalLogs.append("BIP-340 Schnorr Proof attached.\n\n");
                 }
 
+                // PERFORMANCE FIX: Character Cap Check
+                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
+
                 wsManager.broadcastEvent(signedEvent.toString());
                 technicalLogs.append("BROADCAST: Sent Encrypted Kind 30001 to relays.\n");
                 technicalLogs.append("WAITING FOR RELAY VERIFICATION...\n\n");
+                
+                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                 updateOpenConsole();
             }
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to broadcast interests: " + e.getMessage());
             technicalLogs.append("CRYPTO ERROR: ").append(e.getMessage()).append("\n");
+            if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
             updateOpenConsole();
         }
     }
@@ -266,6 +286,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             @Override
             public void onRelayConnected(String url) {
                 technicalLogs.append("[CONNECTED] ").append(url).append("\n");
+                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         refreshRelayStatus();
@@ -277,6 +298,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             @Override
             public void onRelayDisconnected(String url, String reason) {
                 technicalLogs.append("[DISCONNECT] ").append(url).append(" (").append(reason).append(")\n");
+                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         refreshRelayStatus();
@@ -290,11 +312,11 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                 // Handle relay confirmation messages for verification
                 if (message.contains("OK") && message.contains("true")) {
                     technicalLogs.append("[VERIFIED] Relay accepted your identity: ").append(url).append("\n");
-                    updateOpenConsole();
                 } else if (message.contains("OK") && message.contains("false")) {
                     technicalLogs.append("[REJECTED] Relay rejected your signature: ").append(url).append("\n");
-                    updateOpenConsole();
                 }
+                
+                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
 
                 // Handle incoming Events
                 try {
@@ -311,6 +333,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                             // =========================================================================
                             if (db.isAdWiped(eventId)) {
                                 technicalLogs.append("[DROPPED] Phantom Ad Blocked: ").append(eventId).append("\n");
+                                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                                 updateOpenConsole();
                                 return;
                             }
@@ -336,6 +359,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                                 if (savedItem.contains("\"id\":\"" + targetDeletedId + "\"")) {
                                                     db.deleteFromUserHistory(savedItem);
                                                     technicalLogs.append("[WIPED] Advertiser deleted ad: ").append(targetDeletedId).append("\n");
+                                                    if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                                                     updateOpenConsole();
                                                     break;
                                                 }
@@ -427,12 +451,14 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
                                         public void onResult(int status, String ownerPubkey) {
                                             if (status == HashtagRegistryManager.STATUS_TAKEN) {
                                                 technicalLogs.append("[REJECTED] Trust Filter: Mismatch for #").append(finalAdTag).append("\n");
+                                                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                                                 updateOpenConsole();
                                                 return;
                                             }
 
                                             // PROCEED: Ad is Verified (Public or Owned)
                                             technicalLogs.append("[AD VERIFIED] Valid secure ad from ").append(finalUrl).append("\n");
+                                            if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                                             updateOpenConsole();
 
                                             handleVerifiedAdDisplay(finalId, finalDecrypted, finalOriginalEvent, message);
@@ -452,6 +478,7 @@ public class UserDashboardFragment extends Fragment implements HashtagAdapter.On
             @Override
             public void onError(String url, Exception ex) {
                 technicalLogs.append("[ERROR] ").append(url).append(": ").append(ex.getMessage()).append("\n");
+                if (technicalLogs.length() > 10000) { technicalLogs.delete(0, 2000); }
                 if (isAdded() && getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         refreshRelayStatus();
