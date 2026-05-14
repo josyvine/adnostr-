@@ -17,6 +17,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -30,6 +31,10 @@ import java.util.UUID;
  * ENHANCEMENT: Fixed OOM Crash by capping StringBuilder size.
  * BUILD FIX: Updated ProductListing constructor to include eventId for compatibility with bulk deletion.
  * UPDATED: Extracts and displays Dynamic Category labeling in the storefront grid.
+ * 
+ * PERSISTENCE FIX: 
+ * - Removed wsManager.shutdown() to prevent global connection loss upon exit.
+ * - Implemented Local hard-load to show ads instantly from permanent storage.
  */
 public class AdvertiserProfileActivity extends AppCompatActivity {
 
@@ -45,6 +50,9 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
     // Forensic Log Accumulator
     private final StringBuilder storefrontLogs = new StringBuilder();
+
+    // Listener reference for targeted cleanup
+    private WebSocketClientManager.RelayStatusListener mStoreListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,8 +82,27 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
         setupRecyclerView();
 
-        // 3. Start fetching products for this author
+        // =========================================================================
+        // PERSISTENCE FIX: PRE-LOAD FROM PERMANENT ARCHIVE
+        // Before we even talk to the network, we show what we already have hard-locked.
+        // =========================================================================
+        loadAdsFromPermanentStorage();
+
+        // 3. Start fetching products for this author (Network Sync)
         fetchAdvertiserProducts();
+    }
+
+    /**
+     * Logic: Pulls ads from the local immutable store and filters for this specific author.
+     */
+    private void loadAdsFromPermanentStorage() {
+        Set<String> archivedAds = db.getPermanentAds();
+        if (archivedAds == null || archivedAds.isEmpty()) return;
+
+        logForensic("ARCHIVE: Pulling hard-locked ads from local memory...");
+        for (String adJson : archivedAds) {
+            processStoreEvent(adJson); // Reuse parsing logic to populate UI
+        }
     }
 
     private void setupRecyclerView() {
@@ -108,8 +135,7 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
         report.showSafe(getSupportFragmentManager(), "STORE_LOG");
 
         binding.pbProfileLoading.setVisibility(View.VISIBLE);
-        productList.clear();
-        adapter.notifyDataSetChanged();
+        // Note: We don't productList.clear() here because we want to keep the archived ads visible
 
         try {
             JSONObject filter = new JSONObject();
@@ -124,7 +150,7 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
             logForensic("REQ_OUT: " + req);
 
-            wsManager.addStatusListener(new WebSocketClientManager.RelayStatusListener() {
+            mStoreListener = new WebSocketClientManager.RelayStatusListener() {
                 @Override 
                 public void onRelayConnected(String url) { 
                     logForensic("RELAY_TCP_OK: " + url + " - Deploying REQ filter.");
@@ -144,7 +170,9 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
                     // FIXED: UI Thread switch required for processing marketplace data
                     runOnUiThread(() -> processStoreEvent(message));
                 }
-            });
+            };
+            
+            wsManager.addStatusListener(mStoreListener);
 
             // FIXED: Using Pool management with automatic open-socket detection
             wsManager.connectPool(db.getRelayPool());
@@ -165,6 +193,11 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
             if ("EVENT".equals(type)) {
                 JSONObject event = msg.getJSONObject(2);
                 String eventId = event.getString("id"); // BUILD FIX: Extract event ID
+                String author = event.optString("pubkey", "");
+
+                // PERSISTENCE FIX: Ensure we only show ads for the TARGET author of this storefront
+                if (!author.equalsIgnoreCase(targetPubkey)) return;
+
                 String content = event.getString("content");
                 JSONObject meta = new JSONObject(content);
 
@@ -186,12 +219,14 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
                 }
 
                 // UI ENHANCEMENT: Prepend category to the title for the storefront display
-                // This achieves category labeling safely without requiring XML or Data Model changes
                 String displayTitle = category.isEmpty() ? title : "[" + category + "] " + title;
 
                 // BUILD FIX: Added eventId as the 4th argument
                 productList.add(new AdsPublisherFragment.ProductListing(displayTitle, price, jsonUrl, eventId));
                 adapter.notifyItemInserted(productList.size() - 1);
+                
+                // If there are ads, hide the empty state
+                binding.tvNoStoreProducts.setVisibility(View.GONE);
 
             } else if ("EOSE".equals(type)) {
                 logForensic("STATUS_EOSE: Relay search finished.");
@@ -232,8 +267,14 @@ public class AdvertiserProfileActivity extends AppCompatActivity {
 
     @Override
     public void onDestroy() {
-        // Cleaning up listeners to prevent memory leaks when storefront is closed
-        wsManager.shutdown(); 
+        // =========================================================================
+        // PERSISTENCE FIX: REMOVED wsManager.shutdown()
+        // We only remove the listener. We DO NOT kill the WebSocket connections.
+        // This allows the user to return to Browse/Dashboard and remain ONLINE.
+        // =========================================================================
+        if (wsManager != null && mStoreListener != null) {
+            wsManager.removeStatusListener(mStoreListener);
+        }
         super.onDestroy();
     }
 
