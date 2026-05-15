@@ -104,6 +104,7 @@
         width: 40px; height: 40px; border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
         background: var(--bg); color: var(--text-main);
+        cursor: pointer;
     }
 
     .title { font-size: 18px; line-height: 1.4; color: var(--text-muted); margin-bottom: 12px; }
@@ -181,7 +182,7 @@
     <div class="content">
         <div class="price-row">
             <div class="price-tag" id="priceDisplay">₹ 0</div>
-            <div class="share-btn"><i class="fa-solid fa-share-nodes"></i></div>
+            <div class="share-btn" id="btnShare"><i class="fa-solid fa-share-nodes"></i></div>
         </div>
         <div id="mrpRow" style="margin-top: -10px; margin-bottom: 10px; display: none;">
             <span class="mrp-tag" id="mrpDisplay">MRP ₹ 0</span>
@@ -238,6 +239,27 @@
 
     <script>
         /**
+         * TOTAL SURVEILLANCE: Interaction Bridge
+         */
+        function logAction(id) {
+            if (window.AndroidBridge) {
+                window.AndroidBridge.logTechnicalEvent("[VIEWER_ACTION] User clicked " + id);
+            }
+        }
+
+        function logGlitch(type, details) {
+            if (window.AndroidBridge && window.AndroidBridge.reportGlitchedLogic) {
+                window.AndroidBridge.reportGlitchedLogic(type, details);
+            }
+        }
+
+        // Attach listeners to static buttons
+        document.getElementById('callBtn').addEventListener('click', () => logAction('CallButton'));
+        document.getElementById('chatBtn').addEventListener('click', () => logAction('ChatButton'));
+        document.getElementById('waBtn').addEventListener('click', () => logAction('WhatsAppButton'));
+        document.getElementById('btnShare').addEventListener('click', () => logAction('ShareButton'));
+
+        /**
          * THEME ENGINE: Bridge to native Day/Night mode
          */
         window.setTheme = function(theme) {
@@ -287,6 +309,8 @@
             if(k.includes('warranty') || k.includes('guarantee')) return 'fa-solid fa-shield-halved';
             if(k.includes('condition') || k.includes('state')) return 'fa-solid fa-clipboard-check';
             
+            // FORENSIC LOGGING: Catch unknown crowdsourced icons
+            logGlitch("UNKNOWN_METADATA_ICON", "Key: " + key);
             return 'fa-solid fa-circle-check'; // Default Fallback for totally unknown crowdsourced fields
         }
 
@@ -313,8 +337,17 @@
          * @param {string} jsonString - The product data downloaded from Cloudflare.
          */
         function renderProduct(jsonString) {
+            const startTime = Date.now();
             try {
                 const data = JSON.parse(jsonString);
+
+                // LOGIC SURVEILLANCE: Data Integrity Checks
+                if (!data.price || data.price === "0" || data.price === 0) {
+                    logGlitch("LOGIC_VIOLATION", "Product rendered with ₹0 price tag.");
+                }
+                if (!data.images || data.images.length === 0) {
+                    logGlitch("LOGIC_VIOLATION", "Product rendered without any media assets.");
+                }
 
                 // 1. Title & Price
                 document.getElementById('titleDisplay').innerText = data.title;
@@ -339,6 +372,7 @@
                         img.src = url;
                         if(index === 0) img.className = "active";
                         img.onclick = function() {
+                            logAction('GalleryThumb_' + index);
                             mainImg.src = url;
                             document.querySelectorAll('.thumb-strip img').forEach(t => t.classList.remove('active'));
                             img.classList.add('active');
@@ -410,7 +444,13 @@
                     document.getElementById('featuredBadge').style.display = "block";
                 }
 
+                const endTime = Date.now();
+                if (window.AndroidBridge) {
+                    window.AndroidBridge.logTechnicalEvent("[PERFORMANCE] Viewer Render Logic took " + (endTime - startTime) + "ms");
+                }
+
             } catch (e) {
+                logGlitch("JSON_PARSE_FAILURE", e.message);
                 document.body.innerHTML = "<div style='padding:50px; text-align:center;'>Error loading product data.</div>";
             }
         }
