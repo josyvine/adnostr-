@@ -142,7 +142,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         if (isAdmin) {
             // Admin receives full Moderator privileges
             items.add(new SettingItem(CMD_REPORT, "Report", R.drawable.ic_nav_report));
-            
+
             // NEW: ADMIN-ONLY DATABASE ARCHITECT ICON
             items.add(new SettingItem(CMD_CLOUDFLARE_DB, "Architect", R.drawable.database_search_24px));
         } else if (RoleSelectionActivity.ROLE_ADVERTISER.equals(userRole)) {
@@ -169,7 +169,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     public void onBindViewHolder(@NonNull IconViewHolder holder, int position) {
         // --- PERFORMANCE SURVEILLANCE ---
         long startTime = System.currentTimeMillis();
-        
+
         SettingItem item = items.get(position);
         holder.bind(item, listener);
 
@@ -202,7 +202,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
             binding.cvSettingIcon.setOnClickListener(v -> {
                 // --- SURVEILLANCE: Log Physical Click ---
                 ActionReportLogger.logAction("ICON_CLICK", "User tapped command: " + item.title + " (Type: " + item.commandType + ")");
-                
+
                 if (listener != null) {
                     listener.onSettingClicked(item.commandType);
                 }
