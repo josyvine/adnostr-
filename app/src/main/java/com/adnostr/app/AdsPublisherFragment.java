@@ -32,6 +32,11 @@ import java.util.UUID;
  * TOTAL PERSISTENCE FIX:
  * - Local Hard-Load: Catalogue now populates instantly from Permanent Storage on startup.
  * - Merge-on-Refresh: Removed list clearing to ensure ads stay visible while the relay syncs.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - Interaction Logging: Every button (Create, Delete, Refresh) is forensicly tracked.
+ * - Performance Tracking: Measures archive loading and network sync durations.
+ * - Integrity Alerts: Logs "Ghost Resource" errors if R2 files are missing during deletion.
  */
 public class AdsPublisherFragment extends Fragment implements PublisherAdapter.OnProductClickListener {
 
@@ -47,6 +52,7 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        ActionReportLogger.logAction("PUBLISHER_DASHBOARD", "Fragment onCreateView initiated.");
         binding = FragmentAdsPublisherBinding.inflate(inflater, container, false);
         return binding.getRoot();
     }
@@ -70,14 +76,21 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
 
         // FAB: Open the WebView-based Product Creator
         binding.fabCreateProduct.setOnClickListener(v -> {
+            ActionReportLogger.logAction("PUBLISHER_ACTION", "User clicked fabCreateProduct.");
             Intent intent = new Intent(requireContext(), CreateProductActivity.class);
             startActivity(intent);
         });
 
         // ENHANCEMENT: Delete FAB Logic
-        binding.fabDeleteSelected.setOnClickListener(v -> processBulkDeletion());
+        binding.fabDeleteSelected.setOnClickListener(v -> {
+            ActionReportLogger.logAction("PUBLISHER_ACTION", "User triggered processBulkDeletion.");
+            processBulkDeletion();
+        });
 
-        binding.swipeRefreshPublisher.setOnRefreshListener(this::fetchMyProducts);
+        binding.swipeRefreshPublisher.setOnRefreshListener(() -> {
+            ActionReportLogger.logAction("PUBLISHER_ACTION", "User triggered manual Swipe-to-Refresh.");
+            fetchMyProducts();
+        });
 
         // Initial network fetch (Synchronizes local archive with relay state)
         fetchMyProducts();
@@ -87,14 +100,21 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
      * Logic: Pulls hard-locked ads from local storage.
      */
     private void loadProductsFromLocalArchive() {
+        final long startTime = System.currentTimeMillis();
         Set<String> archivedAds = db.getPermanentAds();
-        if (archivedAds == null || archivedAds.isEmpty()) return;
+        
+        if (archivedAds == null || archivedAds.isEmpty()) {
+            ActionReportLogger.logAction("PUBLISHER_ARCHIVE", "Local permanent store is empty.");
+            return;
+        }
 
         Log.i(TAG, "ARCHIVE: Hard-loading " + archivedAds.size() + " ads from local truth anchor.");
         for (String adJson : archivedAds) {
             // Re-process the stored JSON string as if it just came from a relay
             processProductEvent(adJson); 
         }
+        
+        ActionReportLogger.logPerformance("PUBLISHER_LOAD_ARCHIVE", "Loaded " + archivedAds.size() + " items in " + (System.currentTimeMillis() - startTime) + "ms");
         updateEmptyState();
     }
 
@@ -109,7 +129,9 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
      * Subscribes to Kind 30005 events where the author is the current advertiser.
      */
     private void fetchMyProducts() {
+        final long syncStartTime = System.currentTimeMillis();
         binding.swipeRefreshPublisher.setRefreshing(true);
+        ActionReportLogger.logAction("PUBLISHER_SYNC", "Requesting author events from relay pool.");
         
         // =========================================================================
         // PERSISTENCE FIX: REMOVED myProducts.clear()
@@ -133,7 +155,12 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
                 @Override
                 public void onMessageReceived(String url, String message) {
                     if (isAdded() && getActivity() != null) {
-                        getActivity().runOnUiThread(() -> processProductEvent(message));
+                        getActivity().runOnUiThread(() -> {
+                            processProductEvent(message);
+                            if (message.contains("EOSE")) {
+                                ActionReportLogger.logPerformance("PUBLISHER_SYNC_DURATION", "Full relay sync took " + (System.currentTimeMillis() - syncStartTime) + "ms");
+                            }
+                        });
                     }
                 }
             });
@@ -142,6 +169,7 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
 
         } catch (Exception e) {
             Log.e(TAG, "Publisher fetch error: " + e.getMessage());
+            ActionReportLogger.logError("PUBLISHER_SYNC_FAIL", e.getMessage());
             binding.swipeRefreshPublisher.setRefreshing(false);
         }
     }
@@ -174,6 +202,8 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
                 // Updated to include eventId in the model
                 myProducts.add(new ProductListing(title, price, jsonUrl, eventId));
                 adapter.notifyItemInserted(myProducts.size() - 1);
+                
+                ActionReportLogger.logAction("PUBLISHER_DATA", "Item mapped to inventory: " + title);
 
             } else if ("EOSE".equals(type)) {
                 binding.swipeRefreshPublisher.setRefreshing(false);
@@ -190,13 +220,22 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
         List<ProductListing> selected = adapter.getSelectedItems();
         if (selected.isEmpty()) return;
 
+        ActionReportLogger.logAction("PUBLISHER_ACTION", "Executing bulk wipe for " + selected.size() + " items.");
         Toast.makeText(getContext(), "Wiping " + selected.size() + " listings...", Toast.LENGTH_SHORT).show();
 
         try {
             for (ProductListing product : selected) {
                 // PART 1: Physical Wipe from Cloudflare R2
                 // CloudflareHelper extracts the ID from the full URL automatically
-                cloudHelper.deleteMedia(requireContext(), product.jsonUrl, null);
+                cloudHelper.deleteMedia(requireContext(), product.jsonUrl, new CloudflareHelper.CloudflareCallback() {
+                    @Override public void onStatusUpdate(String log) {}
+                    @Override public void onSuccess(String u, String i) {
+                        ActionReportLogger.logAction("PUBLISHER_DELETE", "Cloudflare physical wipe success: " + product.jsonUrl);
+                    }
+                    @Override public void onFailure(Exception e) {
+                        ActionReportLogger.logError("PUBLISHER_GHOST_FAIL", "Cloud deletion failed (Resource might be missing): " + product.jsonUrl);
+                    }
+                });
 
                 // PART 2: Broadcast Nostr Kind 5 (Event Deletion)
                 JSONObject deletionEvent = new JSONObject();
@@ -230,6 +269,7 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
             Toast.makeText(getContext(), "Products deleted successfully.", Toast.LENGTH_SHORT).show();
 
         } catch (Exception e) {
+            ActionReportLogger.logError("PUBLISHER_DELETE_CRASH", e.getMessage());
             Log.e(TAG, "Deletion failed: " + e.getMessage());
         }
     }
@@ -239,6 +279,7 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
      */
     @Override
     public void onProductClicked(AdsPublisherFragment.ProductListing product) {
+        ActionReportLogger.logAction("PUBLISHER_ACTION", "User tapped product item: " + product.title);
         Intent intent = new Intent(requireContext(), ProductDetailActivity.class);
         intent.putExtra("PRODUCT_JSON_URL", product.jsonUrl);
         startActivity(intent);
@@ -249,6 +290,7 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
      */
     @Override
     public void onSelectionChanged(int selectedCount) {
+        ActionReportLogger.logAction("PUBLISHER_SELECTION", "Selection changed. Current count: " + selectedCount);
         if (selectedCount > 0) {
             binding.fabDeleteSelected.show();
         } else {
@@ -267,6 +309,7 @@ public class AdsPublisherFragment extends Fragment implements PublisherAdapter.O
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        ActionReportLogger.logAction("PUBLISHER_DASHBOARD", "Fragment onDestroyView.");
         binding = null;
     }
 
