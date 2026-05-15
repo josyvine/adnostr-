@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -30,6 +31,11 @@ import java.util.UUID;
  * PERFORMANCE FIX (ANTI-HANG):
  * - UI Throttling: console updates are now limited to a 500ms pulse.
  * - Log Capping: forensicLogs StringBuilder strictly capped to 10,000 characters.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - reportGlitchedLogic: New bridge to catch staging-render failures.
+ * - Sequence Tracking: Logs every state transition in the publish pipeline.
+ * - Content Validation: Reports logic violations if draft data is incomplete.
  */
 public class ProductPreviewActivity extends AppCompatActivity {
 
@@ -50,6 +56,10 @@ public class ProductPreviewActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // TOTAL SURVEILLANCE: Mark entry into Preview Staging
+        ActionReportLogger.logAction("PREVIEW_OPEN", "ProductPreviewActivity initiated.");
+
         binding = ActivityProductPreviewBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
@@ -61,6 +71,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
         productJsonString = getIntent().getStringExtra("PRODUCT_JSON");
 
         if (productJsonString == null || productJsonString.isEmpty()) {
+            ActionReportLogger.logLogicViolation("PREVIEW_EMPTY_DATA", "Preview launched without JSON payload.");
             Toast.makeText(this, "No data to preview.", Toast.LENGTH_SHORT).show();
             finish();
             return;
@@ -69,11 +80,20 @@ public class ProductPreviewActivity extends AppCompatActivity {
         setupWebView();
 
         // 2. Navigation Listeners
-        binding.btnEditMore.setOnClickListener(v -> finish());
+        binding.btnEditMore.setOnClickListener(v -> {
+            ActionReportLogger.logAction("PREVIEW_BACK", "User returning to dashboard for edits.");
+            finish();
+        });
 
-        binding.btnFinalPublish.setOnClickListener(v -> performForensicPublish());
+        binding.btnFinalPublish.setOnClickListener(v -> {
+            ActionReportLogger.logAction("PREVIEW_PUBLISH_CLICK", "User confirmed publish from preview.");
+            performForensicPublish();
+        });
 
-        binding.btnCloseForensic.setOnClickListener(v -> binding.flForensicOverlay.setVisibility(View.GONE));
+        binding.btnCloseForensic.setOnClickListener(v -> {
+            ActionReportLogger.logAction("PREVIEW_CLOSE_OVERLAY", "User dismissed forensic overlay.");
+            binding.flForensicOverlay.setVisibility(View.GONE);
+        });
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -83,9 +103,13 @@ public class ProductPreviewActivity extends AppCompatActivity {
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true);
 
+        // Bridge for surveillance during preview
+        binding.wvProductPreview.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
+
         binding.wvProductPreview.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                ActionReportLogger.logAction("PREVIEW_CTA_INTERCEPT", "User clicked link in preview: " + url);
                 if (url.startsWith("tel:") || url.startsWith("whatsapp:") || url.contains("wa.me")) {
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
@@ -95,6 +119,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
                         startActivity(intent);
                         return true;
                     } catch (Exception e) {
+                        ActionReportLogger.logUxBlockage("PREVIEW_CTA_FAIL", e.getMessage());
                         Toast.makeText(ProductPreviewActivity.this, "Application not found to handle this action.", Toast.LENGTH_SHORT).show();
                         return true;
                     }
@@ -106,6 +131,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 isPageLoaded = true;
+                ActionReportLogger.logPerformance("PREVIEW_DOM_READY", "Preview template loaded.");
                 injectDataToViewer();
             }
         });
@@ -117,6 +143,8 @@ public class ProductPreviewActivity extends AppCompatActivity {
         if (!isPageLoaded) return;
         // Escape backslashes for JS injection
         String escapedJson = productJsonString.replace("\\", "\\\\").replace("'", "\\'");
+        
+        ActionReportLogger.logAction("PREVIEW_INJECTION", "Passing draft JSON to viewer engine.");
         binding.wvProductPreview.evaluateJavascript("renderProduct('" + escapedJson + "')", null);
     }
 
@@ -129,6 +157,8 @@ public class ProductPreviewActivity extends AppCompatActivity {
         appendToForensicLogs("=== INITIATING FINAL BROADCAST SEQUENCE ===\n");
         appendToForensicLogs("TIMESTAMP: " + System.currentTimeMillis() + "\n\n");
 
+        ActionReportLogger.logAction("PUBLISH_SEQUENCE", "Step 1: R2 JSON Upload started.");
+
         // ENHANCEMENT: Logic to show or skip the technical console UI
         RelayReportDialog console = null;
         if (db.isConsoleLogEnabled()) {
@@ -140,7 +170,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
             
             // Link minimize listener to allow dismissal
             console.setConsoleMinimizeListener(() -> {
-                // Dismissal handled internally by RelayReportDialog
+                ActionReportLogger.logAction("PUBLISH_CONSOLE", "User minimized the publish console.");
             });
             
             console.showSafe(getSupportFragmentManager(), "PUBLISH_LOG");
@@ -175,6 +205,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
 
             @Override
             public void onSuccess(String uploadedUrl, String fileId) {
+                ActionReportLogger.logAction("PUBLISH_SEQUENCE", "Step 1 Success. R2 Link: " + uploadedUrl);
                 appendToForensicLogs("\n[SUCCESS] CLOUDFLARE LINK: " + uploadedUrl + "\n");
                 appendToForensicLogs("FILE_ID: " + fileId + "\n\n");
                 
@@ -184,6 +215,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(Exception e) {
+                ActionReportLogger.logError("PUBLISH_UPLOAD_FAIL", e.getMessage());
                 appendToForensicLogs("\n!!! CRITICAL FAILURE (CLOUDFLARE) !!!\n");
                 appendToForensicLogs("ERROR_MSG: " + e.getMessage() + "\n");
                 runOnUiThread(() -> {
@@ -196,6 +228,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
     }
 
     private void broadcastMarketplacePointer(String cloudflareUrl, RelayReportDialog console) {
+        ActionReportLogger.logAction("PUBLISH_SEQUENCE", "Step 2: Nostr Kind 30005 Signing.");
         try {
             JSONObject originalData = new JSONObject(productJsonString);
             
@@ -227,6 +260,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
             JSONObject signedEvent = NostrEventSigner.signEvent(db.getPrivateKey(), event);
 
             if (signedEvent != null) {
+                ActionReportLogger.logAction("PUBLISH_SEQUENCE", "Step 2 Success. EventID: " + signedEvent.getString("id"));
                 appendToForensicLogs("EVENT_ID: " + signedEvent.getString("id") + "\n");
                 appendToForensicLogs("SIGNATURE: " + signedEvent.getString("sig") + "\n\n");
                 
@@ -242,6 +276,7 @@ public class ProductPreviewActivity extends AppCompatActivity {
 
                 wsManager.broadcastEvent(signedEvent.toString());
                 
+                ActionReportLogger.logAction("PUBLISH_COMPLETE", "Listing published to decentralized relays.");
                 appendToForensicLogs("\n[FINAL SUCCESS] Marketplace Pointer Live.");
                 runOnUiThread(() -> {
                     if (console != null) {
@@ -256,12 +291,29 @@ public class ProductPreviewActivity extends AppCompatActivity {
             }
 
         } catch (Exception e) {
+            ActionReportLogger.logError("PUBLISH_BROADCAST_FAIL", e.getMessage());
             appendToForensicLogs("\n!!! BROADCAST FAILED !!!\n" + e.getMessage());
             runOnUiThread(() -> {
                 if (console != null) {
                     console.updateTechnicalLogs("PROTOCOL ERROR", forensicLogs.toString());
                 }
             });
+        }
+    }
+
+    /**
+     * WebAppInterface for Preview Forensic Reporting.
+     */
+    public class WebAppInterface {
+        @JavascriptInterface
+        public void logTechnicalEvent(String msg) {
+            ActionReportLogger.logAction("PREVIEW_JS_EVENT", msg);
+        }
+
+        @JavascriptInterface
+        public void reportGlitchedLogic(String type, String details) {
+            ActionReportLogger.logHtmlGlitch(type, details);
+            Log.e(TAG, "FORENSIC_PREVIEW_ALERT: [" + type + "] " + details);
         }
     }
 
