@@ -48,6 +48,11 @@ import okhttp3.Response;
  * 
  * BATCH ARCHITECT FIX (SOCKET ISOLATION):
  * - Implemented 'Connection: close' header for batch streams to prevent 500 Parser Desync on subsequent chunks.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - Fragmentation Reporting: Logs Stream Fragmentation if batch uploads are interrupted.
+ * - Integrity Watchdog: Checks downloaded JSON for missing blocks (dropdown glitch prevention).
+ * - Latency Metrics: Records millisecond performance for all R2 interactions.
  */
 public class CloudflareHelper {
 
@@ -87,12 +92,14 @@ public class CloudflareHelper {
      * Uses the Secret-Token header for private authentication.
      */
     public void uploadMedia(Context context, byte[] encryptedData, String fileName, CloudflareCallback callback) {
+        final long startTime = System.currentTimeMillis();
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
         String workerUrl = db.getCloudflareWorkerUrl();
         String secretToken = db.getCloudflareSecretToken();
 
         // 1. Validate Credentials
         if (workerUrl == null || workerUrl.isEmpty()) {
+            ActionReportLogger.logLogicViolation("R2_CONFIG_ERROR", "Worker URL missing during media upload.");
             postFailure(callback, new Exception("CLOUDFLARE ERROR: Worker URL not configured in Settings."));
             return;
         }
@@ -122,6 +129,7 @@ public class CloudflareHelper {
             client.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
+                    ActionReportLogger.logError("R2_UPLOAD_FAIL", e.getMessage());
                     postLog(callback, "!!! NETWORK FAILURE: Could not reach Worker. Check URL or Internet Connection.\n");
                     postFailure(callback, e);
                 }
@@ -140,15 +148,18 @@ public class CloudflareHelper {
                             String publicUrl = result.getString("url");
                             String fileId = result.optString("id", publicUrl); // Use URL as ID if ID is missing
 
+                            ActionReportLogger.logPerformance("R2_MEDIA_UPLOAD", "Uploaded " + fileName + " in " + (System.currentTimeMillis() - startTime) + "ms");
                             postLog(callback, "[SUCCESS] Private Storage Locked.\n");
                             postLog(callback, "PUBLIC LINK: " + publicUrl + "\n");
                             postSuccess(callback, publicUrl, fileId);
 
                         } catch (Exception e) {
+                            ActionReportLogger.logHtmlGlitch("R2_JSON_PARSE", "Worker returned malformed JSON: " + rawBody);
                             postLog(callback, "!!! DATA ERROR: Worker returned invalid JSON: " + rawBody + "\n");
                             postFailure(callback, new Exception("JSON Parse Error: " + e.getMessage()));
                         }
                     } else {
+                        ActionReportLogger.logUxBlockage("R2_REJECTION", "HTTP " + httpCode + " - Token validation failed.");
                         postLog(callback, "!!! WORKER REJECTION (HTTP " + httpCode + "): Check Secret-Token and Worker Logic.\n");
                         postLog(callback, "RESPONSE: " + rawBody + "\n");
                         postFailure(callback, new Exception("Cloudflare Rejection: " + httpCode));
@@ -166,6 +177,7 @@ public class CloudflareHelper {
      * FEATURE 5: Uploads a raw JSON string as a file to the Cloudflare Worker.
      */
     public void uploadJsonFile(Context context, String jsonContent, String fileName, CloudflareCallback callback) {
+        final long startTime = System.currentTimeMillis();
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
         String workerUrl = db.getCloudflareWorkerUrl();
         String secretToken = db.getCloudflareSecretToken();
@@ -191,6 +203,7 @@ public class CloudflareHelper {
             client.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
+                    ActionReportLogger.logError("R2_JSON_UPLOAD_FAIL", e.getMessage());
                     postFailure(callback, e);
                 }
 
@@ -200,6 +213,7 @@ public class CloudflareHelper {
                     if (response.isSuccessful()) {
                         try {
                             JSONObject result = new JSONObject(rawBody);
+                            ActionReportLogger.logPerformance("R2_JSON_UPLOAD", "Metadata archived in " + (System.currentTimeMillis() - startTime) + "ms");
                             postSuccess(callback, result.getString("url"), result.optString("id", ""));
                         } catch (Exception e) {
                             postFailure(callback, e);
@@ -219,11 +233,13 @@ public class CloudflareHelper {
      * FEATURE 5: Fetches a JSON file from a public Cloudflare URL.
      */
     public void downloadJsonFile(String url, JsonDownloadCallback callback) {
+        final long startTime = System.currentTimeMillis();
         Request request = new Request.Builder().url(url).get().build();
 
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
+                ActionReportLogger.logError("R2_DOWNLOAD_FAIL", url + " -> " + e.getMessage());
                 if (callback != null) mainHandler.post(() -> callback.onDownloadFailure(e));
             }
 
@@ -231,8 +247,19 @@ public class CloudflareHelper {
             public void onResponse(Call call, Response response) throws IOException {
                 if (response.isSuccessful() && response.body() != null) {
                     String content = response.body().string();
+                    
+                    // FORENSIC INTEGRITY CHECK: Detect partial data (dropdown glitch cause)
+                    try {
+                        if (content.contains("specifications") || content.contains("hierarchy")) {
+                             ActionReportLogger.logPerformance("R2_JSON_DOWNLOAD", "Valid Product JSON fetched in " + (System.currentTimeMillis() - startTime) + "ms");
+                        } else if (content.startsWith("{") && !content.contains("specifications") && content.length() > 50) {
+                             ActionReportLogger.logLogicViolation("INCOMPLETE_JSON", "Downloaded file missing specifications block: " + url);
+                        }
+                    } catch (Exception ignored) {}
+
                     if (callback != null) mainHandler.post(() -> callback.onDownloadSuccess(content));
                 } else {
+                    ActionReportLogger.logUxBlockage("R2_DOWNLOAD_REJECTED", "HTTP " + response.code() + " for " + url);
                     if (callback != null) mainHandler.post(() -> 
                         callback.onDownloadFailure(new Exception("Download Error: " + response.code()))
                     );
@@ -276,6 +303,7 @@ public class CloudflareHelper {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
+                ActionReportLogger.logError("R2_WIPE_NETWORK_FAIL", fileIdOrUrl + " -> " + e.getMessage());
                 postLog(callback, "!!! WIPE FAILED: Network error during physical deletion.\n");
                 if (callback != null) callback.onFailure(e);
             }
@@ -286,9 +314,11 @@ public class CloudflareHelper {
                 String rawBody = response.body() != null ? response.body().string() : "No body";
                 
                 if (response.isSuccessful()) {
+                    ActionReportLogger.logAction("R2_WIPE_SUCCESS", "Deleted: " + cleanFileId);
                     postLog(callback, "Cloudflare Wipe Success (HTTP " + code + ")\n");
                     postLog(callback, "STORAGE FREED: Resource removed from R2 Bucket.\n");
                 } else {
+                    ActionReportLogger.logUxBlockage("R2_WIPE_DENIED", "HTTP " + code + " - " + rawBody);
                     postLog(callback, "!!! CLOUDFLARE WIPE REJECTED (HTTP " + code + ")\n");
                     postLog(callback, "SERVER REASON: " + rawBody + "\n");
                 }
@@ -304,6 +334,7 @@ public class CloudflareHelper {
      * SECURE FETCH: Retrieves a specific JSON layer using the X-AdNostr-Token handshake.
      */
     public void fetchSchemaLayer(Context context, String path, CloudflareCallback callback) {
+        final long startTime = System.currentTimeMillis();
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
         String baseUrl = db.getDbQueryUrl();
         String apiToken = db.getDbApiToken();
@@ -323,14 +354,23 @@ public class CloudflareHelper {
 
         client.newCall(request).enqueue(new Callback() {
             @Override
-            public void onFailure(Call call, IOException e) { postFailure(callback, e); }
+            public void onFailure(Call call, IOException e) { 
+                ActionReportLogger.logError("SCHEMA_LAYER_FAIL", path + " -> " + e.getMessage());
+                postFailure(callback, e); 
+            }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 String body = response.body() != null ? response.body().string() : "[]";
                 if (response.isSuccessful()) {
+                    // FORENSIC: Log empty result for 200 OK (Dropdown Vanish Warning)
+                    if (body.equals("[]") || body.equals("{}") || body.length() < 5) {
+                        ActionReportLogger.logHtmlGlitch("EMPTY_SCHEMA_RESPONSE", "Path: " + path + " returned empty data.");
+                    }
+                    ActionReportLogger.logPerformance("SCHEMA_LAYER_FETCH", "Path " + path + " fetched in " + (System.currentTimeMillis() - startTime) + "ms");
                     postSuccess(callback, body, path);
                 } else {
+                    ActionReportLogger.logLogicViolation("SCHEMA_LAYER_REJECTED", "Path: " + path + " HTTP " + response.code());
                     postFailure(callback, new Exception("Fetch Rejected: " + response.code()));
                 }
             }
@@ -346,6 +386,7 @@ public class CloudflareHelper {
      * BATCH ARCHITECT FIX: Added 'Connection: close' to ensure chunk isolation.
      */
     public void uploadBatchToR2(Context context, List<Uri> uris, String path, String signature, CloudflareCallback callback) {
+        final long startTime = System.currentTimeMillis();
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
         String baseUrl = db.getDbQueryUrl();
         String apiToken = db.getDbApiToken();
@@ -380,7 +421,10 @@ public class CloudflareHelper {
                 @Override
                 public void onFailure(Call call, IOException e) { 
                     if (e instanceof SocketTimeoutException) {
+                        ActionReportLogger.logHtmlGlitch("STREAM_FRAGMENTATION", "R2 batch timeout at path: " + path);
                         postLog(callback, "!!! NETWORK TIMEOUT: Worker took too long to respond. Increase CHUNK_SIZE or check Worker tier.\n");
+                    } else {
+                        ActionReportLogger.logError("BATCH_UPLOAD_FAIL", e.getMessage());
                     }
                     postFailure(callback, e); 
                 }
@@ -389,16 +433,18 @@ public class CloudflareHelper {
                 public void onResponse(Call call, Response response) throws IOException {
                     String res = response.body() != null ? response.body().string() : "";
                     if (response.isSuccessful()) {
+                        ActionReportLogger.logPerformance("BATCH_ARCHIVE", "Archived " + uris.size() + " files to " + path + " in " + (System.currentTimeMillis() - startTime) + "ms");
                         postLog(callback, "WORKER: Batch processing successful.\n");
                         postSuccess(callback, res, "BATCH_OK");
                     } else {
-                        // LOG RAW ERROR: Captures plain-text 500/504 errors without crashing the parser
+                        ActionReportLogger.logLogicViolation("BATCH_REJECTION", "HTTP " + response.code() + " -> " + res);
                         postFailure(callback, new Exception("Batch Failed: " + response.code() + " " + res));
                     }
                 }
             });
 
         } catch (Exception e) {
+            ActionReportLogger.logError("BATCH_PREP_CRASH", e.getMessage());
             postFailure(callback, e);
         }
     }
@@ -428,14 +474,19 @@ public class CloudflareHelper {
 
             client.newCall(request).enqueue(new Callback() {
                 @Override
-                public void onFailure(Call call, IOException e) { postFailure(callback, e); }
+                public void onFailure(Call call, IOException e) { 
+                    ActionReportLogger.logError("SEED_ANCHOR_FAIL", name + " -> " + e.getMessage());
+                    postFailure(callback, e); 
+                }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     if (response.isSuccessful()) {
+                        ActionReportLogger.logAction("SEED_SUCCESS", "Anchor created for: " + name);
                         postLog(callback, "SEED SUCCESS: Index anchor created on R2.\n");
                         postSuccess(callback, name, tier);
                     } else {
+                        ActionReportLogger.logLogicViolation("SEED_REJECTED", "Name: " + name + " HTTP " + response.code());
                         postFailure(callback, new Exception("Seed Rejected: " + response.code()));
                     }
                 }
