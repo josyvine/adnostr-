@@ -76,6 +76,10 @@ import java.util.UUID;
  * 
  * THEME ENGINE UPDATE:
  * - Added getThemeMode bridge to synchronize WebView UI with native preference.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - reportGlitchedLogic: New bridge method to capture HTML wipes and desyncs.
+ * - Latency Tracking: Measures execution time for every bridge interaction.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -288,6 +292,15 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
     public class WebAppInterface {
 
+        /**
+         * NEW FORENSIC BRIDGE: Captures UI anomalies from the HTML Integrity Watchdog.
+         */
+        @JavascriptInterface
+        public void reportGlitchedLogic(String type, String details) {
+            ActionReportLogger.logHtmlGlitch(type, details);
+            Log.e(TAG, "FORENSIC_HTML_ALERT: [" + type + "] " + details);
+        }
+
         @JavascriptInterface
         public void logTechnicalEvent(String msg) {
             if (!db.isConsoleLogEnabled()) return;
@@ -300,6 +313,9 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 else if (msg.contains("NOSTR:")) filteredMsg = "Cryptographic proof generated for listing.";
                 else if (msg.contains("WEBVIEW:")) filteredMsg = "Marketplace engine initialized.";
             }
+
+            // TOTAL SURVEILLANCE: Log bridge communication to the report.txt
+            ActionReportLogger.logAction("WEBVIEW_BRIDGE", filteredMsg);
 
             technicalConsole.append(filteredMsg).append("\n");
             
@@ -332,6 +348,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         public void setDataSource(String source) {
             db.setDataSourcePreference(source);
             logTechnicalEvent("UI: Data Source set to " + source);
+            ActionReportLogger.logAction("LOGIC_TRANSITION", "User switched data source to: " + source);
         }
 
         /**
@@ -342,17 +359,22 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
          */
         @JavascriptInterface
         public void performCloudflareQuery(String path) {
+            final long startTime = System.currentTimeMillis();
             runOnUiThread(() -> {
                 logTechnicalEvent("CF: Fetching Search Index (Layer 4) for " + path);
                 cloudHelper.fetchSchemaLayer(CreateProductActivity.this, path, new CloudflareHelper.CloudflareCallback() {
                     @Override public void onStatusUpdate(String log) { logTechnicalEvent("CF_TRACE: " + log); }
                     @Override public void onSuccess(String response, String extra) {
+                        ActionReportLogger.logBridgeLatency("performCloudflareQuery", System.currentTimeMillis() - startTime);
                         runOnUiThread(() -> {
                             String base64 = Base64.encodeToString(response.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
                             binding.wvProductCreator.evaluateJavascript("updateDropdownsFiltered(decodeURIComponent(escape(window.atob('" + base64 + "'))))", null);
                         });
                     }
-                    @Override public void onFailure(Exception e) { logTechnicalEvent("CF_ERROR: " + e.getMessage()); }
+                    @Override public void onFailure(Exception e) { 
+                        logTechnicalEvent("CF_ERROR: " + e.getMessage()); 
+                        ActionReportLogger.logError("CLOUDFLARE_QUERY_FAIL", path + " -> " + e.getMessage());
+                    }
                 });
             });
         }
@@ -365,11 +387,13 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
          */
         @JavascriptInterface
         public void fetchLayer5Spec(String asinPath) {
+            final long startTime = System.currentTimeMillis();
             runOnUiThread(() -> {
                 logTechnicalEvent("CF: Fetching Spec Sheet (Layer 5) for " + asinPath);
                 cloudHelper.fetchSchemaLayer(CreateProductActivity.this, asinPath, new CloudflareHelper.CloudflareCallback() {
                     @Override public void onStatusUpdate(String log) { logTechnicalEvent("CF_TRACE: " + log); }
                     @Override public void onSuccess(String response, String extra) {
+                        ActionReportLogger.logBridgeLatency("fetchLayer5Spec", System.currentTimeMillis() - startTime);
                         runOnUiThread(() -> {
                             String base64 = Base64.encodeToString(response.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
                             binding.wvProductCreator.evaluateJavascript("applySpecSheet(decodeURIComponent(escape(window.atob('" + base64 + "'))))", null);
@@ -385,7 +409,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                             } catch (Exception ignored) {}
                         });
                     }
-                    @Override public void onFailure(Exception e) { logTechnicalEvent("CF_ERROR: " + e.getMessage()); }
+                    @Override public void onFailure(Exception e) { 
+                        logTechnicalEvent("CF_ERROR: " + e.getMessage()); 
+                        ActionReportLogger.logError("CLOUDFLARE_SPEC_FAIL", asinPath + " -> " + e.getMessage());
+                    }
                 });
             });
         }
@@ -399,6 +426,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
          */
         @JavascriptInterface
         public void retrieveCategorySchema() {
+            final long startTime = System.currentTimeMillis();
             runOnUiThread(() -> {
                 final StringBuilder gatheringLogs = new StringBuilder();
                 gatheringLogs.append("=== INITIATING CATEGORY DISCOVERY SEQUENCE ===\n");
@@ -412,6 +440,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 reportDialog.showSafe(getSupportFragmentManager(), "GATHER_LOG");
 
                 MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, null, schemaJson -> {
+                    ActionReportLogger.logBridgeLatency("retrieveCategorySchema", System.currentTimeMillis() - startTime);
                     fetchedGlobalSchemaJson = schemaJson;
                     injectSchemaIfReady();
                     gatheringLogs.append("\n[SUCCESS] Discovery complete. Sub-categories detected.");
@@ -432,6 +461,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
          */
         @JavascriptInterface
         public void ejectTechSpecValues(String selectedSub) {
+            final long startTime = System.currentTimeMillis();
             runOnUiThread(() -> {
                 final StringBuilder ejectionLogs = new StringBuilder();
                 ejectionLogs.append("=== INITIATING VALUE EJECTION SEQUENCE ===\n");
@@ -445,6 +475,7 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 reportDialog.showSafe(getSupportFragmentManager(), "EJECT_LOG");
 
                 MarketplaceSchemaManager.fetchGlobalSchema(CreateProductActivity.this, selectedSub, schemaJson -> {
+                    ActionReportLogger.logBridgeLatency("ejectTechSpecValues", System.currentTimeMillis() - startTime);
                     fetchedGlobalSchemaJson = schemaJson;
                     injectSchemaIfReady();
                     ejectionLogs.append("\n[SUCCESS] Ejection complete. Spec values injected.");
@@ -464,29 +495,34 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
 
         @JavascriptInterface
         public void publishNewCategory(String mainCat, String subCat) {
+            ActionReportLogger.logAction("SCHEMA_ACTION", "Publishing Category: " + mainCat + " > " + subCat);
             MarketplaceSchemaManager.broadcastNewCategory(CreateProductActivity.this, mainCat, subCat);
         }
 
         @JavascriptInterface
         public void publishNewField(String category, String fieldName) {
+            ActionReportLogger.logAction("SCHEMA_ACTION", "Publishing Field: " + fieldName + " for " + category);
             MarketplaceSchemaManager.broadcastNewField(CreateProductActivity.this, category, fieldName);
         }
 
         @JavascriptInterface
         public void deleteField(String category, String fieldName) {
             logTechnicalEvent("ACTION: Permanent Deletion request for field '" + fieldName + "' in " + category);
+            ActionReportLogger.logAction("SCHEMA_ACTION", "Deleting Field: " + fieldName + " from " + category);
             MarketplaceSchemaManager.broadcastFieldDeletion(CreateProductActivity.this, category, fieldName);
         }
 
         @JavascriptInterface
         public void deleteCategory(String categoryName) {
             logTechnicalEvent("ACTION: Permanent Category Deletion request for '" + categoryName + "'");
+            ActionReportLogger.logAction("SCHEMA_ACTION", "Deleting full Category Tree: " + categoryName);
             db.addHiddenHardcodedName(categoryName);
             MarketplaceSchemaManager.broadcastCategoryDeletion(CreateProductActivity.this, categoryName);
         }
 
         @JavascriptInterface
         public void publishBulkSpecValues(String category, String fieldId, String commaSeparatedValues, String contextField, String contextValue) {
+            ActionReportLogger.logAction("SCHEMA_ACTION", "Bulk seeding " + fieldId + " for " + category);
             MarketplaceSchemaManager.broadcastBulkValues(CreateProductActivity.this, category, fieldId, commaSeparatedValues, contextField, contextValue);
         }
 
@@ -495,11 +531,13 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             runOnUiThread(() -> {
                 if ("PREVIEW".equals(mode)) {
                     logTechnicalEvent("ACTION: Launching staging viewer...");
+                    ActionReportLogger.logAction("UI_NAV", "Switching to ProductPreviewActivity.");
                     Intent intent = new Intent(CreateProductActivity.this, ProductPreviewActivity.class);
                     intent.putExtra("PRODUCT_JSON", jsonString);
                     startActivity(intent);
                 } else {
                     logTechnicalEvent("ACTION: Initiating legacy publish flow...");
+                    ActionReportLogger.logAction("PUBLISH_FLOW", "Initiating final R2/Nostr publish.");
                     handleIncomingProduct(jsonString);
                 }
             });
@@ -543,12 +581,14 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                     public void onFailure(Exception e) {
                         runOnUiThread(() -> {
                             logTechnicalEvent("CF_FAIL: " + e.getMessage());
+                            ActionReportLogger.logError("PUBLISH_UPLOAD_FAIL", e.getMessage());
                             report.updateTechnicalLogs("CRITICAL ERROR", technicalConsole.toString());
                         });
                     }
                 });
             } catch (Exception e) {
                 logTechnicalEvent("PARSE_ERROR: " + e.getMessage());
+                ActionReportLogger.logError("JSON_ENCODE_FAIL", e.getMessage());
             }
         } else {
             executeSilentPublish(rawJson);
@@ -604,11 +644,13 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
             if (signedEvent != null) {
                 logTechnicalEvent("NOSTR: Signed Kind 30005. ID: " + signedEvent.getString("id"));
                 wsManager.broadcastEvent(signedEvent.toString());
+                ActionReportLogger.logAction("LISTING_LIVE", "EventID: " + signedEvent.getString("id"));
                 Toast.makeText(this, "Published Successfully!", Toast.LENGTH_LONG).show();
                 finish();
             }
         } catch (Exception e) {
             logTechnicalEvent("SIGN_FAIL: " + e.getMessage());
+            ActionReportLogger.logError("NOSTR_SIGN_FAIL", e.getMessage());
         }
     }
 
@@ -652,9 +694,11 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 }
 
                 Log.i(TAG, "HEALER: Collective memory successfully pushed to relays.");
+                ActionReportLogger.logAction("AUTO_HEAL", "Schema successfully re-broadcasted.");
 
             } catch (Exception e) {
                 Log.e(TAG, "HEALER_CRASH: " + e.getMessage());
+                ActionReportLogger.logError("HEALER_CRASH", e.getMessage());
             }
         }).start();
     }
