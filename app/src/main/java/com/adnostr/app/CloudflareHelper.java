@@ -247,7 +247,7 @@ public class CloudflareHelper {
             public void onResponse(Call call, Response response) throws IOException {
                 if (response.isSuccessful() && response.body() != null) {
                     String content = response.body().string();
-                    
+
                     // FORENSIC INTEGRITY CHECK: Detect partial data (dropdown glitch cause)
                     try {
                         if (content.contains("specifications") || content.contains("hierarchy")) {
@@ -282,9 +282,12 @@ public class CloudflareHelper {
             return;
         }
 
-        String cleanFileId = fileIdOrUrl;
+        // FIXED: Local variable cleanFileId must be final to be accessed within inner Callback class.
+        final String cleanFileId;
         if (fileIdOrUrl.contains("/")) {
             cleanFileId = fileIdOrUrl.substring(fileIdOrUrl.lastIndexOf("/") + 1);
+        } else {
+            cleanFileId = fileIdOrUrl;
         }
 
         postLog(callback, "=== INITIATING CLOUDFLARE PHYSICAL WIPE ===\n");
@@ -312,8 +315,9 @@ public class CloudflareHelper {
             public void onResponse(Call call, Response response) throws IOException {
                 int code = response.code();
                 String rawBody = response.body() != null ? response.body().string() : "No body";
-                
+
                 if (response.isSuccessful()) {
+                    // Logic success reporting
                     ActionReportLogger.logAction("R2_WIPE_SUCCESS", "Deleted: " + cleanFileId);
                     postLog(callback, "Cloudflare Wipe Success (HTTP " + code + ")\n");
                     postLog(callback, "STORAGE FREED: Resource removed from R2 Bucket.\n");
@@ -454,7 +458,7 @@ public class CloudflareHelper {
      */
     public void broadcastHierarchyAnchor(Context context, String tier, String name, String path, String signature, CloudflareCallback callback) {
         AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
-        
+
         postLog(callback, "SEEDING: " + tier.toUpperCase() + " [" + name + "]\n");
 
         try {
