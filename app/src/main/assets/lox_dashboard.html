@@ -426,10 +426,10 @@
 </div>
 
 <div class="bottom-bar">
-    <button class="btn-preview" onclick="prepareData('PREVIEW')">
+    <button class="btn-preview" id="btn_main_preview" onclick="prepareData('PREVIEW')">
         <i class="fa-solid fa-eye"></i> Preview
     </button>
-    <button class="btn-submit" onclick="prepareData('PUBLISH')">
+    <button class="btn-submit" id="btn_main_publish" onclick="prepareData('PUBLISH')">
         <i class="fa-solid fa-cloud-arrow-up"></i> Publish to Cloud
     </button>
 </div>
@@ -459,8 +459,8 @@
             </div>
         </div>
         <div class="modal-footer">
-            <button class="btn-modal btn-cancel" onclick="closeCategoryModal()">Cancel</button>
-            <button class="btn-modal btn-save" onclick="saveNewCategory()">Save & Global Publish</button>
+            <button class="btn-modal btn-cancel" id="btn_cat_cancel" onclick="closeCategoryModal()">Cancel</button>
+            <button class="btn-modal btn-save" id="btn_cat_save" onclick="saveNewCategory()">Save & Global Publish</button>
         </div>
     </div>
 </div>
@@ -482,8 +482,8 @@
             </p>
         </div>
         <div class="modal-footer">
-            <button class="btn-modal btn-cancel" onclick="closeFieldModal()">Close</button>
-            <button class="btn-modal btn-save" onclick="saveNewField()">Save & Add</button>
+            <button class="btn-modal btn-cancel" id="btn_field_close" onclick="closeFieldModal()">Close</button>
+            <button class="btn-modal btn-save" id="btn_field_save" onclick="saveNewField()">Save & Add</button>
         </div>
     </div>
 </div>
@@ -510,8 +510,8 @@
             </p>
         </div>
         <div class="modal-footer">
-            <button class="btn-modal btn-cancel" onclick="closeBulkValuesModal()">Cancel</button>
-            <button class="btn-modal btn-save" onclick="saveBulkValues()">Push to Network</button>
+            <button class="btn-modal btn-cancel" id="btn_bulk_cancel" onclick="closeBulkValuesModal()">Cancel</button>
+            <button class="btn-modal btn-save" id="btn_bulk_push" onclick="saveBulkValues()">Push to Network</button>
         </div>
     </div>
 </div>
@@ -525,6 +525,37 @@
     let isCloudflareMode = true; 
     let isDynamicSpecLoaded = false; // GLITCH FIX: Prevents 2-second hardcoded wipe
     let layer4Index = []; 
+
+    /**
+     * TOTAL SURVEILLANCE: Forensic Integrity Watchdog
+     * Monitors the specs container for "Sudden Wipes" and reports to Native.
+     */
+    const glitchMonitor = new MutationObserver((mutations) => {
+        const container = document.getElementById('specsContainer');
+        if (container && container.innerHTML.trim() === "" && !isDynamicSpecLoaded && lastSelectedCat) {
+            logGlitch("UI_VANISH_GLITCH", `SpecsContainer unexpectedly emptied for category: ${lastSelectedCat}`);
+        }
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const target = document.getElementById('specsContainer');
+        if (target) glitchMonitor.observe(target, { childList: true });
+        
+        // Report every button click for interaction surveillance
+        document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
+            el.addEventListener('click', (e) => {
+                const id = e.target.id || "unnamed_btn";
+                logToAndroid(`ACTION: User clicked ${e.target.tagName} [${id}]`);
+            });
+        });
+    });
+
+    function logGlitch(type, details) {
+        if (window.AndroidBridge && window.AndroidBridge.reportGlitchedLogic) {
+            window.AndroidBridge.reportGlitchedLogic(type, details);
+        }
+        logToAndroid(`FORENSIC_ALERT: [${type}] ${details}`, true);
+    }
 
     /**
      * THEME ENGINE: Bridge to native Day/Night mode
@@ -562,6 +593,8 @@
         if (window.AndroidBridge) {
             window.AndroidBridge.setDataSource(isCloudflareMode ? "CLOUDFLARE" : "NOSTR");
         }
+
+        logToAndroid(`LOGIC: Data source toggled to ${modeText}`);
 
         // AUTO-RECOVERY: Release lock and refresh data when toggle state changes
         isDynamicSpecLoaded = false;
@@ -767,6 +800,7 @@
      * RETRIEVAL BRIDGE
      */
     function triggerManualRetrieval(type) {
+        logToAndroid(`ACTION: Manual Retrieval triggered for ${type}`);
         if (!isCloudflareMode) {
             if (window.AndroidBridge) {
                 if (type === 'Category') {
@@ -829,6 +863,8 @@
 
         modelList.innerHTML = '<option value="">Select Model</option>';
         data.forEach(m => modelList.add(new Option(m.model, m.asin)));
+        
+        logToAndroid(`LOGIC: Dropdowns updated with ${data.length} items.`);
     }
 
     function handleBrandSelection() {
@@ -838,6 +874,7 @@
 
         const models = layer4Index.filter(i => i.brand === selectedBrand || !selectedBrand);
         models.forEach(m => mSel.add(new Option(m.model, m.asin)));
+        logToAndroid(`ACTION: User selected brand ${selectedBrand}`);
     }
 
     function handleModelSelection() {
@@ -848,6 +885,7 @@
         const mainCatText = catSelect.selectedOptions[0].parentElement.label.replace('Crowdsourced: ', '');
         const path = `v1/${slugify(mainCatText)}/${slugify(catSelect.value)}/${slugify(document.getElementById('brand').value)}/${asin}.json`;
         
+        logToAndroid(`ACTION: User selected model ASIN ${asin}`);
         if (window.AndroidBridge) window.AndroidBridge.fetchLayer5Spec(path);
     }
 
@@ -860,6 +898,11 @@
         try {
             const fullData = JSON.parse(jsonString);
             const specs = fullData.specifications;
+
+            if (!specs) {
+                logGlitch("DATA_INTEGRITY", "Gold Standard JSON arrived without specifications block.");
+                return;
+            }
 
             document.getElementById('title').value = `${specs.brand} ${specs.model}`;
             
@@ -915,6 +958,7 @@
             logToAndroid("SYSTEM: Spec sheet generated from JSON blueprint.");
 
         } catch (e) {
+            logGlitch("HTML_RENDER_ERROR", e.message);
             logToAndroid("ERROR: Generative Rendering failed - " + e.message);
         }
     }
@@ -937,6 +981,8 @@
         const catSelect = document.getElementById('cat');
         lastSelectedCat = catSelect.value;
         
+        logToAndroid(`ACTION: Category changed to ${lastSelectedCat}`);
+
         // GLITCH FIX: Release lock when category is changed so renderer works for the new category
         isDynamicSpecLoaded = false;
         renderSpecs();
@@ -952,6 +998,7 @@
     }
 
     function openCategoryModal() {
+        logToAndroid("ACTION: Opening Custom Category Modal");
         document.getElementById('modalCategory').style.display = 'flex';
     }
 
@@ -979,6 +1026,7 @@
         newOption.value = subCat;
         newOption.text = subCat; 
         optGroup.appendChild(newOption);
+        logToAndroid(`LOGIC: Added ${subCat} to Select DOM`);
     }
 
     function saveNewCategory() {
@@ -989,6 +1037,8 @@
             alert("Please fill in both Main and Sub Category.");
             return;
         }
+
+        logToAndroid(`ACTION: Saving new category ${mainCat} > ${subCatRaw}`);
 
         const subCats = subCatRaw.split('\n').map(s => s.trim()).filter(s => s !== '');
         let lastAddedSubCat = "";
@@ -1015,6 +1065,7 @@
     }
 
     function openFieldModal() {
+        logToAndroid("ACTION: Opening Custom Field Modal");
         document.getElementById('modalField').style.display = 'flex';
     }
 
@@ -1030,6 +1081,8 @@
             alert("Please enter a field name.");
             return;
         }
+
+        logToAndroid(`ACTION: Saving new field(s) for ${lastSelectedCat}`);
 
         const currentCat = lastSelectedCat;
         if (!CATEGORY_SCHEMA[currentCat]) CATEGORY_SCHEMA[currentCat] = [];
@@ -1101,6 +1154,7 @@
     }
 
     function openBulkValuesModal() {
+        logToAndroid("ACTION: Opening Bulk Values Modal");
         const fields = CATEGORY_SCHEMA[lastSelectedCat] || [];
         if(fields.length === 0) {
             alert("Please add a technical field first before bulk adding values.");
@@ -1150,6 +1204,8 @@
             alert("Please select a field and enter values.");
             return;
         }
+
+        logToAndroid(`ACTION: Bulk Seeding values for field ${fieldId}`);
         
         const values = valuesRaw.split(',').map(v => v.trim()).filter(v => v !== '');
         let dlId = `dl_${lastSelectedCat.toLowerCase()}_${fieldId.toLowerCase()}`;
@@ -1184,6 +1240,8 @@
     function injectGlobalSchema(jsonString) {
         try {
             const schema = JSON.parse(jsonString);
+            logToAndroid(`LOGIC: Collective Schema received. Size: ${jsonString.length}`);
+
             const catSelect = document.getElementById('cat');
             const customGroup = document.getElementById('og_custom');
             const hiddenItems = schema.hidden_hardcoded || [];
@@ -1273,6 +1331,7 @@
             renderSpecs();
             logToAndroid("Collective Schema Memory Synchronized.");
         } catch (e) {
+            logGlitch("SCHEMA_SYNC_FAIL", e.message);
             logToAndroid("Memory Sync Failed: " + e.message, true);
         }
     }
@@ -1315,6 +1374,7 @@
             </button>
         </div>`;
         container.innerHTML = html;
+        logToAndroid(`LOGIC: Rendered ${fields.length} spec fields for ${lastSelectedCat}`);
     }
 
     function updateDatalistPointer(el, fieldId) {
@@ -1363,10 +1423,10 @@
         }
     }
 
-    window.onerror = function(m, u, l) { logToAndroid("JS Error: " + m + " at " + l, true); };
+    window.onerror = function(m, u, l) { logGlitch("JS_RUNTIME_ERROR", `${m} at ${u}:${l}`); };
 
     function triggerNativeUpload(input) {
-        logToAndroid("File picker triggered. Handing over to Android for R2 Encryption/Upload.");
+        logToAndroid("ACTION: File picker triggered. Handing over to Android for R2 Encryption/Upload.");
     }
 
     function addUploadedImageUrl(url) {
@@ -1417,6 +1477,8 @@
             is_featured: document.getElementById('opt_feature').checked,
             images: uploadedImageUrls 
         };
+
+        logToAndroid(`ACTION: Product data prepared for ${mode}. Title: ${productData.title}`);
 
         if (!productData.title || !productData.price) {
             alert("Please fill in the Title and Price.");
