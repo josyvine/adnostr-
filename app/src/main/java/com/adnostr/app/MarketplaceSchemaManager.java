@@ -74,6 +74,11 @@ import java.util.concurrent.TimeUnit;
  * TOTAL PERSISTENCE FIX:
  * - Ad Hard-Locking: Integrated db.saveToPermanentAdStore within the message loop.
  * - Archive-First Loading: Merged archive data is pushed to UI before the network latch closes.
+ * 
+ * TOTAL SURVEILLANCE UPDATE:
+ * - Network Amnesia Detection: Logs logic violation if relays are empty but archive is full.
+ * - Ejection Integrity: Reports desync if requested sub-category doesn't match ejected data.
+ * - Sync Benchmarking: Records duration of multi-relay schema aggregation.
  */
 public class MarketplaceSchemaManager {
 
@@ -105,11 +110,13 @@ public class MarketplaceSchemaManager {
      * ENHANCEMENT: Pivot to Cloudflare if Nostr Sync returns zero results in Gold Standard mode.
      */
     public static void fetchGlobalSchema(Context context, String targetSubCategory, SchemaFetchCallback callback, TechnicalLogListener logListener) {
+        final long totalSyncStartTime = System.currentTimeMillis();
         new Thread(() -> {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
 
             String logType = (targetSubCategory == null || targetSubCategory.isEmpty()) ? "DISCOVERY" : "EJECTION";
             if (logListener != null) logListener.onLogGenerated("=== INITIATING " + logType + " SEQUENCE ===");
+            ActionReportLogger.logAction("SCHEMA_FETCH", "Sequence started for mode: " + logType);
 
             // =========================================================================
             // STEP 1: PERSISTENCE FIRST (LOCAL MEMORY LOAD)
@@ -226,6 +233,7 @@ public class MarketplaceSchemaManager {
 
                 if (isNostrEmpty && dataPreference.equals(AdNostrDatabaseHelper.SOURCE_CLOUDFLARE)) {
                     if (logListener != null) logListener.onLogGenerated("NOSTR: Results are 0. Pivoting to Cloudflare Gold Standard Mode...");
+                    ActionReportLogger.logLogicViolation("NOSTR_AMNESIA", "Relay sync returned 0 items. Pivoting to Gold Standard R2.");
 
                     // We perform a sync fetch of the Layer 1 Categories to fill the gap
                     CloudflareHelper cfHelper = new CloudflareHelper();
@@ -250,6 +258,7 @@ public class MarketplaceSchemaManager {
                                 }
                             } catch (Exception e) {
                                 if (logListener != null) logListener.onLogGenerated("CF_ERROR: JSON parse failed during pivot.");
+                                ActionReportLogger.logError("CF_PIVOT_FAIL", e.getMessage());
                             }
                             cfLatch.countDown();
                         }
@@ -353,7 +362,9 @@ public class MarketplaceSchemaManager {
                     String cat = val.optString("category", "").toLowerCase();
 
                     // Targeted Ejection Check
-                    if (targetSubCategory != null && !targetSubCategory.isEmpty() && !targetSubCategory.equalsIgnoreCase(cat)) continue;
+                    if (targetSubCategory != null && !targetSubCategory.isEmpty()) {
+                        if (!targetSubCategory.equalsIgnoreCase(cat)) continue;
+                    }
 
                     String eid = val.optString("_event_id");
                     JSONObject specs = val.optJSONObject("specs");
@@ -375,7 +386,13 @@ public class MarketplaceSchemaManager {
                             String cat = content.optString("category", "").toLowerCase();
 
                             // Targeted Ejection Check
-                            if (targetSubCategory != null && !targetSubCategory.isEmpty() && !targetSubCategory.equalsIgnoreCase(cat)) continue;
+                            if (targetSubCategory != null && !targetSubCategory.isEmpty()) {
+                                if (!targetSubCategory.equalsIgnoreCase(cat)) {
+                                    continue;
+                                } else {
+                                    ActionReportLogger.logAction("EJECTION_INTEGRITY", "Requested Category [" + targetSubCategory + "] matches Ejected Data.");
+                                }
+                            }
 
                             JSONObject specs = content.optJSONObject("specs");
                             String specsKey = (specs != null && specs.length() > 0) ? specs.keys().next().toLowerCase() : "unknown";
@@ -407,18 +424,21 @@ public class MarketplaceSchemaManager {
 
                 if (isNetworkEmptyFinal && anchorValid) {
                     if (logListener != null) logListener.onLogGenerated("WARNING: Network amnesia detected. Ejecting local archive...");
+                    ActionReportLogger.logLogicViolation("NETWORK_VACUUM", "Relays returned 0 while local cache is populated. Restoring archive.");
                     executeSequentialHealing(context, logListener);
                 } else {
                     db.saveSchemaCache(globalSchema.toString());
                 }
 
                 if (logListener != null) logListener.onLogGenerated("SUCCESS: Database fully gathered and injected.");
+                ActionReportLogger.logPerformance("SCHEMA_SYNC_DURATION", "Total process took " + (System.currentTimeMillis() - totalSyncStartTime) + "ms");
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (callback != null) callback.onSchemaFetched(globalSchema.toString());
                 });
 
             } catch (Exception e) {
+                ActionReportLogger.logError("SCHEMA_FETCH_CRITICAL", e.getMessage());
                 if (logListener != null) logListener.onLogGenerated("CRITICAL ERROR: " + e.getMessage());
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (callback != null) callback.onSchemaFetched("{}");
@@ -434,6 +454,7 @@ public class MarketplaceSchemaManager {
     public static void executeSequentialHealing(Context context, TechnicalLogListener listener) {
         new Thread(() -> {
             AdNostrDatabaseHelper db = AdNostrDatabaseHelper.getInstance(context);
+            ActionReportLogger.logAction("AUTO_HEAL", "Initiating background network restoration.");
 
             SequentialBroadcastQueue queue = new SequentialBroadcastQueue(context);
             if (listener != null) queue.setTechnicalLogListener(listener);
@@ -442,6 +463,7 @@ public class MarketplaceSchemaManager {
 
             if (archiveJson == null || archiveJson.trim().isEmpty() || archiveJson.equals("[]")) {
                 if (listener != null) listener.onLogGenerated("SYSTEM: Archive is empty. No data to heal.");
+                ActionReportLogger.logLogicViolation("HEAL_ABORTED", "Forensic archive was empty.");
                 return;
             }
 
@@ -488,8 +510,10 @@ public class MarketplaceSchemaManager {
                 }
 
                 archiveJson = uniqueArchive.toString();
+                ActionReportLogger.logAction("HEAL_FILTER", "Filtered " + rawArchive.length() + " items down to " + uniqueArchive.length() + " unique frames.");
             } catch (Exception e) {
                 if (listener != null) listener.onLogGenerated("FILTER_ERROR: " + e.getMessage());
+                ActionReportLogger.logError("HEAL_FILTER_FAIL", e.getMessage());
             }
 
             if (queue.prepareArchive(archiveJson)) {
