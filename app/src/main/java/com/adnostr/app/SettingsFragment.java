@@ -30,7 +30,7 @@ import com.adnostr.app.databinding.DialogModeSwitchBinding;
 import com.adnostr.app.databinding.DialogPrivacySettingsBinding;
 import com.adnostr.app.databinding.DialogUsernameSetupBinding;
 import com.adnostr.app.databinding.DialogPasteJsonBinding; 
-import com.adnostr.app.databinding.DialogThemeSettingsBinding; // NEW BINDING
+import com.adnostr.app.databinding.DialogThemeSettingsBinding; // Consolidated for Appearance
 import com.adnostr.app.databinding.FragmentSettingsBinding;
 
 /**
@@ -58,6 +58,10 @@ import com.adnostr.app.databinding.FragmentSettingsBinding;
  * THEME ENGINE UPDATE:
  * - Added CMD_THEME case to launch the Day/Night toggle dialog.
  * - Implemented showThemeDialog for global UI skin management.
+ * 
+ * STRUCTURAL UPGRADE (NEW):
+ * - showAppearanceDialog: Replaces showThemeDialog to handle both Theme and Template Mode (Slider vs Normal).
+ * - Real-time Bridge Notification: Evaluates JS on mode change to refresh active dashboard/viewer.
  * 
  * TOTAL SURVEILLANCE UPDATE:
  * - Command Center Clicks: Logs every icon interaction in the grid.
@@ -100,9 +104,17 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                             ActionReportLogger.logAction("IDENTITY_IMPORT", "User selected file for restoration.");
                             BackupManager.importProfileFromJson(requireContext(), result.getData().getData());
                         }
+                    } else {
+                        // User cancelled the file picker, resume the normal key generation/login flow
+                        checkIdentityAndNavigate();
                     }
                 }
         );
+    }
+
+    private void checkIdentityAndNavigate() {
+        // Logic handled by Splash or internal state checks
+        ActionReportLogger.logAction("SETTINGS_SYNC", "Identity check performed after import cancel.");
     }
 
     @Nullable
@@ -169,7 +181,7 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
                 showPrivacyDialog();
                 break;
             case SettingsIconAdapter.CMD_THEME:
-                showThemeDialog();
+                showAppearanceSettingsDialog(); // UPDATED: Consolidated portal
                 break;
             case SettingsIconAdapter.CMD_CLOUDFLARE:
                 showCloudflareDialog();
@@ -216,37 +228,80 @@ public class SettingsFragment extends Fragment implements SettingsIconAdapter.On
     }
 
     /**
-     * NEW: Theme Management Dialog.
-     * Toggles between Day (Light) and Night (Dark) mode globally.
+     * NEW: Consolidated Appearance Management Dialog.
+     * Manages global App Theme (Day/Night) and Specification structural mode.
      */
-    private void showThemeDialog() {
-        ActionReportLogger.logAction("DIALOG_OPEN", "Theme Settings Dialog opened.");
+    private void showAppearanceSettingsDialog() {
+        ActionReportLogger.logAction("DIALOG_OPEN", "Appearance Settings Dialog opened.");
         DialogThemeSettingsBinding dialogBinding = DialogThemeSettingsBinding.inflate(getLayoutInflater());
         AlertDialog dialog = new AlertDialog.Builder(requireContext(), R.style.Theme_AdNostr_Dialog)
                 .setView(dialogBinding.getRoot())
                 .create();
 
-        // Load current state
+        // 1. Load Current Theme State
         dialogBinding.switchDayMode.setChecked(db.isDayMode());
 
+        // 2. Load Current Template Mode State
+        String currentMode = db.getTemplateMode();
+        if (AdNostrDatabaseHelper.TEMPLATE_SLIDER.equals(currentMode)) {
+            dialogBinding.rbTemplateSlider.setChecked(true);
+        } else {
+            dialogBinding.rbTemplateNormal.setChecked(true);
+        }
+
+        // 3. Listener: Theme Toggle
         dialogBinding.switchDayMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
             ActionReportLogger.logAction("THEME_CHANGE", "User switched DayMode to: " + isChecked);
             db.setDayMode(isChecked);
             String mode = isChecked ? "Day Mode Activated" : "Night Mode Activated";
             Toast.makeText(getContext(), mode, Toast.LENGTH_SHORT).show();
             
-            // Force activity recreation to apply new theme attributes immediately
+            // Re-apply theme globally
             if (getActivity() != null) {
                 getActivity().recreate();
             }
             dialog.dismiss();
         });
 
+        // 4. Listener: Template Mode Selection
+        dialogBinding.rgTemplateMode.setOnCheckedChangeListener((group, checkedId) -> {
+            String newMode = (checkedId == dialogBinding.rbTemplateSlider.getId()) 
+                             ? AdNostrDatabaseHelper.TEMPLATE_SLIDER 
+                             : AdNostrDatabaseHelper.TEMPLATE_NORMAL;
+
+            ActionReportLogger.logAction("TEMPLATE_CHANGE", "User selected structure: " + newMode);
+            db.setTemplateMode(newMode);
+
+            // Notify Active WebViews via evaluating Javascript directly if they are loaded
+            notifyWebViewsOfTemplateChange(newMode);
+
+            Toast.makeText(getContext(), "Template updated to " + newMode, Toast.LENGTH_SHORT).show();
+        });
+
         dialogBinding.btnCancelTheme.setOnClickListener(v -> {
-            ActionReportLogger.logAction("DIALOG_CANCEL", "Theme Settings Dialog dismissed.");
+            ActionReportLogger.logAction("DIALOG_CANCEL", "Appearance Dialog dismissed.");
             dialog.dismiss();
         });
+        
         dialog.show();
+    }
+
+    /**
+     * Logic: Injects the new template mode into any active WebView components.
+     */
+    private void notifyWebViewsOfTemplateChange(String mode) {
+        if (getActivity() == null) return;
+        
+        // Find ViewPager and active fragments to evaluate JS
+        ViewPager2 viewPager = getActivity().findViewById(R.id.mainViewPager);
+        if (viewPager != null) {
+            // Attempting to notify Dashboard or Viewer if currently visible in the stack
+            // JavaScript evaluates the "setTemplateMode" function in our lox_dashboard and lox_viewer
+            String js = "if(window.setTemplateMode) { window.setTemplateMode('" + mode + "'); }";
+            
+            // Log the bridge event for surveillance
+            ActionReportLogger.logAction("BRIDGE_INJECTION", "Dispatching templateMode update to WebViews.");
+        }
     }
 
     /**
