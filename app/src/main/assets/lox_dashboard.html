@@ -21,6 +21,10 @@
         --danger: #FF3B30;
         --success: #25D366;
         --cf-gold: #FFD700;
+        /* NEW: SLIDER TEMPLATE VARIABLES */
+        --primary-blue: #007bff;
+        --light-blue: #e0f2ff;
+        --accordion-header-bg: #2A2A2A;
     }
 
     /* THEME ENGINE: Day Mode Override */
@@ -30,6 +34,7 @@
         --text-main: #1A1D20;
         --text-muted: #6B7280;
         --border: #E5E7EB;
+        --accordion-header-bg: #F0F2F5;
     }
 
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
@@ -120,6 +125,49 @@
 
     .row { display: flex; gap: 15px; }
     .row .form-group { flex: 1; margin-bottom: 0; }
+
+    /* NEW: ACCORDION STYLES FOR SLIDER MODE */
+    .accordion-item {
+        margin-bottom: 10px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--card-bg);
+    }
+    .accordion-header {
+        background-color: var(--accordion-header-bg);
+        padding: 16px 20px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text-main);
+        transition: background 0.3s;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .accordion-header.active {
+        border-bottom: 1px solid var(--border);
+    }
+    .accordion-header .icon {
+        font-size: 12px;
+        transition: transform 0.3s ease;
+    }
+    .accordion-header.active .icon {
+        transform: rotate(90deg);
+    }
+    .accordion-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.4s ease-out;
+        padding: 0 20px;
+    }
+    .accordion-content.show {
+        padding: 20px;
+        max-height: 2000px;
+    }
 
     /* Delete Button for Custom Fields */
     .btn-del-field {
@@ -526,6 +574,10 @@
     let isDynamicSpecLoaded = false; // GLITCH FIX: Prevents 2-second hardcoded wipe
     let layer4Index = []; 
 
+    /* STRUCTURAL UPGRADE: TEMPLATE MODE STATE */
+    let templateMode = "NORMAL"; // 'NORMAL' or 'SEGREGATED'
+    let currentRawSpecsJSON = null; // Store fetched JSON to re-render on mode change
+
     /**
      * TOTAL SURVEILLANCE: Forensic Integrity Watchdog
      * Monitors the specs container for "Sudden Wipes" and reports to Native.
@@ -548,6 +600,11 @@
                 logToAndroid(`ACTION: User clicked ${e.target.tagName} [${id}]`);
             });
         });
+
+        // Initialize mode from Android on startup
+        if (window.AndroidBridge && window.AndroidBridge.getTemplateMode) {
+            setTemplateMode(window.AndroidBridge.getTemplateMode());
+        }
     });
 
     function logGlitch(type, details) {
@@ -565,6 +622,20 @@
             document.body.classList.add('day-mode');
         } else {
             document.body.classList.remove('day-mode');
+        }
+    };
+
+    /**
+     * STRUCTURAL UPGRADE: Sets the display mode (Accordion vs Grid)
+     */
+    window.setTemplateMode = function(mode) {
+        templateMode = mode;
+        logToAndroid("SYSTEM: Template Mode set to " + mode);
+        // If we have data already loaded, refresh the render
+        if (currentRawSpecsJSON) {
+            applySpecSheet(JSON.stringify(currentRawSpecsJSON));
+        } else {
+            renderSpecs();
         }
     };
 
@@ -890,13 +961,20 @@
     }
 
     /**
-     * GLITCH FIX: GENERATIVE UNIVERSAL MAPPING
-     * Wipes container and creates HTML for EVERY key in the JSON automatically.
-     * Sets isDynamicSpecLoaded lock to prevent hardcoded renderer overwrite.
+     * UTILITY: Beautifies JSON keys for UI Headers
+     */
+    function beautifyKey(key) {
+        return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    /**
+     * GLITCH FIX: GENERATIVE UNIVERSAL MAPPING (STRUCTURAL UPGRADE)
+     * Updated to handle Categorized Nested JSON and Normal Template flattening.
      */
     function applySpecSheet(jsonString) {
         try {
             const fullData = JSON.parse(jsonString);
+            currentRawSpecsJSON = fullData; // Save state for mode switching
             const specs = fullData.specifications;
 
             if (!specs) {
@@ -904,62 +982,160 @@
                 return;
             }
 
-            document.getElementById('title').value = `${specs.brand} ${specs.model}`;
+            // Pluck brand and model for the title automatically
+            let brandVal = "", modelVal = "";
+            if (specs.general_details) {
+                brandVal = specs.general_details.brand || "";
+                modelVal = specs.general_details.model || "";
+            } else {
+                brandVal = specs.brand || "";
+                modelVal = specs.model || "";
+            }
+            document.getElementById('title').value = `${brandVal} ${modelVal}`.trim();
             
             const container = document.getElementById('specsContainer');
-            container.innerHTML = ''; // WIPE EVERYTHING
+            container.innerHTML = ''; 
 
-            let allFields = [];
+            if (templateMode === "SEGREGATED") {
+                // =========================================================================
+                // SLIDER MODE RENDERING: SECTIONED BY CATEGORY KEYS
+                // =========================================================================
+                let html = '<div class="accordion-container">';
+                
+                // Introspection: Check if the JSON is already nested
+                const isNested = Object.values(specs).some(v => typeof v === 'object' && !Array.isArray(v) && v !== null);
 
-            // Recursive function to harvest every key from nested objects
-            const harvest = (obj) => {
-                for (const key in obj) {
-                    const val = obj[key];
-                    if (key === 'brand' || key === 'model' || key === 'asin') continue;
-
-                    if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
-                        harvest(val);
-                    } else {
-                        allFields.push({
-                            id: key,
-                            label: key.replace(/_/g, ' '),
-                            value: Array.isArray(val) ? val.join(", ") : val
-                        });
+                if (isNested) {
+                    for (const sectionKey in specs) {
+                        html += `
+                        <div class="accordion-item">
+                            <div class="accordion-header" onclick="toggleAccordion(this)">
+                                ${beautifyKey(sectionKey)} <i class="fas fa-chevron-right icon"></i>
+                            </div>
+                            <div class="accordion-content">
+                                ${renderNestedFields(specs[sectionKey])}
+                            </div>
+                        </div>`;
                     }
-                }
-            };
-
-            harvest(specs);
-
-            // Generate HTML Grid on-the-fly
-            let html = '';
-            for (let i = 0; i < allFields.length; i += 2) {
-                html += '<div class="row" style="margin-bottom: 15px;">';
-                html += generateDynamicInput(allFields[i]);
-                if (allFields[i+1]) {
-                    html += generateDynamicInput(allFields[i+1]);
                 } else {
-                    html += '<div class="form-group" style="flex: 1;"></div>';
+                    // Backward Compatibility: Wrap Flat JSON into a single slider
+                    html += `
+                    <div class="accordion-item">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            General Details <i class="fas fa-chevron-right icon"></i>
+                        </div>
+                        <div class="accordion-content">
+                            ${renderNestedFields(specs)}
+                        </div>
+                    </div>`;
                 }
+                
                 html += '</div>';
+                container.innerHTML = html;
+            } else {
+                // =========================================================================
+                // NORMAL MODE RENDERING: FLATTENED GRID (EXISTING APP LOOK)
+                // =========================================================================
+                let allFields = [];
+                const harvest = (obj) => {
+                    for (const key in obj) {
+                        const val = obj[key];
+                        if (key === 'brand' || key === 'model' || key === 'asin') continue;
+                        if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
+                            harvest(val); // Recursive flattening
+                        } else {
+                            allFields.push({ id: key, label: beautifyKey(key), value: Array.isArray(val) ? val.join(", ") : val });
+                        }
+                    }
+                };
+                harvest(specs);
+
+                let html = '';
+                for (let i = 0; i < allFields.length; i += 2) {
+                    html += '<div class="row" style="margin-bottom: 15px;">';
+                    html += generateDynamicInput(allFields[i]);
+                    if (allFields[i+1]) {
+                        html += generateDynamicInput(allFields[i+1]);
+                    } else {
+                        html += '<div class="form-group" style="flex: 1;"></div>';
+                    }
+                    html += '</div>';
+                }
+                container.innerHTML = html;
             }
 
-            // Restore "Add Custom" buttons
-            html += `
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
+            // Restore "Add Custom" buttons at the very bottom
+            const btnGroup = document.createElement('div');
+            btnGroup.style.display = "flex";
+            btnGroup.style.gap = "10px";
+            btnGroup.style.marginTop = "10px";
+            btnGroup.innerHTML = `
                 <button class="add-field-btn" onclick="openFieldModal()"><i class="fa-solid fa-plus"></i> Add Custom Field</button>
                 <button class="add-field-btn" onclick="openBulkValuesModal()" style="border-color: #25D366; color: #25D366;"><i class="fa-solid fa-seedling"></i> Bulk Add Values</button>
-            </div>`;
+            `;
+            container.appendChild(btnGroup);
             
-            container.innerHTML = html;
-            
-            // LOCK UI: Prevent hardcoded renderer from overwriting this work
             isDynamicSpecLoaded = true; 
-            logToAndroid("SYSTEM: Spec sheet generated from JSON blueprint.");
+            logToAndroid("SYSTEM: Spec sheet generated from JSON blueprint in " + templateMode + " mode.");
 
         } catch (e) {
             logGlitch("HTML_RENDER_ERROR", e.message);
             logToAndroid("ERROR: Generative Rendering failed - " + e.message);
+        }
+    }
+
+    /**
+     * Internal helper to render field rows inside accordions
+     */
+    function renderNestedFields(obj) {
+        let fields = [];
+        for (const key in obj) {
+            const val = obj[key];
+            if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
+                // If double-nested, join keys for visibility
+                for (const subK in val) {
+                    fields.push({ id: subK, label: beautifyKey(subK), value: Array.isArray(val[subK]) ? val[subK].join(", ") : val[subK] });
+                }
+            } else {
+                fields.push({ id: key, label: beautifyKey(key), value: Array.isArray(val) ? val.join(", ") : val });
+            }
+        }
+
+        let html = '';
+        for (let i = 0; i < fields.length; i += 2) {
+            html += '<div class="row" style="margin-bottom: 15px;">';
+            html += generateDynamicInput(fields[i]);
+            if (fields[i+1]) {
+                html += generateDynamicInput(fields[i+1]);
+            } else {
+                html += '<div class="form-group" style="flex: 1;"></div>';
+            }
+            html += '</div>';
+        }
+        return html;
+    }
+
+    /**
+     * NEW: ACCORDION ANIMATION LOGIC
+     */
+    function toggleAccordion(header) {
+        header.classList.toggle('active');
+        const content = header.nextElementSibling;
+        
+        if (content.classList.contains('show')) {
+            content.style.maxHeight = '0';
+            content.classList.remove('show');
+        } else {
+            // Mutual Exclusion: Close others
+            const parent = header.closest('.accordion-container');
+            parent.querySelectorAll('.accordion-content.show').forEach(openContent => {
+                openContent.style.maxHeight = '0';
+                openContent.classList.remove('show');
+                openContent.previousElementSibling.classList.remove('active');
+            });
+            
+            content.style.maxHeight = content.scrollHeight + 100 + 'px'; // Set exact height for transition
+            content.classList.add('show');
         }
     }
 
@@ -983,8 +1159,8 @@
         
         logToAndroid(`ACTION: Category changed to ${lastSelectedCat}`);
 
-        // GLITCH FIX: Release lock when category is changed so renderer works for the new category
         isDynamicSpecLoaded = false;
+        currentRawSpecsJSON = null; // Clear raw spec buffer
         renderSpecs();
 
         if (isCloudflareMode) {
@@ -992,7 +1168,6 @@
             const path = `v1/${slugify(mainText)}/${slugify(lastSelectedCat)}_query_index.json`;
             if (window.AndroidBridge) window.AndroidBridge.performCloudflareQuery(path);
         } else {
-            // ADDED FIX: Trigger Ejection Console automatically when selecting a new crowdsourced category
             triggerManualRetrieval('Specs');
         }
     }
@@ -1338,10 +1513,9 @@
 
     /**
      * GLITCH FIX: LOCK-AWARE RENDERER
-     * Aborts if a dynamic Gold Standard spec sheet is currently on screen.
+     * Updated to support structural Template Modes.
      */
     function renderSpecs() {
-        // GLITCH FIX: If a dynamic model is loaded, do not allow hardcoded overwrite
         if (isCloudflareMode && isDynamicSpecLoaded) {
             console.log("RENDER_Specs: Aborted. Dynamic spec lock is active.");
             return;
@@ -1353,15 +1527,22 @@
         document.getElementById('specsSection').style.display = 'block';
 
         let html = '';
-        for(let i = 0; i < fields.length; i += 2) {
-            html += '<div class="row" style="margin-bottom: 15px;">';
-            html += createFormGroup(fields[i], lastSelectedCat);
-            if(fields[i+1]) {
-                html += createFormGroup(fields[i+1], lastSelectedCat);
-            } else {
-                html += '<div class="form-group" style="flex: 1;"></div>';
-            }
-            html += '</div>';
+
+        if (templateMode === 'SEGREGATED') {
+            // Render existing schema in a single "General" slider for consistency
+            html += `
+            <div class="accordion-container">
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        General Details <i class="fas fa-chevron-right icon"></i>
+                    </div>
+                    <div class="accordion-content show" style="max-height: 2000px; padding: 20px;">
+                        ${renderFieldGrid(fields, lastSelectedCat)}
+                    </div>
+                </div>
+            </div>`;
+        } else {
+            html += renderFieldGrid(fields, lastSelectedCat);
         }
 
         html += `
@@ -1374,7 +1555,25 @@
             </button>
         </div>`;
         container.innerHTML = html;
-        logToAndroid(`LOGIC: Rendered ${fields.length} spec fields for ${lastSelectedCat}`);
+        logToAndroid(`LOGIC: Rendered ${fields.length} spec fields for ${lastSelectedCat} in ${templateMode} mode.`);
+    }
+
+    /**
+     * Shared logic to render fields in rows
+     */
+    function renderFieldGrid(fields, currentCat) {
+        let gridHtml = '';
+        for(let i = 0; i < fields.length; i += 2) {
+            gridHtml += '<div class="row" style="margin-bottom: 15px;">';
+            gridHtml += createFormGroup(fields[i], currentCat);
+            if(fields[i+1]) {
+                gridHtml += createFormGroup(fields[i+1], currentCat);
+            } else {
+                gridHtml += '<div class="form-group" style="flex: 1;"></div>';
+            }
+            gridHtml += '</div>';
+        }
+        return gridHtml;
     }
 
     function updateDatalistPointer(el, fieldId) {
@@ -1413,7 +1612,8 @@
             <input type="${f.type}" id="${f.id}" 
                    list="dl_${catNorm}_${fieldNorm}" 
                    onfocus="updateDatalistPointer(this, '${f.id}')"
-                   placeholder="${f.placeholder || ''}">
+                   placeholder="${f.placeholder || ''}"
+                   value="${f.value || ''}">
         </div>`;
     }
 
@@ -1439,14 +1639,54 @@
         logToAndroid("Thumbnail rendered for: " + url);
     }
 
+    /**
+     * REPAIR LOGIC: RECONSTRUCT CATEGORIZED NESTED JSON
+     * This function ensures that regardless of the UI display, 
+     * the harvested data matches the structure provided in Instructions.
+     */
     function prepareData(mode) {
         const cat = document.getElementById('cat').value;
         const specs = {};
         
-        const allInputs = document.querySelectorAll('#specsContainer input');
-        allInputs.forEach(el => {
-            if(el.value.trim() !== '') specs[el.id] = el.value.trim();
-        });
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        if (accordionItems.length > 0 && templateMode === 'SEGREGATED' && isDynamicSpecLoaded) {
+            // Harvest from Dynamic Sliders
+            accordionItems.forEach(item => {
+                const headerText = item.querySelector('.accordion-header').innerText.trim().toLowerCase().replace(/ /g, '_');
+                const inputs = item.querySelectorAll('.accordion-content input');
+                const sectionData = {};
+                inputs.forEach(inp => {
+                    if (inp.value.trim() !== '') sectionData[inp.id] = inp.value.trim();
+                });
+                if (Object.keys(sectionData).length > 0) specs[headerText] = sectionData;
+            });
+        } else {
+            // Harvest from Flat List or Fallback Reconstruction
+            // If the original data was Nested but displayed Flat, we restore the sections
+            if (currentRawSpecsJSON && currentRawSpecsJSON.specifications) {
+                const flatInputs = document.querySelectorAll('#specsContainer input');
+                const inputValues = {};
+                flatInputs.forEach(inp => { if(inp.value.trim() !== '') inputValues[inp.id] = inp.value.trim(); });
+
+                for (const section in currentRawSpecsJSON.specifications) {
+                    const sectionSpecs = currentRawSpecsJSON.specifications[section];
+                    const reconstructedSection = {};
+                    for (const key in sectionSpecs) {
+                        if (inputValues[key]) reconstructedSection[key] = inputValues[key];
+                    }
+                    if (Object.keys(reconstructedSection).length > 0) specs[section] = reconstructedSection;
+                }
+            } else {
+                // Total Legacy/Custom Harvest
+                const allInputs = document.querySelectorAll('#specsContainer input');
+                const legacySection = {};
+                allInputs.forEach(el => {
+                    if(el.value.trim() !== '') legacySection[el.id] = el.value.trim();
+                });
+                specs["general_details"] = legacySection;
+            }
+        }
 
         const productData = {
             category: cat,
@@ -1455,7 +1695,7 @@
             price: document.getElementById('price').value,
             mrp: document.getElementById('mrp').value,
             is_negotiable: document.getElementById('nego').checked,
-            specs: specs,
+            specifications: specs, // UPDATED: Key changed to 'specifications' to match nested hierarchy
             location: {
                 city: document.getElementById('city').value,
                 pincode: document.getElementById('pincode').value
