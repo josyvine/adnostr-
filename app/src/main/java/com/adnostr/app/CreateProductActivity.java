@@ -80,6 +80,9 @@ import java.util.UUID;
  * TOTAL SURVEILLANCE UPDATE:
  * - reportGlitchedLogic: New bridge method to capture HTML wipes and desyncs.
  * - Latency Tracking: Measures execution time for every bridge interaction.
+ * 
+ * STRUCTURAL UPGRADE (NEW):
+ * - Added getTemplateMode bridge method to communicate 'NORMAL' or 'SEGREGATED' logic to HTML Dashboard.
  */
 public class CreateProductActivity extends AppCompatActivity implements WebSocketClientManager.SchemaEventListener {
 
@@ -270,6 +273,10 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
                 String theme = db.isDayMode() ? "day" : "night";
                 binding.wvProductCreator.evaluateJavascript("if(window.setTheme) setTheme('" + theme + "');", null);
 
+                // STRUCTURAL UPGRADE: Inject template mode (Slider vs Normal)
+                String mode = db.getTemplateMode();
+                binding.wvProductCreator.evaluateJavascript("if(window.setTemplateMode) setTemplateMode('" + mode + "');", null);
+
                 injectSchemaIfReady();
             }
         });
@@ -336,6 +343,17 @@ public class CreateProductActivity extends AppCompatActivity implements WebSocke
         @JavascriptInterface
         public String getThemeMode() {
             return db.isDayMode() ? "day" : "night";
+        }
+
+        /**
+         * =========================================================================
+         * NEW: TEMPLATE MODE BRIDGE
+         * Provides the HTML dashboard with the 'NORMAL' or 'SEGREGATED' setting.
+         * =========================================================================
+         */
+        @JavascriptInterface
+        public String getTemplateMode() {
+            return db.getTemplateMode();
         }
 
         /**
