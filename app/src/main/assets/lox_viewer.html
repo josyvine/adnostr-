@@ -20,6 +20,9 @@
         --text-muted: #A0A0A0;
         --price: #00a49f; /* OLX Teal (Persisted) */
         --border: #333333;
+        /* NEW: ACCORDION THEME COLORS */
+        --accordion-header-bg: #252525;
+        --accordion-active-bg: #00a49f;
     }
 
     /* THEME ENGINE: Day Mode Override */
@@ -29,6 +32,8 @@
         --text-main: #002f34;
         --text-muted: #406367;
         --border: #EBEDEE;
+        --accordion-header-bg: #F0F2F5;
+        --accordion-active-bg: #002f34;
     }
 
     * { box-sizing: border-box; font-family: 'Roboto', sans-serif; }
@@ -124,6 +129,48 @@
     .attr-label { font-size: 12px; color: var(--text-muted); }
     .attr-value { font-size: 14px; font-weight: 500; color: var(--text-main); }
 
+    /* NEW: ACCORDION STYLES FOR VIEWER */
+    .accordion-item {
+        margin-bottom: 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .accordion-header {
+        background-color: var(--accordion-header-bg);
+        padding: 15px 20px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text-main);
+        transition: 0.3s;
+        text-transform: uppercase;
+    }
+    .accordion-header.active {
+        background-color: var(--accordion-active-bg);
+        color: #fff;
+    }
+    .accordion-header .icon {
+        font-size: 12px;
+        transition: transform 0.3s ease;
+    }
+    .accordion-header.active .icon {
+        transform: rotate(90deg);
+    }
+    .accordion-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.4s ease-out;
+        background: var(--card-bg);
+    }
+    .accordion-content.show {
+        padding: 15px 0;
+        max-height: 2000px;
+    }
+
     /* Description */
     .desc-text { font-size: 15px; line-height: 1.6; color: var(--text-muted); white-space: pre-line; }
 
@@ -195,12 +242,11 @@
         </div>
     </div>
 
-    <!-- SPECIFICATIONS -->
-    <div class="section-card">
+    <!-- SPECIFICATIONS (DYNAMIC CONTAINER) -->
+    <div class="section-card" id="specsSection">
         <div class="section-title">Details & Specs</div>
-        <!-- Dynamic Grid Container -->
-        <div class="attr-grid" id="specsGrid">
-            <!-- JS will populate attributes here based on Category Schema -->
+        <div id="specsDynamicContainer">
+            <!-- JS will inject Grid or Accordion here -->
         </div>
     </div>
 
@@ -238,6 +284,8 @@
     </div>
 
     <script>
+        let templateMode = "NORMAL"; // 'NORMAL' or 'SEGREGATED'
+
         /**
          * TOTAL SURVEILLANCE: Interaction Bridge
          */
@@ -271,52 +319,39 @@
         };
 
         /**
+         * STRUCTURAL UPGRADE: Set Template Mode
+         */
+        window.setTemplateMode = function(mode) {
+            templateMode = mode;
+        };
+
+        /**
          * Intelligent icon mapper based on the dynamic spec key.
-         * ENHANCED: Expanded fuzzy matching to support crowdsourced, user-generated fields.
          */
         function getIconForSpec(key) {
             const k = key.toLowerCase();
-            
-            // Vehicles & Machinery
             if(k.includes('km') || k.includes('mileage') || k.includes('speed')) return 'fa-solid fa-gauge';
             if(k.includes('fuel') || k.includes('gas')) return 'fa-solid fa-gas-pump';
             if(k.includes('transmission') || k.includes('gear')) return 'fa-solid fa-gears';
             if(k.includes('power') || k.includes('voltage') || k.includes('watt')) return 'fa-solid fa-bolt';
-            
-            // Real Estate & Home
             if(k.includes('bed') || k.includes('bath') || k.includes('room')) return 'fa-solid fa-bed';
             if(k.includes('area') || k.includes('dimension') || k.includes('size')) return 'fa-solid fa-maximize';
-            
-            // Electronics & Tech
             if(k.includes('ram') || k.includes('processor') || k.includes('gpu') || k.includes('cpu')) return 'fa-solid fa-microchip';
             if(k.includes('storage') || k.includes('capacity') || k.includes('disk')) return 'fa-solid fa-hard-drive';
             if(k.includes('camera') || k.includes('lens') || k.includes('pixel')) return 'fa-solid fa-camera';
             if(k.includes('screen') || k.includes('display') || k.includes('resolution')) return 'fa-solid fa-display';
-            
-            // General Properties
             if(k.includes('year') || k.includes('age') || k.includes('date')) return 'fa-solid fa-calendar-days';
-            if(k.includes('time') || k.includes('duration') || k.includes('hour')) return 'fa-solid fa-stopwatch';
             if(k.includes('weight') || k.includes('mass')) return 'fa-solid fa-weight-hanging';
             if(k.includes('color') || k.includes('paint')) return 'fa-solid fa-palette';
             if(k.includes('material') || k.includes('fabric')) return 'fa-solid fa-layer-group';
             if(k.includes('brand') || k.includes('model') || k.includes('category')) return 'fa-solid fa-tag';
-            
-            // Commercial
             if(k.includes('salary') || k.includes('price') || k.includes('fee')) return 'fa-solid fa-money-bill';
             if(k.includes('experience') || k.includes('skill')) return 'fa-solid fa-briefcase';
-            
-            // Status
             if(k.includes('warranty') || k.includes('guarantee')) return 'fa-solid fa-shield-halved';
             if(k.includes('condition') || k.includes('state')) return 'fa-solid fa-clipboard-check';
-            
-            // FORENSIC LOGGING: Catch unknown crowdsourced icons
-            logGlitch("UNKNOWN_METADATA_ICON", "Key: " + key);
-            return 'fa-solid fa-circle-check'; // Default Fallback for totally unknown crowdsourced fields
+            return 'fa-solid fa-circle-check'; 
         }
 
-        /**
-         * Converts raw keys like 'km_driven' into 'Km Driven'
-         */
         function formatLabel(key) {
             return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
         }
@@ -333,26 +368,37 @@
         }
 
         /**
-         * This function is called by the Android Native code.
-         * @param {string} jsonString - The product data downloaded from Cloudflare.
+         * NEW: SLIDING ANIMATION SCRIPT
+         */
+        function toggleAccordion(header) {
+            header.classList.toggle('active');
+            const content = header.nextElementSibling;
+            if (content.classList.contains('show')) {
+                content.style.maxHeight = '0';
+                content.classList.remove('show');
+            } else {
+                const parent = header.closest('#specsDynamicContainer');
+                parent.querySelectorAll('.accordion-content.show').forEach(openContent => {
+                    openContent.style.maxHeight = '0';
+                    openContent.classList.remove('show');
+                    openContent.previousElementSibling.classList.remove('active');
+                });
+                content.style.maxHeight = content.scrollHeight + 'px';
+                content.classList.add('show');
+            }
+        }
+
+        /**
+         * Main render entry point.
          */
         function renderProduct(jsonString) {
             const startTime = Date.now();
             try {
                 const data = JSON.parse(jsonString);
 
-                // LOGIC SURVEILLANCE: Data Integrity Checks
-                if (!data.price || data.price === "0" || data.price === 0) {
-                    logGlitch("LOGIC_VIOLATION", "Product rendered with ₹0 price tag.");
-                }
-                if (!data.images || data.images.length === 0) {
-                    logGlitch("LOGIC_VIOLATION", "Product rendered without any media assets.");
-                }
-
-                // 1. Title & Price
+                // Title & Price
                 document.getElementById('titleDisplay').innerText = data.title;
                 document.getElementById('priceDisplay').innerText = "₹ " + data.price;
-                
                 if (data.mrp && parseInt(data.mrp) > parseInt(data.price)) {
                     document.getElementById('mrpRow').style.display = "block";
                     document.getElementById('mrpDisplay').innerText = "MRP ₹ " + data.mrp;
@@ -360,11 +406,10 @@
                     document.getElementById('discountBadge').innerText = savings + "% OFF";
                 }
 
-                // 2. Images
+                // Images
                 if (data.images && data.images.length > 0) {
                     const mainImg = document.getElementById('mainImage');
                     mainImg.src = data.images[0];
-                    
                     const strip = document.getElementById('thumbStrip');
                     strip.innerHTML = "";
                     data.images.forEach((url, index) => {
@@ -381,52 +426,90 @@
                     });
                 }
 
-                // 3. Location
+                // Location
                 document.getElementById('locationDisplay').innerText = data.location.city + " (" + data.location.pincode + ")";
 
-                // 4. Dynamic Specs + Fixed Specs
-                const specsGrid = document.getElementById('specsGrid');
-                let specsHtml = '';
+                // =========================================================================
+                // STRUCTURAL UPGRADE: FORK RENDERING BY TEMPLATE MODE
+                // =========================================================================
+                const specsContainer = document.getElementById('specsDynamicContainer');
+                specsContainer.innerHTML = '';
+                const specsJSON = data.specifications || data.specs || {};
 
-                // Category Badge Spec
-                if (data.category) {
-                    specsHtml += createSpecHTML('category', data.category);
-                }
+                if (templateMode === "SEGREGATED") {
+                    // SLIDER MODE (Accordion)
+                    let html = '';
+                    const isNested = Object.values(specsJSON).some(v => typeof v === 'object' && !Array.isArray(v) && v !== null);
 
-                // Dynamic user-typed specs loop
-                if (data.specs) {
-                    for (const [key, value] of Object.entries(data.specs)) {
-                        specsHtml += createSpecHTML(key, value);
+                    if (isNested) {
+                        for (const section in specsJSON) {
+                            html += `
+                            <div class="accordion-item">
+                                <div class="accordion-header" onclick="toggleAccordion(this)">
+                                    ${formatLabel(section)} <i class="fas fa-chevron-right icon"></i>
+                                </div>
+                                <div class="accordion-content">
+                                    <div class="attr-grid" style="padding: 0 16px 15px 16px;">
+                                        ${renderGridFromObject(specsJSON[section])}
+                                    </div>
+                                </div>
+                            </div>`;
+                        }
+                    } else {
+                        // Fallback: Put flat specs in one slider
+                        html += `
+                        <div class="accordion-item">
+                            <div class="accordion-header" onclick="toggleAccordion(this)">General Details <i class="fas fa-chevron-right icon"></i></div>
+                            <div class="accordion-content"><div class="attr-grid" style="padding: 0 16px 15px 16px;">${renderGridFromObject(specsJSON)}</div></div>
+                        </div>`;
                     }
-                }
 
-                // Inject Standardized Delivery and Stock (Fixed logic)
-                if (data.delivery && data.delivery.type) {
-                    specsHtml += `
-                    <div class="attr-item">
-                        <span class="attr-label"><i class="fa-solid fa-truck" style="margin-right: 4px; opacity: 0.8;"></i>Delivery</span>
-                        <span class="attr-value">${data.delivery.type}</span>
+                    // INTELLIGENT MAPPING: Add Availability Section
+                    html += `
+                    <div class="accordion-item">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            Availability & Important Notes <i class="fas fa-chevron-right icon"></i>
+                        </div>
+                        <div class="accordion-content">
+                            <div class="attr-grid" style="padding: 0 16px 15px 16px;">
+                                ${createSpecHTML('stock', data.inventory.quantity + ' Units')}
+                                ${createSpecHTML('delivery', data.delivery.type)}
+                                ${createSpecHTML('time', data.delivery.estimated_time)}
+                            </div>
+                        </div>
                     </div>`;
-                }
-                if (data.inventory && data.inventory.quantity) {
-                    specsHtml += `
-                    <div class="attr-item">
-                        <span class="attr-label"><i class="fa-solid fa-box" style="margin-right: 4px; opacity: 0.8;"></i>Stock</span>
-                        <span class="attr-value">${data.inventory.quantity} Units</span>
-                    </div>`;
+                    specsContainer.innerHTML = html;
+                } else {
+                    // NORMAL MODE (Existing Flat Grid)
+                    let specsHtml = '';
+                    if (data.category) specsHtml += createSpecHTML('category', data.category);
+
+                    // Flatten nested logic for the grid
+                    const flattenAndRender = (obj) => {
+                        let innerHtml = '';
+                        for (const [key, value] of Object.entries(obj)) {
+                            if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+                                innerHtml += flattenAndRender(value);
+                            } else {
+                                innerHtml += createSpecHTML(key, value);
+                            }
+                        }
+                        return innerHtml;
+                    };
+
+                    specsHtml += flattenAndRender(specsJSON);
+                    specsHtml += createSpecHTML('delivery', data.delivery.type);
+                    specsHtml += createSpecHTML('stock', data.inventory.quantity + ' Units');
+                    
+                    specsContainer.innerHTML = `<div class="attr-grid">${specsHtml}</div>`;
                 }
 
-                // Render into DOM
-                specsGrid.innerHTML = specsHtml;
-
-                // 5. Description
+                // Description
                 document.getElementById('descDisplay').innerText = data.description;
-
-                // 6. Seller
+                // Seller
                 document.getElementById('sellerName').innerText = data.seller.name;
                 document.getElementById('sellerInitial').innerText = data.seller.name.charAt(0).toUpperCase();
-
-                // 7. Action Buttons
+                // Action Buttons
                 if (data.seller.show_phone && data.seller.phone) {
                     document.getElementById('callBtn').href = "tel:" + data.seller.phone;
                     document.getElementById('waBtn').href = "https://wa.me/" + data.seller.phone.replace(/\D/g,'');
@@ -434,25 +517,28 @@
                 } else {
                     document.getElementById('callBtn').style.display = "none";
                 }
+                if (!data.seller.enable_chat) document.getElementById('chatBtn').style.display = "none";
+                if (data.is_featured) document.getElementById('featuredBadge').style.display = "block";
 
-                if (!data.seller.enable_chat) {
-                    document.getElementById('chatBtn').style.display = "none";
-                }
-
-                // 8. Badges
-                if (data.is_featured) {
-                    document.getElementById('featuredBadge').style.display = "block";
-                }
-
-                const endTime = Date.now();
-                if (window.AndroidBridge) {
-                    window.AndroidBridge.logTechnicalEvent("[PERFORMANCE] Viewer Render Logic took " + (endTime - startTime) + "ms");
-                }
-
+                if (window.AndroidBridge) window.AndroidBridge.logTechnicalEvent("[PERFORMANCE] Viewer Render in " + templateMode + " took " + (Date.now() - startTime) + "ms");
             } catch (e) {
                 logGlitch("JSON_PARSE_FAILURE", e.message);
                 document.body.innerHTML = "<div style='padding:50px; text-align:center;'>Error loading product data.</div>";
             }
+        }
+
+        function renderGridFromObject(obj) {
+            let html = '';
+            for (const [key, value] of Object.entries(obj)) {
+                if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+                    for (const [subK, subV] of Object.entries(value)) {
+                        html += createSpecHTML(subK, subV);
+                    }
+                } else {
+                    html += createSpecHTML(key, value);
+                }
+            }
+            return html;
         }
     </script>
 </body>
