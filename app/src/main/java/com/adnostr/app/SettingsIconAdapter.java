@@ -41,6 +41,9 @@ import java.util.List;
  * TOTAL SURVEILLANCE UPDATE:
  * - Performance Tracking: Measures binding duration for each icon to detect scroll bloat.
  * - Interaction Surveillance: Logs the specific title and ID of every command clicked.
+ * 
+ * STRUCTURAL UPGRADE (NEW):
+ * - CMD_THEME transformed to "Appearance": Consolidated entry point for Theme and Template selection.
  */
 public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapter.IconViewHolder> {
 
@@ -84,7 +87,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
     // NEW: CLOUDFLARE DATABASE ARCHITECT IDENTIFIER
     public static final int CMD_CLOUDFLARE_DB = 14;
 
-    // NEW: THEME SWITCHER IDENTIFIER
+    // NEW: THEME SWITCHER IDENTIFIER (Now "Appearance")
     public static final int CMD_THEME = 15;
 
     private final List<SettingItem> items = new ArrayList<>();
@@ -95,6 +98,7 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
      * UPDATED: Implements conditional logic for Admin Moderator Console vs B Archive.
      * UPDATED: Injects the Database Architect icon for Admin verified sessions.
      * UPDATED: Injects the Theme icon for all users.
+     * UPDATED FOR STRUCTURAL UPGRADE: Renamed "Theme" grid item to "Appearance".
      */
     public SettingsIconAdapter(String userRole, boolean isAdmin, OnSettingClickListener listener) {
         this.listener = listener;
@@ -110,8 +114,9 @@ public class SettingsIconAdapter extends RecyclerView.Adapter<SettingsIconAdapte
         // 3. FEATURE 1: Privacy Command Center (Available to Everyone)
         items.add(new SettingItem(CMD_PRIVACY, "Privacy", R.drawable.ic_cmd_privacy));
 
-        // 4. THEME SWITCHER (Available to Everyone)
-        items.add(new SettingItem(CMD_THEME, "Theme", R.drawable.ic_nav_report)); // Temporary icon, will be replaced by ic_cmd_theme.xml
+        // 4. THEME SWITCHER / APPEARANCE (Available to Everyone)
+        // UPDATED: Title changed from "Theme" to "Appearance" to reflect consolidated settings.
+        items.add(new SettingItem(CMD_THEME, "Appearance", R.drawable.ic_nav_report)); // Temporary icon mapping
 
         // GLITCH 1 FIX: Personalized Icon (Available to Everyone)
         items.add(new SettingItem(CMD_PERSONALIZED, "Personalized", R.drawable.ic_cmd_personalized));
