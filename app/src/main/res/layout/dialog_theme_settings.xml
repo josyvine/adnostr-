@@ -1,116 +1,172 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView 
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="8dp"
-    android:layout_margin="20dp"
-    app:cardBackgroundColor="@color/app_card_background">
+    android:background="@color/hfs_card_black"
+    android:scrollbars="none">
 
+    <!-- 
+        ADNOSTR CONSOLIDATED APPEARANCE ENGINE
+        This layout manages both the visual skin (Theme) and the structural logic (Template).
+        Designed for high-contrast visibility and professional UX.
+    -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="24dp">
 
-        <!-- Dialog Header -->
+        <!-- HEADER SECTION -->
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="UI Appearance"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/app_text_main" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Choose your preferred visual skin"
-            android:textSize="13sp"
-            android:textColor="@color/app_text_muted"
-            android:layout_marginTop="4dp" />
-
-        <View
+            android:id="@+id/tvAppearanceTitle"
             android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/app_border"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="16dp" />
+            android:layout_height="wrap_content"
+            android:text="Appearance &amp; Structure"
+            android:textColor="@color/white"
+            android:textSize="20sp"
+            android:fontFamily="sans-serif-medium"
+            android:layout_marginBottom="8dp" />
 
-        <!-- Day Mode Toggle Row -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Configure how advertisements and product details are presented globally."
+            android:textColor="@color/hfs_text_grey"
+            android:textSize="13sp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- SECTION 1: APP THEME (DAY/NIGHT) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginTop="16dp">
+            android:layout_marginBottom="16dp">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/invert_colors_24px"
-                app:tint="@color/hfs_active_blue" />
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_cmd_switch"
+                app:tint="@color/hfs_active_blue"
+                android:layout_marginEnd="12dp"/>
 
-            <LinearLayout
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Day Mode"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/app_text_main" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="White background / Black text"
-                    android:textSize="12sp"
-                    android:textColor="@color/app_text_muted" />
-            </LinearLayout>
+                android:text="Enable Day Mode"
+                android:textColor="@color/white"
+                android:textSize="16sp" />
 
             <com.google.android.material.switchmaterial.SwitchMaterial
                 android:id="@+id/switchDayMode"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                app:thumbTint="@color/toggle_thumb"
-                app:trackTint="@color/toggle_on_track" />
+                android:checked="false" />
         </LinearLayout>
 
-        <!-- Description Note -->
-        <TextView
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/hfs_border_grey"
+            android:layout_marginBottom="24dp" />
+
+        <!-- SECTION 2: SPECIFICATION TEMPLATE MODE -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="Note: Night mode is the default AdNostr theme. Toggling Day mode will flip backgrounds and text globally while keeping green and color accents."
-            android:textSize="11sp"
-            android:alpha="0.7"
-            android:textColor="@color/app_text_muted" />
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp">
 
-        <!-- Action Buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_nav_report"
+                    app:tint="@color/hfs_active_green"
+                    android:layout_marginEnd="12dp"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Specification Structure"
+                    android:textColor="@color/white"
+                    android:textSize="16sp"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Choose between a flat grid or organized sliding drawers."
+                android:textColor="@color/hfs_text_grey"
+                android:textSize="12sp"
+                android:layout_marginBottom="16dp"
+                android:layout_marginStart="36dp"/>
+
+            <!-- RADIO GROUP FOR TEMPLATE SELECTION -->
+            <RadioGroup
+                android:id="@+id/rgTemplateMode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="32dp">
+
+                <!-- OPTION 1: NORMAL MODE -->
+                <com.google.android.material.radiobutton.MaterialRadioButton
+                    android:id="@+id/rbTemplateNormal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Normal Template (Flat Grid)"
+                    android:textColor="@color/white"
+                    android:buttonTint="@color/hfs_active_blue"
+                    android:paddingStart="12dp"
+                    android:layout_marginBottom="8dp"/>
+
+                <!-- OPTION 2: SLIDER MODE -->
+                <com.google.android.material.radiobutton.MaterialRadioButton
+                    android:id="@+id/rbTemplateSlider"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Slider Template (Accordion)"
+                    android:textColor="@color/white"
+                    android:buttonTint="@color/hfs_active_green"
+                    android:paddingStart="12dp" />
+            </RadioGroup>
+        </LinearLayout>
+
+        <!-- FOOTER ACTIONS -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="end"
-            android:layout_marginTop="24dp">
+            android:layout_marginTop="32dp">
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnCancelTheme"
                 style="@style/Widget.MaterialComponents.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="CLOSE"
-                android:textColor="@color/hfs_active_blue"
-                android:textStyle="bold" />
+                android:textColor="@color/hfs_text_grey"
+                android:layout_marginEnd="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSaveAppearance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="APPLY CHANGES"
+                android:textColor="@color/white"
+                android:backgroundTint="@color/hfs_active_blue"
+                app:cornerRadius="8dp" />
         </LinearLayout>
 
     </LinearLayout>
-</androidx.cardview.widget.CardView>
+</ScrollView>
