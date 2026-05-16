@@ -34,6 +34,9 @@ import java.nio.charset.StandardCharsets;
  * - reportGlitchedLogic: New bridge method to capture UI inconsistencies in the viewer.
  * - Performance Tracking: Measures download-to-render latency for forensic reports.
  * - CTA Tracking: Logs every external click (Call, WhatsApp) to identify UX blockages.
+ * 
+ * STRUCTURAL UPGRADE (NEW):
+ * - Template Mode Injection: Pass current preference ('NORMAL' vs 'SEGREGATED') to the viewer engine.
  */
 public class ProductDetailActivity extends AppCompatActivity {
 
@@ -141,6 +144,10 @@ public class ProductDetailActivity extends AppCompatActivity {
                 // THEME ENGINE: Synchronize WebView theme with native preference
                 String theme = db.isDayMode() ? "day" : "night";
                 binding.wvProductDetail.evaluateJavascript("if(window.setTheme) setTheme('" + theme + "');", null);
+
+                // STRUCTURAL UPGRADE (NEW): Inject current template preference (Slider vs Normal)
+                String mode = db.getTemplateMode();
+                binding.wvProductDetail.evaluateJavascript("if(window.setTemplateMode) setTemplateMode('" + mode + "');", null);
                 
                 // If data was downloaded before the page finished loading, inject it now
                 if (!downloadedJson.isEmpty()) {
