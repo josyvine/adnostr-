@@ -68,6 +68,9 @@ import java.util.concurrent.Executors;
  * 
  * TOTAL PERSISTENCE UPDATE (FIX):
  * - KEY_PERMANENT_AD_STORE: New immutable storage for Kind 30001 and 30005 to survive refresh/reopen.
+ * 
+ * STRUCTURAL UPGRADE (NEW):
+ * - KEY_SPEC_TEMPLATE_MODE: Persists choice between 'NORMAL' (Flat) and 'SEGREGATED' (Slider).
  */
 public class AdNostrDatabaseHelper {
 
@@ -154,6 +157,13 @@ public class AdNostrDatabaseHelper {
 
     // THEME ENGINE KEY
     private static final String KEY_THEME_MODE = "app_theme_day_mode";
+
+    // =========================================================================
+    // STRUCTURAL UPGRADE: TEMPLATE MODES
+    // =========================================================================
+    private static final String KEY_SPEC_TEMPLATE_MODE = "spec_display_template_mode";
+    public static final String TEMPLATE_NORMAL = "NORMAL";
+    public static final String TEMPLATE_SLIDER = "SEGREGATED";
 
     private static AdNostrDatabaseHelper instance;
     private final SharedPreferences prefs;
@@ -990,6 +1000,24 @@ public class AdNostrDatabaseHelper {
     public boolean isDayMode() {
         // Default to FALSE (Night Mode as current)
         return prefs.getBoolean(KEY_THEME_MODE, false);
+    }
+
+    // =========================================================================
+    // STRUCTURAL UPGRADE: TEMPLATE MODES (NEW)
+    // =========================================================================
+
+    /**
+     * Logic: Persists the structural preference (Normal vs Slider).
+     */
+    public void setTemplateMode(String mode) {
+        diskExecutor.execute(() -> {
+            prefs.edit().putString(KEY_SPEC_TEMPLATE_MODE, mode).commit();
+        });
+    }
+
+    public String getTemplateMode() {
+        // Default to NORMAL (Flat Grid) to prevent initial UI shock
+        return prefs.getString(KEY_SPEC_TEMPLATE_MODE, TEMPLATE_NORMAL);
     }
 
     // =========================================================================
